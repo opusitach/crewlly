@@ -1,0 +1,105 @@
+import { NextResponse } from "next/server"
+import { z } from "zod"
+import { Prisma } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
+import { getSessionUser } from "@/lib/auth"
+import { DEFAULT_TIMEZONE, timezoneSchema } from "@/lib/validation/timezone"
+import { ensureInviteCodeForOrganization } from "@/lib/invite-codes"
+import { ensureDefaultRolesAndPermissions } from "@/lib/rbac/default-role-permissions"
+
+const startSchema = z.object({
+  timezone: timezoneSchema.optional(),
+  forceNew: z.boolean().optional(),
+})
+
+export async function POST(request: Request) {
+  try {
+    const user = await getSessionUser()
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const json = await request.json().catch(() => ({}))
+    const parsed = startSchema.safeParse(json)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+
+    const forceNew = parsed.data.forceNew === true
+
+    if (!forceNew) {
+      const existing = await prisma.organizationMember.findFirst({
+        where: {
+          userId: user.id,
+          isActive: true,
+          OR: [{ accessRole: { key: "owner" } }, { legacyRole: "owner" }],
+          organization: { status: "draft" },
+        },
+        include: { organization: true },
+      })
+
+      if (existing?.organizationId) {
+        return NextResponse.json({ organization_id: existing.organizationId, step: 1 })
+      }
+    }
+
+    const timezone = parsed.data.timezone ?? DEFAULT_TIMEZONE
+
+    const organization = await prisma.$transaction(async (tx) => {
+      await tx.timezone.upsert({
+        where: { name: timezone },
+        create: { name: timezone },
+        update: {},
+      })
+
+      const org = await tx.organization.create({
+        data: {
+          name: "Новая организация",
+          timezone,
+          status: "draft",
+          createdByUserId: user.id,
+        },
+      })
+
+      const { ownerRole } = await ensureDefaultRolesAndPermissions(tx, org.id)
+
+      await tx.organizationMember.upsert({
+        where: {
+          organizationId_userId: { organizationId: org.id, userId: user.id },
+        },
+        create: {
+          organizationId: org.id,
+          userId: user.id,
+          accessRoleId: ownerRole.id,
+          legacyRole: "owner",
+          isActive: true,
+          createdVia: "manual",
+        },
+        update: {},
+      })
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: { activeOrganizationId: org.id },
+      })
+
+      return org
+    })
+
+    await ensureInviteCodeForOrganization(prisma, organization.id, user.id)
+
+    return NextResponse.json({ organization_id: organization.id, step: 1 })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected error"
+    const code =
+      error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined
+    const hint =
+      code === "P2021" || code === "P2022"
+        ? "Похоже, миграции не применены. Запустите prisma migrate dev/deploy."
+        : code === "P2003"
+          ? "Проблема с FK таймзоны. Проверьте таблицу timezones."
+          : undefined
+    console.error("[onboarding][owner][start] error", { message, code, error })
+    return NextResponse.json({ error: message, code, hint }, { status: 500 })
+  }
+}

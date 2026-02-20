@@ -1,0 +1,135 @@
+import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
+import { z } from "zod"
+import { prisma } from "@/lib/prisma"
+import { getAuthorizedInterval } from "@/lib/procedures/access"
+import { recomputeEmployeeConflictStatuses } from "@/lib/work-interval-conflicts"
+import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
+
+type RouteContext = { params: Promise<{ id: string }> }
+const cancelSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(3, "Укажите причину отмены (минимум 3 символа).")
+    .max(500, "Причина отмены слишком длинная (максимум 500 символов)."),
+})
+
+const stringifyPrismaMeta = (meta: Prisma.PrismaClientKnownRequestError["meta"]) => {
+  if (!meta) return undefined
+  if (typeof meta === "string") return meta
+  if (typeof meta === "object") return JSON.stringify(meta)
+  return undefined
+}
+
+const buildCancelErrorResponse = (error: unknown) => {
+  console.error("[api/work-intervals/cancel]", error)
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const meta = stringifyPrismaMeta(error.meta)
+    if (error.code === "P2021" || error.code === "P2022") {
+      return NextResponse.json(
+        {
+          error: "Схема базы данных не соответствует текущему коду.",
+          code: error.code,
+          hint: "Запустите prisma migrate deploy (или prisma db push для dev).",
+          details: meta ?? error.message,
+        },
+        { status: 500 },
+      )
+    }
+
+    return NextResponse.json(
+      {
+        error: `Ошибка базы данных (${error.code}).`,
+        code: error.code,
+        details: meta ?? error.message,
+      },
+      { status: 500 },
+    )
+  }
+
+  return NextResponse.json(
+    {
+      error: "Не удалось отменить смену.",
+      details: error instanceof Error ? error.message : String(error),
+    },
+    { status: 500 },
+  )
+}
+
+export async function POST(request: Request, context: RouteContext) {
+  const { id } = await context.params
+  const { session, interval, error, status } = await getAuthorizedInterval(id)
+  if (error || !interval || !session?.organization) {
+    return NextResponse.json({ error }, { status })
+  }
+  const organizationId = session.organization.id
+
+  const json = await request.json().catch(() => null)
+  const parsed = cancelSchema.safeParse(json)
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: "Укажите причину отмены смены.",
+        details: parsed.error.flatten(),
+      },
+      { status: 400 },
+    )
+  }
+
+  if (interval.status === "completed") {
+    return NextResponse.json({ error: "Смена уже завершена." }, { status: 409 })
+  }
+  if (interval.status === "canceled") {
+    return NextResponse.json({ error: "Смена уже отменена." }, { status: 409 })
+  }
+  if (interval.status !== "scheduled") {
+    return NextResponse.json(
+      {
+        error: "Отменить можно только запланированную смену.",
+      },
+      { status: 409 },
+    )
+  }
+
+  const actorName = toEventActorName(
+    { fullName: session.user.fullName, email: session.user.email },
+    "Сотрудник",
+  )
+  const workDateLabel = toEventDateLabel(interval.workday.workDate)
+  const notificationMessage = workDateLabel
+    ? `${actorName} отменил(а) рабочую смену (${workDateLabel}). Причина: ${parsed.data.reason}`
+    : `${actorName} отменил(а) рабочую смену. Причина: ${parsed.data.reason}`
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const canceled = await tx.workInterval.update({
+        where: { id: interval.id },
+        data: {
+          status: "canceled",
+          cancelReason: parsed.data.reason,
+          closedAt: interval.closedAt ?? new Date(),
+        },
+      })
+
+      await recomputeEmployeeConflictStatuses(tx, {
+        organizationId,
+        employeeId: interval.employeeId,
+      })
+
+      await notifyOrganizationOwners(tx, {
+        organizationId,
+        type: "shift",
+        title: "Отменена рабочая смена",
+        message: notificationMessage,
+      })
+
+      return canceled
+    })
+
+    return NextResponse.json({ data: result })
+  } catch (cancelError) {
+    return buildCancelErrorResponse(cancelError)
+  }
+}

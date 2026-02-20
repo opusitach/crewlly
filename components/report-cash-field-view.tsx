@@ -1,0 +1,485 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
+import { Area, AreaChart, CartesianGrid, Line, XAxis, YAxis } from "recharts"
+import { Calendar, ChevronLeft, TrendingUp } from "lucide-react"
+
+const toDateInputValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+const formatCashValue = (value: number | null | undefined) => {
+  if (value == null || !Number.isFinite(value)) return "-"
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value)
+}
+
+const formatWorkDate = (workDate: string) => {
+  const [yearRaw, monthRaw, dayRaw] = workDate.split("-")
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
+  const day = Number(dayRaw)
+  if (!year || !month || !day) return workDate
+  return new Date(year, month - 1, day).toLocaleDateString("ru-RU")
+}
+
+const formatChartDateLabel = (workDate: string) => {
+  const [yearRaw, monthRaw, dayRaw] = workDate.split("-")
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
+  const day = Number(dayRaw)
+  if (!year || !month || !day) return workDate
+  return new Date(year, month - 1, day).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "short",
+  })
+}
+
+type HistoryItem = {
+  sessionId: string
+  workdayId: string
+  workDate: string
+  cashRegisterName: string
+  cashSessionStatus: string
+  valueCents: number
+  actorName: string | null
+}
+
+type ChartPoint = {
+  date: string
+  valueCents: number
+  trendCents: number
+  entriesCount: number
+}
+
+type CashFieldDetailsPayload = {
+  field: {
+    key: string
+    label: string
+    inputStage: "open" | "close"
+    isRevenueBasis: boolean
+  }
+  summary: {
+    totalValueCents: number
+    previousTotalCents: number
+    averageValueCents: number
+    entriesCount: number
+    changePercent: number | null
+    currency: string | null
+  }
+  chart: {
+    points: ChartPoint[]
+  }
+  history: HistoryItem[]
+}
+
+const EMPTY_DATA: CashFieldDetailsPayload = {
+  field: {
+    key: "",
+    label: "",
+    inputStage: "close",
+    isRevenueBasis: false,
+  },
+  summary: {
+    totalValueCents: 0,
+    previousTotalCents: 0,
+    averageValueCents: 0,
+    entriesCount: 0,
+    changePercent: 0,
+    currency: "CZK",
+  },
+  chart: {
+    points: [],
+  },
+  history: [],
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  open: "Открыта",
+  closing_draft: "Черновик закрытия",
+  closed: "Закрыта",
+  reviewed: "Проверена",
+}
+
+const chartConfig = {
+  valueCents: {
+    label: "Значение",
+    color: "hsl(var(--primary))",
+  },
+  trendCents: {
+    label: "Тренд",
+    color: "hsl(var(--muted-foreground))",
+  },
+} satisfies ChartConfig
+
+type Props = {
+  onBack: () => void
+  fieldKey: string
+  fieldLabel: string
+  inputStage: "open" | "close"
+  initialFromDate: string
+  initialToDate: string
+}
+
+export default function ReportCashFieldView({
+  onBack,
+  fieldKey,
+  fieldLabel,
+  inputStage,
+  initialFromDate,
+  initialToDate,
+}: Props) {
+  const today = useMemo(() => new Date(), [])
+  const defaultFrom = useMemo(() => toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), [today])
+  const defaultTo = useMemo(() => toDateInputValue(today), [today])
+
+  const [fromDate, setFromDate] = useState(initialFromDate || defaultFrom)
+  const [toDate, setToDate] = useState(initialToDate || defaultTo)
+  const [appliedRange, setAppliedRange] = useState({
+    fromDate: initialFromDate || defaultFrom,
+    toDate: initialToDate || defaultTo,
+  })
+
+  const [details, setDetails] = useState<CashFieldDetailsPayload>({
+    ...EMPTY_DATA,
+    field: {
+      key: fieldKey,
+      label: fieldLabel,
+      inputStage,
+      isRevenueBasis: false,
+    },
+  })
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    const load = async () => {
+      setIsLoading(true)
+      setLoadError(null)
+
+      try {
+        const params = new URLSearchParams()
+        params.set("inputStage", inputStage)
+        if (appliedRange.fromDate) params.set("dateFrom", appliedRange.fromDate)
+        if (appliedRange.toDate) params.set("dateTo", appliedRange.toDate)
+
+        const response = await fetch(`/api/reports/cash-fields/${encodeURIComponent(fieldKey)}?${params.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+        })
+
+        const json = (await response.json().catch(() => null)) as
+          | {
+              data?: Partial<CashFieldDetailsPayload>
+              error?: string
+            }
+          | null
+
+        if (!response.ok || !json?.data) {
+          throw new Error(json?.error || "Не удалось загрузить детализацию параметра")
+        }
+
+        const raw = json.data
+        const points = Array.isArray(raw.chart?.points)
+          ? raw.chart?.points
+              .map((point) => {
+                if (!point || typeof point !== "object") return null
+                const row = point as Record<string, unknown>
+                return {
+                  date: typeof row.date === "string" ? row.date : "",
+                  valueCents: Number.isInteger(row.valueCents) ? Number(row.valueCents) : 0,
+                  trendCents: Number.isInteger(row.trendCents) ? Number(row.trendCents) : 0,
+                  entriesCount: Number.isInteger(row.entriesCount) ? Number(row.entriesCount) : 0,
+                } satisfies ChartPoint
+              })
+              .filter((point): point is ChartPoint => point !== null && Boolean(point.date))
+          : []
+
+        const history = Array.isArray(raw.history)
+          ? raw.history
+              .map((item) => {
+                if (!item || typeof item !== "object") return null
+                const row = item as Record<string, unknown>
+                const sessionId = typeof row.sessionId === "string" ? row.sessionId : ""
+                const workdayId = typeof row.workdayId === "string" ? row.workdayId : ""
+                const workDate = typeof row.workDate === "string" ? row.workDate : ""
+                if (!sessionId || !workdayId || !workDate) return null
+
+                return {
+                  sessionId,
+                  workdayId,
+                  workDate,
+                  cashRegisterName: typeof row.cashRegisterName === "string" ? row.cashRegisterName : "Касса",
+                  cashSessionStatus: typeof row.cashSessionStatus === "string" ? row.cashSessionStatus : "closed",
+                  valueCents: Number.isInteger(row.valueCents) ? Number(row.valueCents) : 0,
+                  actorName: typeof row.actorName === "string" ? row.actorName : null,
+                } satisfies HistoryItem
+              })
+              .filter((item): item is HistoryItem => item !== null)
+          : []
+
+        const nextData: CashFieldDetailsPayload = {
+          field: {
+            key: typeof raw.field?.key === "string" ? raw.field.key : fieldKey,
+            label: typeof raw.field?.label === "string" ? raw.field.label : fieldLabel,
+            inputStage: raw.field?.inputStage === "open" || raw.field?.inputStage === "close" ? raw.field.inputStage : inputStage,
+            isRevenueBasis: raw.field?.isRevenueBasis === true,
+          },
+          summary: {
+            totalValueCents: Number.isInteger(raw.summary?.totalValueCents) ? Number(raw.summary?.totalValueCents) : 0,
+            previousTotalCents: Number.isInteger(raw.summary?.previousTotalCents)
+              ? Number(raw.summary?.previousTotalCents)
+              : 0,
+            averageValueCents: Number.isInteger(raw.summary?.averageValueCents) ? Number(raw.summary?.averageValueCents) : 0,
+            entriesCount: Number.isInteger(raw.summary?.entriesCount) ? Number(raw.summary?.entriesCount) : 0,
+            changePercent: typeof raw.summary?.changePercent === "number" ? raw.summary.changePercent : null,
+            currency: typeof raw.summary?.currency === "string" ? raw.summary.currency : "CZK",
+          },
+          chart: {
+            points,
+          },
+          history,
+        }
+
+        if (!active) return
+        setDetails(nextData)
+      } catch (error) {
+        if (!active) return
+        setDetails({
+          ...EMPTY_DATA,
+          field: {
+            key: fieldKey,
+            label: fieldLabel,
+            inputStage,
+            isRevenueBasis: false,
+          },
+        })
+        setLoadError(error instanceof Error ? error.message : "Не удалось загрузить детализацию параметра")
+      } finally {
+        if (active) setIsLoading(false)
+      }
+    }
+
+    void load()
+
+    return () => {
+      active = false
+    }
+  }, [appliedRange.fromDate, appliedRange.toDate, fieldKey, fieldLabel, inputStage])
+
+  const chartPoints = useMemo(
+    () =>
+      details.chart.points.map((point) => ({
+        ...point,
+        dateLabel: formatChartDateLabel(point.date),
+      })),
+    [details.chart.points],
+  )
+
+  const hasChartData = useMemo(() => chartPoints.some((point) => point.valueCents !== 0), [chartPoints])
+
+  const changeText =
+    details.summary.changePercent == null
+      ? "Нет базы для сравнения"
+      : `${details.summary.changePercent > 0 ? "+" : ""}${details.summary.changePercent.toFixed(1)}% к предыдущему периоду`
+
+  const stageLabel = details.field.inputStage === "open" ? "Открытие" : "Закрытие"
+
+  return (
+    <div className="min-h-screen bg-background pb-24 max-w-md mx-auto">
+      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
+              <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
+            </Button>
+            <h1 className="text-xl font-semibold truncate max-w-[230px] text-center">{details.field.label || fieldLabel}</h1>
+            <div className="w-10" />
+          </div>
+          <p className="text-xs text-muted-foreground text-center mt-1">{stageLabel} • параметр кассы</p>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Calendar className="h-4 w-4" strokeWidth={1.5} />
+            Период
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            <Input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+          </div>
+          <Button
+            className="w-full"
+            onClick={() => setAppliedRange({ fromDate, toDate })}
+            disabled={Boolean(fromDate && toDate && toDate < fromDate)}
+          >
+            Применить период
+          </Button>
+          {fromDate && toDate && toDate < fromDate && (
+            <p className="text-xs text-destructive">Конечная дата должна быть не раньше начальной</p>
+          )}
+        </Card>
+
+        {loadError ? (
+          <Card className="p-4 border-destructive/30 bg-destructive/5 text-sm text-destructive">{loadError}</Card>
+        ) : (
+          <>
+            <Card className="p-4 space-y-3">
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">Загрузка сводки...</p>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Сумма за выбранный период</p>
+                      <p className="text-3xl font-bold mt-1">
+                        {formatCashValue(details.summary.totalValueCents)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-primary/10 p-2.5">
+                      <TrendingUp className="h-5 w-5 text-primary" strokeWidth={1.5} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Card className="p-3 bg-muted/30 border-border/70">
+                      <p className="text-xs text-muted-foreground">Среднее за смену</p>
+                      <p className="font-semibold mt-1">
+                        {formatCashValue(details.summary.averageValueCents)}
+                      </p>
+                    </Card>
+                    <Card className="p-3 bg-muted/30 border-border/70">
+                      <p className="text-xs text-muted-foreground">Смен в периоде</p>
+                      <p className="font-semibold mt-1">{details.summary.entriesCount}</p>
+                    </Card>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">{changeText}</p>
+                </>
+              )}
+            </Card>
+
+            <Card className="p-4 space-y-3">
+              <h2 className="text-base font-semibold">Динамика</h2>
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">Строим график...</p>
+              ) : chartPoints.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Нет данных за период.</p>
+              ) : (
+                <>
+                  <ChartContainer config={chartConfig} className="h-56 w-full aspect-auto">
+                    <AreaChart data={chartPoints} margin={{ left: 10, right: 8, top: 8, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="cashFieldValueFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--color-valueCents)" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="var(--color-valueCents)" stopOpacity={0.03} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical strokeDasharray="4 6" />
+                      <XAxis
+                        dataKey="dateLabel"
+                        tickLine={false}
+                        axisLine={false}
+                        minTickGap={24}
+                        tickMargin={10}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        width={60}
+                        tickMargin={6}
+                        tickFormatter={(value) => formatCashValue(Number(value))}
+                      />
+                      <ChartTooltip
+                        cursor={false}
+                        content={
+                          <ChartTooltipContent
+                            indicator="dashed"
+                            labelFormatter={(label) => `Дата: ${label}`}
+                            formatter={(value, name) => {
+                              const numeric = typeof value === "number" ? value : Number(value)
+                              return (
+                                <div className="flex w-full items-center justify-between gap-3">
+                                  <span className="text-muted-foreground">
+                                    {String(name) === "trendCents" ? "Тренд" : "Значение"}
+                                  </span>
+                                  <span className="font-medium tabular-nums">
+                                    {formatCashValue(Number.isFinite(numeric) ? numeric : 0)}
+                                  </span>
+                                </div>
+                              )
+                            }}
+                          />
+                        }
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="valueCents"
+                        stroke="var(--color-valueCents)"
+                        fill="url(#cashFieldValueFill)"
+                        strokeWidth={2.5}
+                        activeDot={{ r: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="trendCents"
+                        stroke="var(--color-trendCents)"
+                        strokeDasharray="5 5"
+                        strokeWidth={1.7}
+                        dot={false}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+                  {!hasChartData && <p className="text-xs text-muted-foreground">Все значения по выбранному периоду равны 0.</p>}
+                </>
+              )}
+            </Card>
+
+            <div className="space-y-3">
+              <h2 className="text-base font-semibold">История начислений</h2>
+              {isLoading ? (
+                <Card className="p-4 text-sm text-muted-foreground">Загрузка истории...</Card>
+              ) : details.history.length === 0 ? (
+                <Card className="p-4 text-sm text-muted-foreground">По выбранному периоду история пустая.</Card>
+              ) : (
+                <div className="space-y-2">
+                  {details.history.map((item) => (
+                    <Card key={item.sessionId} className="p-4 space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-sm">{formatWorkDate(item.workDate)}</p>
+                          <p className="text-xs text-muted-foreground">{item.cashRegisterName}</p>
+                        </div>
+                        <p className="font-semibold text-sm">{formatCashValue(item.valueCents)}</p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="rounded bg-muted px-2 py-1">{stageLabel}</span>
+                        <span className="rounded bg-muted px-2 py-1">
+                          {STATUS_LABELS[item.cashSessionStatus] || item.cashSessionStatus}
+                        </span>
+                        <span className="rounded bg-muted px-2 py-1">Смена {item.sessionId.slice(0, 8)}</span>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">Внес: {item.actorName || "Не указано"}</p>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

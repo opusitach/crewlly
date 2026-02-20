@@ -1,0 +1,80 @@
+import { NextResponse } from "next/server"
+import { z } from "zod"
+import { prisma } from "@/lib/prisma"
+import { getSessionUserWithOrg } from "@/lib/auth"
+
+const locationCreateSchema = z.object({
+  name: z.string().min(1, "Название обязательно"),
+  addressText: z.string().optional().nullable(),
+})
+
+export async function GET() {
+  const session = await getSessionUserWithOrg()
+  if (!session || !session.organization) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const locations = await prisma.location.findMany({
+    where: {
+      organizationId: session.organization.id,
+      isActive: true,
+    },
+    include: {
+      workingHours: {
+        orderBy: { weekday: "asc" },
+      },
+      _count: {
+        select: {
+          workdays: true,
+          cashRegisters: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  })
+
+  return NextResponse.json({ data: locations })
+}
+
+export async function POST(request: Request) {
+  const session = await getSessionUserWithOrg()
+  if (!session || !session.organization) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const json = await request.json().catch(() => null)
+  const parsed = locationCreateSchema.safeParse(json)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const { name, addressText } = parsed.data
+
+  // Check for duplicate name
+  const existing = await prisma.location.findFirst({
+    where: { organizationId: session.organization.id, name },
+  })
+
+  if (existing) {
+    return NextResponse.json({ error: "Локация с таким названием уже существует" }, { status: 409 })
+  }
+
+  const location = await prisma.location.create({
+    data: {
+      organizationId: session.organization.id,
+      name,
+      addressText,
+    },
+  })
+
+  // Create default cash register
+  await prisma.cashRegister.create({
+    data: {
+      locationId: location.id,
+      name: "Main",
+    },
+  })
+
+  return NextResponse.json({ data: location })
+}
+

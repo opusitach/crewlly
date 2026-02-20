@@ -1,0 +1,956 @@
+// Crewlly DB v2 - PostgreSQL
+// Source of truth. Money in cents, percentages in basis points.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum PayComponentType {
+  hourly
+  fixed_shift
+  percent_revenue
+}
+
+enum ProcedureWhen {
+  OPEN
+  CLOSE
+}
+
+enum ProcedureRuleType {
+  CHECKLIST
+  INPUT
+  PHOTO
+  CASH
+}
+
+enum Weekday {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+// ==========================================
+// ORGANIZATIONS / LOCATIONS
+// ==========================================
+
+model Timezone {
+  name          String         @id
+  organizations Organization[] @relation("OrganizationTimezone")
+
+  @@map("timezones")
+}
+
+model Organization {
+  id                  String   @id @default(uuid()) @db.Uuid
+  name                String
+  timezone            String   @default("Europe/Prague")
+  timezoneNeedsReview Boolean  @default(false) @map("timezone_needs_review")
+  status              String   @default("draft")
+  createdByUserId     String?  @map("created_by_user_id") @db.Uuid
+  currency            String   @default("CZK")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
+
+  timezoneRef           Timezone               @relation("OrganizationTimezone", fields: [timezone], references: [name], onUpdate: Cascade)
+  createdByUser         User?                  @relation("OrganizationCreator", fields: [createdByUserId], references: [id])
+  activeUsers           User[]                 @relation("UserActiveOrganization")
+  locations             Location[]
+  members               OrganizationMember[]
+  employees             Employee[]
+  invitations           Invitation[]
+  invitationCodes       InvitationCode[]
+  invitationRedemptions InvitationRedemption[]
+  accessRoles           AccessRole[]
+  positions             Position[]
+  workdays              Workday[]
+  comments              Comment[]
+  payrollRuns           PayrollRun[]
+  notifications         Notification[]
+
+  @@map("organizations")
+}
+
+model Location {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  name            String
+  addressText     String?  @map("address_text")
+  tipsSplitMethod String   @default("equal") @map("tips_split_method") // equal|by_hours
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workingHours         LocationWorkingHours[]
+  workdays             Workday[]
+  invitations          Invitation[]
+  positions            Position[]
+  employeeLocations    EmployeeLocation[]
+  cashRegisters        CashRegister[]
+  cashRegisterFields   CashRegisterField[]
+  cashRegisterFormulas CashRegisterFormula[]
+
+  @@unique([organizationId, name])
+  @@map("locations")
+}
+
+// ==========================================
+// AUTH / USERS
+// ==========================================
+
+model User {
+  id                   String   @id @default(uuid()) @db.Uuid
+  email                String   @unique
+  fullName             String?  @map("full_name")
+  phone                String?
+  avatarUrl            String?  @map("avatar_url")
+  locale               String   @default("ru")
+  status               String   @default("active") // active|invited|disabled
+  primaryMode          String?  @map("primary_mode") // owner|worker
+  onboardingReady      Boolean  @default(false) @map("onboarding_ready")
+  activeOrganizationId String?  @map("active_organization_id") @db.Uuid
+  passwordHash         String   @map("password_hash")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at")
+
+  activeOrganization      Organization?          @relation("UserActiveOrganization", fields: [activeOrganizationId], references: [id])
+  sessions                Session[]
+  organizationMembers     OrganizationMember[]
+  organizationsCreated    Organization[]         @relation("OrganizationCreator")
+  employees               Employee[]
+  workdays                Workday[]              @relation("WorkdayCreator")
+  workIntervals           WorkInterval[]         @relation("IntervalCreator")
+  intervalsForceOpened    WorkInterval[]         @relation("IntervalOpenedByOwner")
+  intervalsForceClosed    WorkInterval[]         @relation("IntervalClosedByOwner")
+  comments                Comment[]
+  payrollRuns             PayrollRun[]
+  invitationCodesCreated  InvitationCode[]       @relation("InviteCodeCreator")
+  invitationRedemptions   InvitationRedemption[]
+  notifications           Notification[]
+  cashSessionsOwnerEdited CashSession[]          @relation("CashSessionOwnerEditor")
+  cashSessionAuditLogs    CashSessionAuditLog[]  @relation("CashSessionAuditActor")
+
+  @@map("users")
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  token     String    @unique
+  userId    String    @map("user_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  expiresAt DateTime? @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ==========================================
+// RBAC (Access Roles & Permissions)
+// ==========================================
+
+model AccessRole {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  key            String // owner|manager|worker|custom_x
+  name           String // display name
+  isSystem       Boolean  @default(false) @map("is_system")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions  AccessRolePermission[]
+  members      OrganizationMember[]
+  invitations  Invitation[]
+
+  @@unique([organizationId, key])
+  @@unique([organizationId, name])
+  @@map("access_roles")
+}
+
+model AccessPermission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique // e.g. workday:create
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roles AccessRolePermission[]
+
+  @@map("access_permissions")
+}
+
+model AccessRolePermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  accessRoleId String   @map("access_role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  accessRole AccessRole       @relation(fields: [accessRoleId], references: [id], onDelete: Cascade)
+  permission AccessPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([accessRoleId, permissionId])
+  @@map("access_role_permissions")
+}
+
+model OrganizationMember {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  accessRoleId   String?  @map("access_role_id") @db.Uuid
+  legacyRole     String?  @map("legacy_role") // owner|manager|worker (migration only)
+  createdVia     String?  @map("created_via") // invite_code|manual
+  isActive       Boolean  @default(true) @map("is_active")
+  joinedAt       DateTime @default(now()) @map("joined_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessRole   AccessRole?  @relation(fields: [accessRoleId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, accessRoleId])
+  @@map("organization_members")
+}
+
+// ==========================================
+// INVITATIONS
+// ==========================================
+
+model Invitation {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  locationId     String?   @map("location_id") @db.Uuid
+  email          String
+  accessRoleId   String?   @map("access_role_id") @db.Uuid
+  token          String    @unique
+  expiresAt      DateTime  @map("expires_at")
+  acceptedAt     DateTime? @map("accepted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location     Location?    @relation(fields: [locationId], references: [id])
+  accessRole   AccessRole?  @relation(fields: [accessRoleId], references: [id])
+
+  @@index([organizationId, email])
+  @@map("invitations")
+}
+
+model InvitationCode {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  code            String?   @map("code")
+  codeHash        String    @map("code_hash")
+  status          String    @default("active") // active|revoked
+  expiresAt       DateTime? @map("expires_at")
+  maxUses         Int?      @map("max_uses")
+  usesCount       Int       @default(0) @map("uses_count")
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User                   @relation("InviteCodeCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  redemptions   InvitationRedemption[]
+
+  @@unique([codeHash])
+  @@index([organizationId, status])
+  @@map("invitation_codes")
+}
+
+model InvitationRedemption {
+  id             String   @id @default(uuid()) @db.Uuid
+  invitationId   String   @map("invitation_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  redeemedAt     DateTime @default(now()) @map("redeemed_at")
+  ip             String?
+  userAgent      String?  @map("user_agent")
+
+  invitation   InvitationCode @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([invitationId])
+  @@index([organizationId, userId])
+  @@map("invitation_redemptions")
+}
+
+// ==========================================
+// EMPLOYEES / PAY
+// ==========================================
+
+model Employee {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  employeeCode     String?   @map("employee_code")
+  employmentStatus String    @default("active") @map("employment_status") // active|paused|terminated
+  hiredAt          DateTime? @map("hired_at") @db.Date
+  terminatedAt     DateTime? @map("terminated_at") @db.Date
+
+  // default pay profile
+  payType                String @default("hourly") @map("pay_type") // hourly|fixed_shift|percent_revenue
+  defaultHourlyRateCents Int?   @map("default_hourly_rate_cents")
+  defaultShiftRateCents  Int?   @map("default_shift_rate_cents")
+  percentRevenueBp       Int?   @map("percent_revenue_bp") // basis points
+  payChangeCount         Int    @default(0) @map("pay_change_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeLocations    EmployeeLocation[]
+  employeePositions    EmployeePosition[]
+  payComponents        EmployeePayComponent[]
+  workIntervals        WorkInterval[]
+  timeEntries          TimeEntry[]
+  tipAllocations       TipAllocation[]
+  payrollItems         PayrollItem[]
+  cashSessionsOpened   CashSession[]          @relation("CashSessionOpener")
+  cashSessionsClosed   CashSession[]          @relation("CashSessionCloser")
+  cashSessionsReviewed CashSession[]          @relation("CashSessionReviewer")
+  receiptUploads       ReceiptUpload[]
+
+  @@unique([organizationId, userId])
+  @@map("employees")
+}
+
+model Notification {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  type           String
+  title          String
+  message        String
+  status         String    @default("unread")
+  readAt         DateTime? @map("read_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, organizationId])
+  @@map("notifications")
+}
+
+model EmployeePayComponent {
+  id            String           @id @default(uuid()) @db.Uuid
+  employeeId    String           @map("employee_id") @db.Uuid
+  componentType PayComponentType @map("component_type")
+  amountCents   Int?             @map("amount_cents")
+  rateBp        Int?             @map("rate_bp")
+  isActive      Boolean          @default(true) @map("is_active")
+  priority      Int              @default(0)
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, componentType])
+  @@index([employeeId])
+  @@map("employee_pay_components")
+}
+
+model EmployeeLocation {
+  id         String   @id @default(uuid()) @db.Uuid
+  employeeId String   @map("employee_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, locationId])
+  @@map("employee_locations")
+}
+
+// ==========================================
+// POSITIONS (Jobs)
+// ==========================================
+
+model Position {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  locationId     String?  @map("location_id") @db.Uuid
+  name           String
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location          Location?          @relation(fields: [locationId], references: [id])
+  employeePositions EmployeePosition[]
+  ruleTemplates     RuleTemplate[]
+  workIntervals     WorkInterval[]
+
+  @@unique([organizationId, name])
+  @@map("positions")
+}
+
+model EmployeePosition {
+  id         String   @id @default(uuid()) @db.Uuid
+  employeeId String   @map("employee_id") @db.Uuid
+  positionId String   @map("position_id") @db.Uuid
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, positionId])
+  @@map("employee_positions")
+}
+
+// ==========================================
+// WORKING HOURS
+// ==========================================
+
+model LocationWorkingHours {
+  id         String    @id @default(uuid()) @db.Uuid
+  locationId String    @map("location_id") @db.Uuid
+  weekday    Int // 0=Mon ... 6=Sun
+  openTime   DateTime? @map("open_time") @db.Time
+  closeTime  DateTime? @map("close_time") @db.Time
+  isClosed   Boolean   @default(false) @map("is_closed")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([locationId, weekday])
+  @@map("location_working_hours")
+}
+
+// ==========================================
+// WORKDAY (Shift Day Container)
+// ==========================================
+
+model Workday {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  locationId      String    @map("location_id") @db.Uuid
+  workDate        DateTime  @map("work_date") @db.Date
+  status          String    @default("draft") // draft|published
+  notes           String?
+  publishedAt     DateTime? @map("published_at")
+  createdByUserId String?   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location      Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdByUser User?          @relation("WorkdayCreator", fields: [createdByUserId], references: [id])
+  workIntervals WorkInterval[]
+  tipsPool      TipsPool?
+  cashSessions  CashSession[]
+
+  @@unique([locationId, workDate])
+  @@index([organizationId, workDate])
+  @@map("workdays")
+}
+
+// ==========================================
+// WORK INTERVALS
+// ==========================================
+
+model WorkInterval {
+  id                      String    @id @default(uuid()) @db.Uuid
+  workdayId               String    @map("workday_id") @db.Uuid
+  employeeId              String    @map("employee_id") @db.Uuid
+  positionId              String?   @map("position_id") @db.Uuid
+  startAt                 DateTime  @map("start_at")
+  endAt                   DateTime  @map("end_at")
+  status                  String    @default("scheduled") // scheduled|in_progress|canceled|completed|conflict
+  cancelReason            String?   @map("cancel_reason")
+  conflictWithIntervalIds String[]  @default([]) @map("conflict_with_interval_ids")
+  openedAt                DateTime? @map("opened_at")
+  openedByOwnerId         String?   @map("opened_by_owner_id") @db.Uuid
+  openOverrideReason      String?   @map("open_override_reason")
+  closedAt                DateTime? @map("closed_at")
+  closedByOwnerId         String?   @map("closed_by_owner_id") @db.Uuid
+  closeOverrideReason     String?   @map("close_override_reason")
+
+  // per-interval pay override
+  useCustomPay           Boolean  @default(false) @map("use_custom_pay")
+  customPayType          String[] @default([]) @map("custom_pay_type") // hourly|fixed_shift|percent_revenue
+  customHourlyRateCents  Int?     @map("custom_hourly_rate_cents")
+  customShiftRateCents   Int?     @map("custom_shift_rate_cents")
+  customPercentRevenueBp Int?     @map("custom_percent_revenue_bp")
+
+  breakMinutes            Int       @default(0) @map("break_minutes")
+  revenueCents            Int?      @map("revenue_cents")
+  calculatedMinutesWorked Int?      @map("calculated_minutes_worked")
+  calculatedGrossPayCents Int?      @map("calculated_gross_pay_cents")
+  payCalculatedAt         DateTime? @map("pay_calculated_at")
+  notes                   String?
+  createdByUserId         String?   @map("created_by_user_id") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  workday          Workday                       @relation(fields: [workdayId], references: [id], onDelete: Cascade)
+  employee         Employee                      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  position         Position?                     @relation(fields: [positionId], references: [id])
+  createdByUser    User?                         @relation("IntervalCreator", fields: [createdByUserId], references: [id])
+  openedByOwner    User?                         @relation("IntervalOpenedByOwner", fields: [openedByOwnerId], references: [id])
+  closedByOwner    User?                         @relation("IntervalClosedByOwner", fields: [closedByOwnerId], references: [id])
+  timeEntry        TimeEntry?
+  payComponents    WorkIntervalPayComponent[]
+  procedures       WorkIntervalProcedure[]
+  procedureAnswers WorkIntervalProcedureAnswer[]
+
+  @@index([workdayId, employeeId])
+  @@index([employeeId, startAt])
+  @@index([positionId])
+  @@index([openedByOwnerId])
+  @@index([closedByOwnerId])
+  @@map("work_intervals")
+}
+
+// ==========================================
+// ROLE PROCEDURES (Rules, Snapshots, Answers)
+// ==========================================
+
+model RuleTemplate {
+  id         String            @id @default(uuid()) @db.Uuid
+  positionId String            @map("position_id") @db.Uuid
+  when       ProcedureWhen
+  type       ProcedureRuleType
+  title      String
+  required   Boolean           @default(true)
+  order      Int               @default(0)
+  dayOfWeek  Weekday?          @map("day_of_week")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @default(now()) @updatedAt @map("updated_at")
+
+  position       Position                    @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  checklistItems RuleChecklistItemTemplate[]
+  snapshots      WorkIntervalProcedureRule[]
+
+  @@index([positionId, when, dayOfWeek, order])
+  @@map("rule_templates")
+}
+
+model RuleChecklistItemTemplate {
+  id             String @id @default(uuid()) @db.Uuid
+  ruleTemplateId String @map("rule_template_id") @db.Uuid
+  title          String
+  order          Int    @default(0)
+
+  ruleTemplate RuleTemplate @relation(fields: [ruleTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([ruleTemplateId, order])
+  @@map("rule_checklist_item_templates")
+}
+
+model WorkIntervalProcedure {
+  id                String        @id @default(uuid()) @db.Uuid
+  workIntervalId    String        @map("work_interval_id") @db.Uuid
+  when              ProcedureWhen
+  totalRequired     Int?          @map("total_required")
+  completedRequired Int?          @map("completed_required")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  workInterval WorkInterval                @relation(fields: [workIntervalId], references: [id], onDelete: Cascade)
+  rules        WorkIntervalProcedureRule[]
+
+  @@unique([workIntervalId, when])
+  @@index([workIntervalId])
+  @@map("work_interval_procedures")
+}
+
+model WorkIntervalProcedureRule {
+  id                String            @id @default(uuid()) @db.Uuid
+  procedureId       String            @map("procedure_id") @db.Uuid
+  templateId        String?           @map("template_id") @db.Uuid
+  templateUpdatedAt DateTime?         @map("template_updated_at")
+  type              ProcedureRuleType
+  title             String
+  required          Boolean           @default(true)
+  order             Int               @default(0)
+  createdAt         DateTime          @default(now()) @map("created_at")
+
+  procedure      WorkIntervalProcedure                    @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  template       RuleTemplate?                            @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  checklistItems WorkIntervalProcedureRuleChecklistItem[]
+  answers        WorkIntervalProcedureAnswer[]
+
+  @@index([procedureId, order])
+  @@map("work_interval_procedure_rules")
+}
+
+model WorkIntervalProcedureRuleChecklistItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  ruleId         String  @map("rule_id") @db.Uuid
+  templateItemId String? @map("template_item_id") @db.Uuid
+  title          String
+  order          Int     @default(0)
+
+  rule    WorkIntervalProcedureRule                  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  answers WorkIntervalProcedureAnswerChecklistItem[]
+
+  @@index([ruleId, order])
+  @@map("work_interval_procedure_rule_items")
+}
+
+model WorkIntervalProcedureAnswer {
+  id             String            @id @default(uuid()) @db.Uuid
+  workIntervalId String            @map("work_interval_id") @db.Uuid
+  ruleId         String            @map("rule_id") @db.Uuid
+  when           ProcedureWhen
+  type           ProcedureRuleType
+  inputValue     String?           @map("input_value") @db.VarChar(150)
+  photoS3Key     String?           @map("photo_s3_key")
+  photoUrl       String?           @map("photo_url")
+  cashPhotosJson Json?             @map("cash_photos_json")
+  photoComment   String?           @map("photo_comment")
+  photoDeletedAt DateTime?         @map("photo_deleted_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at")
+
+  workInterval   WorkInterval                               @relation(fields: [workIntervalId], references: [id], onDelete: Cascade)
+  rule           WorkIntervalProcedureRule                  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  checklistItems WorkIntervalProcedureAnswerChecklistItem[]
+
+  @@unique([workIntervalId, ruleId])
+  @@index([workIntervalId, when])
+  @@map("work_interval_procedure_answers")
+}
+
+model WorkIntervalProcedureAnswerChecklistItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  answerId  String  @map("answer_id") @db.Uuid
+  itemId    String  @map("item_id") @db.Uuid
+  isChecked Boolean @default(false) @map("is_checked")
+
+  answer WorkIntervalProcedureAnswer            @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  item   WorkIntervalProcedureRuleChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, itemId])
+  @@index([itemId])
+  @@map("work_interval_procedure_answer_items")
+}
+
+model WorkIntervalPayComponent {
+  id             String           @id @default(uuid()) @db.Uuid
+  workIntervalId String           @map("work_interval_id") @db.Uuid
+  componentType  PayComponentType @map("component_type")
+  amountCents    Int?             @map("amount_cents")
+  rateBp         Int?             @map("rate_bp")
+  isActive       Boolean          @default(true) @map("is_active")
+  priority       Int              @default(0)
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  workInterval WorkInterval @relation(fields: [workIntervalId], references: [id], onDelete: Cascade)
+
+  @@unique([workIntervalId, componentType])
+  @@index([workIntervalId])
+  @@map("work_interval_pay_components")
+}
+
+// ==========================================
+// CLOCK IN / OUT
+// ==========================================
+
+model TimeEntry {
+  id             String @id @default(uuid()) @db.Uuid
+  workIntervalId String @unique @map("work_interval_id") @db.Uuid
+  employeeId     String @map("employee_id") @db.Uuid
+
+  clockInAt  DateTime? @map("clock_in_at")
+  clockOutAt DateTime? @map("clock_out_at")
+
+  clockInPhotoUrl  String? @map("clock_in_photo_url")
+  clockOutPhotoUrl String? @map("clock_out_photo_url")
+
+  clockInLat  Float? @map("clock_in_lat")
+  clockInLng  Float? @map("clock_in_lng")
+  clockOutLat Float? @map("clock_out_lat")
+  clockOutLng Float? @map("clock_out_lng")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  workInterval WorkInterval @relation(fields: [workIntervalId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, clockInAt])
+  @@map("time_entries")
+}
+
+// ==========================================
+// TIPS
+// ==========================================
+
+model TipsPool {
+  id               String   @id @default(uuid()) @db.Uuid
+  workdayId        String   @unique @map("workday_id") @db.Uuid
+  totalAmountCents Int      @default(0) @map("total_amount_cents")
+  splitMethod      String   @default("equal") @map("split_method") // equal|by_hours
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
+
+  workday     Workday         @relation(fields: [workdayId], references: [id], onDelete: Cascade)
+  allocations TipAllocation[]
+
+  @@map("tips_pools")
+}
+
+model TipAllocation {
+  id             String   @id @default(uuid()) @db.Uuid
+  tipsPoolId     String   @map("tips_pool_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  amountCents    Int      @default(0) @map("amount_cents")
+  minutesCounted Int?     @map("minutes_counted")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tipsPool TipsPool @relation(fields: [tipsPoolId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([tipsPoolId, employeeId])
+  @@map("tip_allocations")
+}
+
+// ==========================================
+// CASH / RECEIPTS
+// ==========================================
+
+model CashRegister {
+  id         String   @id @default(uuid()) @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  name       String   @default("Main")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  location     Location      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  cashSessions CashSession[]
+
+  @@unique([locationId, name])
+  @@map("cash_registers")
+}
+
+model CashSession {
+  id             String @id @default(uuid()) @db.Uuid
+  cashRegisterId String @map("cash_register_id") @db.Uuid
+  workdayId      String @map("workday_id") @db.Uuid
+
+  openedByEmployeeId   String? @map("opened_by_employee_id") @db.Uuid
+  closedByEmployeeId   String? @map("closed_by_employee_id") @db.Uuid
+  reviewedByEmployeeId String? @map("reviewed_by_employee_id") @db.Uuid
+
+  openedAt   DateTime? @map("opened_at")
+  closedAt   DateTime? @map("closed_at")
+  reviewedAt DateTime? @map("reviewed_at")
+
+  openingCashCents           Int     @default(0) @map("opening_cash_cents")
+  closingCashCents           Int     @default(0) @map("closing_cash_cents")
+  expectedCashCents          Int     @default(0) @map("expected_cash_cents")
+  diffCashCents              Int     @default(0) @map("diff_cash_cents")
+  formulaExpressionSnapshot  String? @map("formula_expression_snapshot")
+  formulaResultLabelSnapshot String? @map("formula_result_label_snapshot")
+  lockVersion                Int     @default(0) @map("lock_version")
+  ownerEditedByUserId        String? @map("owner_edited_by_user_id") @db.Uuid
+  ownerEditReason            String? @map("owner_edit_reason")
+
+  status String  @default("open") // open|closing_draft|closed|reviewed
+  notes  String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  cashRegister       CashRegister            @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+  workday            Workday                 @relation(fields: [workdayId], references: [id], onDelete: Cascade)
+  openedByEmployee   Employee?               @relation("CashSessionOpener", fields: [openedByEmployeeId], references: [id])
+  closedByEmployee   Employee?               @relation("CashSessionCloser", fields: [closedByEmployeeId], references: [id])
+  reviewedByEmployee Employee?               @relation("CashSessionReviewer", fields: [reviewedByEmployeeId], references: [id])
+  ownerEditedByUser  User?                   @relation("CashSessionOwnerEditor", fields: [ownerEditedByUserId], references: [id])
+  fieldValues        CashSessionFieldValue[]
+  auditLogs          CashSessionAuditLog[]
+  receiptUploads     ReceiptUpload[]
+
+  @@unique([cashRegisterId, workdayId])
+  @@index([workdayId])
+  @@index([status])
+  @@map("cash_sessions")
+}
+
+model CashRegisterField {
+  id             String   @id @default(uuid()) @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  key            String
+  label          String
+  inputStage     String   @map("input_stage") // open|close
+  valueType      String   @default("int_cents") @map("value_type")
+  defaultSign    Int      @default(1) @map("default_sign") // 1|-1 (UX hint)
+  isRequired     Boolean  @default(true) @map("is_required")
+  isPhotoRequired Boolean @default(false) @map("is_photo_required")
+  isRevenueBasis Boolean  @default(false) @map("is_revenue_basis")
+  isActive       Boolean  @default(true) @map("is_active")
+  displayOrder   Int      @default(0) @map("display_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  location           Location                @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  sessionFieldValues CashSessionFieldValue[]
+
+  @@unique([locationId, key])
+  @@index([locationId, inputStage, isActive])
+  @@map("cash_register_fields")
+}
+
+model CashRegisterFormula {
+  id           String   @id @default(uuid()) @db.Uuid
+  locationId   String   @map("location_id") @db.Uuid
+  resultKey    String   @default("expected_cash") @map("result_key")
+  resultLabel  String   @default("Ожидаемая наличка") @map("result_label")
+  expression   String
+  isTipsSource Boolean  @default(false) @map("is_tips_source")
+  isRevenueSource Boolean @default(false) @map("is_revenue_source")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([locationId, resultKey])
+  @@index([locationId, displayOrder])
+  @@map("cash_register_formulas")
+}
+
+model CashSessionFieldValue {
+  id                     String   @id @default(uuid()) @db.Uuid
+  cashSessionId          String   @map("cash_session_id") @db.Uuid
+  cashRegisterFieldId    String?  @map("cash_register_field_id") @db.Uuid
+  fieldKeySnapshot       String   @map("field_key_snapshot")
+  fieldLabelSnapshot     String   @map("field_label_snapshot")
+  inputStage             String   @map("input_stage") // open|close
+  isRequiredSnapshot     Boolean  @default(true) @map("is_required_snapshot")
+  valueCents             Int      @map("value_cents")
+  isRevenueBasisSnapshot Boolean  @default(false) @map("is_revenue_basis_snapshot")
+  source                 String   @default("manual")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @default(now()) @updatedAt @map("updated_at")
+
+  cashSession       CashSession        @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  cashRegisterField CashRegisterField? @relation(fields: [cashRegisterFieldId], references: [id], onDelete: SetNull)
+
+  @@unique([cashSessionId, fieldKeySnapshot])
+  @@index([cashSessionId, inputStage])
+  @@map("cash_session_field_values")
+}
+
+model CashSessionAuditLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  cashSessionId String   @map("cash_session_id") @db.Uuid
+  actorUserId   String?  @map("actor_user_id") @db.Uuid
+  action        String
+  reason        String?
+  payload       Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  actorUser   User?       @relation("CashSessionAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([cashSessionId, createdAt])
+  @@index([actorUserId])
+  @@map("cash_session_audit_logs")
+}
+
+model ReceiptUpload {
+  id                   String    @id @default(uuid()) @db.Uuid
+  cashSessionId        String    @map("cash_session_id") @db.Uuid
+  uploadedByEmployeeId String?   @map("uploaded_by_employee_id") @db.Uuid
+  photoUrl             String    @map("photo_url")
+  receiptType          String    @default("z_report") @map("receipt_type") // z_report|x_report|terminal|other
+  totalAmountCents     Int?      @map("total_amount_cents")
+  takenAt              DateTime? @map("taken_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  cashSession        CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  uploadedByEmployee Employee?   @relation(fields: [uploadedByEmployeeId], references: [id])
+
+  @@index([cashSessionId])
+  @@map("receipt_uploads")
+}
+
+// ==========================================
+// COMMENTS / NOTES
+// ==========================================
+
+model Comment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  entityType     String   @map("entity_type") // workday|work_interval|cash_session|employee|location
+  entityId       String   @map("entity_id") @db.Uuid
+  authorUserId   String?  @map("author_user_id") @db.Uuid
+  text           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author       User?        @relation(fields: [authorUserId], references: [id])
+
+  @@index([organizationId, entityType, entityId])
+  @@map("comments")
+}
+
+// ==========================================
+// PAYROLL
+// ==========================================
+
+model PayrollRun {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  periodStart     DateTime  @map("period_start") @db.Date
+  periodEnd       DateTime  @map("period_end") @db.Date
+  status          String    @default("draft") // draft|final
+  createdByUserId String?   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  finalizedAt     DateTime? @map("finalized_at")
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User?         @relation(fields: [createdByUserId], references: [id])
+  payrollItems  PayrollItem[]
+
+  @@map("payroll_runs")
+}
+
+model PayrollItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  payrollRunId     String   @map("payroll_run_id") @db.Uuid
+  employeeId       String   @map("employee_id") @db.Uuid
+  minutesWorked    Int      @default(0) @map("minutes_worked")
+  grossPayCents    Int      @default(0) @map("gross_pay_cents")
+  tipsCents        Int      @default(0) @map("tips_cents")
+  totalPayoutCents Int      @default(0) @map("total_payout_cents")
+  note             String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([payrollRunId, employeeId])
+  @@map("payroll_items")
+}
+
+// ==========================================
+// APP STATE (for client store persistence)
+// ==========================================
+
+model AppState {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("app_states")
+}
