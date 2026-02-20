@@ -88,7 +88,7 @@ export default function LoginScreen({ redirectTo = "/select-role" }: { redirectT
         </form>
 
         <div className="text-center text-sm">
-          <span className="text-muted-foreground">Нет аккаунта? </span>
+          <span className="text-muted-foreground">У Вас нет аккаунта? </span>
           <Link href="/register" className="text-primary hover:underline">
             Регистрация
           </Link>
@@ -97,4 +97,3 @@ export default function LoginScreen({ redirectTo = "/select-role" }: { redirectT
     </div>
   )
 }
-
