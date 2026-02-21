@@ -50,17 +50,26 @@ services:
       minio:
         condition: service_started
     restart: "no"
-    entrypoint: >
-      /bin/sh -c "
-      until /usr/bin/mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do
-        echo 'Waiting for MinIO to become ready...';
-        sleep 2;
-      done &&
-      /usr/bin/mc mb --ignore-existing local/$$MINIO_BUCKET &&
-      /usr/bin/mc anonymous set download local/$$MINIO_BUCKET &&
-      printf '%s' '[{\"AllowedOrigins\":[\"*\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"POST\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"ETag\"],\"MaxAgeSeconds\":3000}]' > /tmp/cors.json &&
-      /usr/bin/mc cors set local/$$MINIO_BUCKET /tmp/cors.json;
-      "
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until /usr/bin/mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do
+          echo "Waiting for MinIO to become ready..."
+          sleep 2
+        done
+
+        /usr/bin/mc mb --ignore-existing local/$$MINIO_BUCKET
+
+        if ! /usr/bin/mc anonymous set download local/$$MINIO_BUCKET; then
+          echo "Warning: failed to set anonymous download policy, continuing"
+        fi
+
+        printf '%s' '[{"AllowedOrigins":["*"],"AllowedMethods":["GET","PUT","POST","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3000}]' > /tmp/cors.json
+
+        if ! /usr/bin/mc cors set local/$$MINIO_BUCKET /tmp/cors.json; then
+          echo "Warning: failed to set CORS policy, continuing"
+        fi
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
@@ -103,8 +112,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+      minio:
+        condition: service_started
       migrate:
         condition: service_completed_successfully
     healthcheck:
