@@ -241,8 +241,19 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     }
 
     setActiveTab(nextTab)
-    const query = nextParams.toString()
-    router.replace(query ? `/app?${query}` : "/app")
+    const nextQuery = nextParams.toString()
+    const nextHref = nextQuery ? `/app?${nextQuery}` : "/app"
+    const currentQuery = searchParams.toString()
+    const currentHref = currentQuery ? `/app?${currentQuery}` : "/app"
+
+    if (nextHref === currentHref) return
+
+    const shouldPushToHistory = resolvedTab === "dashboard" && nextTab !== "dashboard"
+    if (shouldPushToHistory) {
+      router.push(nextHref)
+      return
+    }
+    router.replace(nextHref)
   }
 
   const setTab = (nextTab: OwnerTab) => {

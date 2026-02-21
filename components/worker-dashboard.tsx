@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -78,14 +78,23 @@ const EMPTY_MONTH_SUMMARY: WorkerMonthSummary = {
 const DASHBOARD_STAT_VALUE_CLASS = "text-[clamp(1.25rem,5vw,1.7rem)] font-semibold tracking-tight leading-none tabular-nums"
 
 export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
-  const [activeTab, setActiveTab] = useState<"shift" | "planner" | "money">("shift")
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get("tab")
+  const resolvedTab: "shift" | "planner" | "money" | "profile" =
+    tabParam === "planner" || tabParam === "money" || tabParam === "profile" ? tabParam : "shift"
+  const [activeTab, setActiveTab] = useState<"shift" | "planner" | "money">(
+    resolvedTab === "planner" || resolvedTab === "money" ? resolvedTab : "shift",
+  )
   const [nextShift, setNextShift] = useState<NextShiftData | null>(null)
   const [isNextShiftLoading, setIsNextShiftLoading] = useState(false)
   const [monthSummary, setMonthSummary] = useState<WorkerMonthSummary>(EMPTY_MONTH_SUMMARY)
   const [isMonthSummaryLoading, setIsMonthSummaryLoading] = useState(false)
   const [dashboardEvents, setDashboardEvents] = useState<DashboardNotification[]>([])
   const [isEventsLoading, setIsEventsLoading] = useState(false)
-  const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "settings" | "notifications">("none")
+  const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "settings" | "notifications">(
+    resolvedTab === "profile" ? "profile" : "none",
+  )
   const [unreadNotifications, setUnreadNotifications] = useState(3)
   const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false)
   const [isJoinVenueOpen, setIsJoinVenueOpen] = useState(false)
@@ -95,7 +104,6 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState("")
   const [isCancelSubmitting, setIsCancelSubmitting] = useState(false)
-  const router = useRouter()
   const { toast } = useToast()
   const {
     user,
@@ -115,6 +123,17 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
       void hydrate()
     }
   }, [isHydrated, hydrate])
+
+  useEffect(() => {
+    if (resolvedTab === "profile") {
+      setActiveTab("shift")
+      setAccountView("profile")
+      return
+    }
+    setActiveTab(resolvedTab)
+    setAccountView((current) => (current === "profile" ? "none" : current))
+  }, [resolvedTab])
+
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
       router.replace("/login")
@@ -461,13 +480,42 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     setJoinVenueError(null)
   }, [])
 
+  const updateRouteForTab = (nextTab: "shift" | "planner" | "money" | "profile") => {
+    const nextParams = new URLSearchParams(searchParams.toString())
+    if (nextTab === "shift") {
+      nextParams.delete("tab")
+    } else {
+      nextParams.set("tab", nextTab)
+    }
+
+    const nextQuery = nextParams.toString()
+    const nextHref = nextQuery ? `/app?${nextQuery}` : "/app"
+    const currentQuery = searchParams.toString()
+    const currentHref = currentQuery ? `/app?${currentQuery}` : "/app"
+
+    if (nextHref === currentHref) return
+
+    const shouldPushToHistory = resolvedTab === "shift" && nextTab !== "shift"
+    if (shouldPushToHistory) {
+      router.push(nextHref)
+      return
+    }
+    router.replace(nextHref)
+  }
+
   const handleAccountNavigation = (screen: "profile" | "settings" | "language" | "help" | "team") => {
     closeVenueSelector()
     setAccountView("none")
     if (screen === "profile") {
-      setTimeout(() => setAccountView("profile"), 100)
+      setTimeout(() => {
+        setAccountView("profile")
+        updateRouteForTab("profile")
+      }, 100)
     } else if (screen === "settings") {
-      setTimeout(() => setAccountView("settings"), 100)
+      setTimeout(() => {
+        setAccountView("settings")
+        updateRouteForTab("shift")
+      }, 100)
     }
   }
 
@@ -639,15 +687,41 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const handleTabChange = (tab: "shift" | "planner" | "money" | "profile") => {
     if (tab === "profile") {
       setAccountView("profile")
+      setActiveTab("shift")
+      updateRouteForTab("profile")
       return
     }
     setAccountView("none")
     setActiveTab(tab)
+    updateRouteForTab(tab)
+  }
+
+  const openAccountHub = () => {
+    if (resolvedTab === "profile") {
+      updateRouteForTab("shift")
+    }
+    setAccountView("hub")
+  }
+
+  const openNotifications = () => {
+    if (resolvedTab === "profile") {
+      updateRouteForTab("shift")
+    }
+    setAccountView("notifications")
   }
 
   const renderContent = () => {
     if (accountView === "profile") {
-      return <WorkerProfile onBack={() => setAccountView("none")} onLogout={handleLogout} hideHeader />
+      return (
+        <WorkerProfile
+          onBack={() => {
+            setAccountView("none")
+            updateRouteForTab("shift")
+          }}
+          onLogout={handleLogout}
+          hideHeader
+        />
+      )
     }
 
     if (accountView === "settings") {
@@ -667,11 +741,11 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     }
 
     if (activeTab === "money") {
-      return <WorkerMoneyView onBack={() => setActiveTab("shift")} hideHeader />
+      return <WorkerMoneyView onBack={() => handleTabChange("shift")} hideHeader />
     }
 
     if (activeTab === "planner") {
-      return <WorkerShiftPlanner onBack={() => setActiveTab("shift")} hideHeader />
+      return <WorkerShiftPlanner onBack={() => handleTabChange("shift")} hideHeader />
     }
 
     return (
@@ -913,8 +987,8 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
           showVenueSelector={accountView === "none"}
           selectedVenue={selectedVenueName}
           onVenueChange={() => setIsVenueSelectorOpen(true)}
-          onAvatarClick={() => setAccountView("hub")}
-          onNotificationClick={() => setAccountView("notifications")}
+          onAvatarClick={openAccountHub}
+          onNotificationClick={openNotifications}
           unreadCount={unreadNotifications}
           userName={user?.name}
         />

@@ -9,5 +9,5 @@ type OwnerOnboardingWrapperProps = {
 
 export default function OwnerOnboardingWrapper({ mode = "initial" }: OwnerOnboardingWrapperProps) {
   const router = useRouter()
-  return <OwnerOnboarding mode={mode} onComplete={() => router.push("/app")} />
+  return <OwnerOnboarding mode={mode} onComplete={() => router.replace("/app")} />
 }
