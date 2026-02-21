@@ -241,7 +241,7 @@ function CameraCaptureDialog({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/heic,image/heif"
                 capture="environment"
                 className="hidden"
                 onChange={handleFileChange}

@@ -14,7 +14,23 @@ const payloadSchema = z.object({
 })
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-const allowedContentTypes = new Set(["image/jpeg", "image/jpg", "image/heic", "image/heif"])
+const allowedContentTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+])
+
+const normalizeContentType = (value: string) => {
+  const normalized = value.trim().toLowerCase().split(";")[0]?.trim() || ""
+  if (normalized === "image/jpg" || normalized === "image/pjpeg") {
+    return "image/jpeg"
+  }
+  return normalized
+}
 
 const parseHostname = (value: string | null) => {
   if (!value) return null
@@ -67,8 +83,12 @@ export async function POST(request: Request) {
   }
 
   const { workIntervalId, ruleId, cashFieldKey, contentType, sizeBytes } = parsed.data
-  if (!allowedContentTypes.has(contentType)) {
-    return NextResponse.json({ error: "Unsupported content type" }, { status: 400 })
+  const normalizedContentType = normalizeContentType(contentType)
+  if (!allowedContentTypes.has(normalizedContentType)) {
+    return NextResponse.json(
+      { error: "Unsupported content type. Use JPEG, PNG, WEBP, AVIF, GIF, HEIC or HEIF." },
+      { status: 400 },
+    )
   }
   if (sizeBytes && sizeBytes > MAX_UPLOAD_BYTES) {
     return NextResponse.json({ error: "File is too large" }, { status: 400 })
@@ -130,7 +150,7 @@ export async function POST(request: Request) {
   const presignEndpoint = resolvePresignEndpoint(request)
   const presigned = await createPresignedUploadUrl({
     key,
-    contentType,
+    contentType: normalizedContentType,
     presignEndpoint,
   })
 
