@@ -6,13 +6,6 @@ import { DEFAULT_TIMEZONE, timezoneSchema } from "@/lib/validation/timezone"
 import { ensureInviteCodeForOrganization } from "@/lib/invite-codes"
 import { ensureDefaultRolesAndPermissions } from "@/lib/rbac/default-role-permissions"
 
-const workingHoursSchema = z.object({
-  weekday: z.number().min(0).max(6),
-  openTime: z.string().optional().nullable(),
-  closeTime: z.string().optional().nullable(),
-  isClosed: z.boolean().default(false),
-})
-
 const positionSchema = z.object({
   name: z.string().min(1),
   sortOrder: z.number().default(0),
@@ -31,7 +24,6 @@ const ownerOnboardingSchema = z.object({
   addressText: z.string().optional(),
   timezone: timezoneSchema.default(DEFAULT_TIMEZONE),
   currency: z.string().default("CZK"),
-  workingHours: z.array(workingHoursSchema).optional(),
   positions: z.array(positionSchema).optional(),
   employees: z.array(employeeSchema).optional(),
 })
@@ -94,7 +86,6 @@ export async function POST(request: Request) {
     addressText,
     timezone,
     currency,
-    workingHours,
     positions,
     employees,
   } = parsed.data
@@ -131,19 +122,6 @@ export async function POST(request: Request) {
       createdVia: "manual",
     },
   })
-
-  // Create working hours for location
-  if (workingHours && workingHours.length > 0) {
-    await prisma.locationWorkingHours.createMany({
-      data: workingHours.map((wh) => ({
-        locationId: location.id,
-        weekday: wh.weekday,
-        openTime: wh.openTime ? new Date(`1970-01-01T${wh.openTime}:00`) : null,
-        closeTime: wh.closeTime ? new Date(`1970-01-01T${wh.closeTime}:00`) : null,
-        isClosed: wh.isClosed,
-      })),
-    })
-  }
 
   // Create positions only from user payload (no mock defaults)
   const positionsToCreate =

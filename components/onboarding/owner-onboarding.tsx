@@ -109,17 +109,6 @@ export default function OwnerOnboarding({
   const [timezoneOptions, setTimezoneOptions] = useState<string[]>([])
   const [currency, setCurrency] = useState("CZK")
 
-  const [workingHours, setWorkingHours] = useState([
-    { day: "Пн", open: true, start: "10:00", end: "22:00" },
-    { day: "Вт", open: true, start: "10:00", end: "22:00" },
-    { day: "Ср", open: true, start: "10:00", end: "22:00" },
-    { day: "Чт", open: true, start: "10:00", end: "22:00" },
-    { day: "Пт", open: true, start: "10:00", end: "22:00" },
-    { day: "Сб", open: true, start: "12:00", end: "23:00" },
-    { day: "Вс", open: true, start: "12:00", end: "23:00" },
-  ])
-  const [editingDay, setEditingDay] = useState<number | null>(null)
-
   const [positions, setPositions] = useState<string[]>([])
   const [newPosition, setNewPosition] = useState("")
 
@@ -145,7 +134,6 @@ export default function OwnerOnboarding({
     setVenueName(data.venueName ?? resolvedOrg?.name ?? "")
     if (resolvedTimezone) setTimezone(resolvedTimezone)
     setCurrency(data.currency ?? resolvedOrg?.currency ?? "CZK")
-    setWorkingHours(data.workingHours ?? workingHours)
     setPositions(resolvedPositions.length > 0 ? resolvedPositions : positions)
     setSelectedPaymentTypes(data.selectedPaymentTypes ?? [])
     setPaymentDetails(data.paymentDetails ?? { hourly: "", fixed: "", percent: "" })
@@ -223,12 +211,6 @@ export default function OwnerOnboarding({
         locationName: venueName.trim(),
         timezone: normalizedTimezone,
         currency,
-        workingHours: workingHours.map((day, index) => ({
-          weekday: index,
-          openTime: day.open ? day.start : null,
-          closeTime: day.open ? day.end : null,
-          isClosed: !day.open,
-        })),
       }
     }
     if (currentStep === 2) {
@@ -436,32 +418,6 @@ export default function OwnerOnboarding({
     setStep(onboardingSteps[stepIndex - 1])
   }
 
-  const copyHoursToOtherDays = (sourceIndex: number, targetDays: number[]) => {
-    const sourceDay = workingHours[sourceIndex]
-    setWorkingHours(
-      workingHours.map((day, index) =>
-        targetDays.includes(index) ? { ...day, open: sourceDay.open, start: sourceDay.start, end: sourceDay.end } : day,
-      ),
-    )
-  }
-
-  const applyPreset = (preset: "weekdays" | "weekends" | "all", hours: { start: string; end: string }) => {
-    setWorkingHours(
-      workingHours.map((day, index) => {
-        if (preset === "weekdays" && index < 5) {
-          return { ...day, open: true, ...hours }
-        }
-        if (preset === "weekends" && index >= 5) {
-          return { ...day, open: true, ...hours }
-        }
-        if (preset === "all") {
-          return { ...day, open: true, ...hours }
-        }
-        return day
-      }),
-    )
-  }
-
   const togglePaymentType = (type: string) => {
     if (selectedPaymentTypes.includes(type)) {
       setSelectedPaymentTypes(selectedPaymentTypes.filter((t) => t !== type))
@@ -624,7 +580,7 @@ export default function OwnerOnboarding({
     }
   }
 
-  // Step 1: Venue Data + Working Hours
+  // Step 1: Venue Data
   if (step === 1) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -693,147 +649,12 @@ export default function OwnerOnboarding({
               </div>
             </Card>
 
-            <Card className="p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold">Часы работы</h3>
-                  <p className="text-sm text-muted-foreground">Настройте график работы заведения</p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    applyPreset("weekdays", {
-                      start: workingHours[0].start,
-                      end: workingHours[0].end,
-                    })
-                  }
-                >
-                  <Copy className="h-4 w-4 mr-1" strokeWidth={1.5} />
-                  Пн-Пт
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                {workingHours.map((day, index) => (
-                  <div key={index} className="flex items-center gap-3">
-                    <div className="w-8 text-sm font-medium text-muted-foreground">{day.day}</div>
-                    <Switch
-                      checked={day.open}
-                      onCheckedChange={(checked) => {
-                        const newHours = [...workingHours]
-                        newHours[index].open = checked
-                        setWorkingHours(newHours)
-                      }}
-                    />
-                    {day.open ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 h-9 justify-start bg-transparent"
-                        onClick={() => setEditingDay(index)}
-                      >
-                        <Clock className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                        <span className="text-sm">
-                          {day.start} – {day.end}
-                        </span>
-                      </Button>
-                    ) : (
-                      <div className="flex-1 text-sm text-muted-foreground">Закрыто</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </Card>
-
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <AlertCircle className="h-4 w-4" strokeWidth={1.5} />
               <p>Эти настройки можно изменить позже в разделе "Настройки"</p>
             </div>
           </div>
         </div>
-
-        {/* Edit Day Modal */}
-        {editingDay !== null && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-            <div className="bg-background w-full max-w-md mx-auto rounded-t-3xl p-6 space-y-6 animate-in slide-in-from-bottom">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">{workingHours[editingDay].day}</h2>
-                <Button variant="ghost" size="icon" onClick={() => setEditingDay(null)} className="rounded-full">
-                  <X className="h-5 w-5" strokeWidth={1.5} />
-                </Button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Начало</Label>
-                    <Input
-                      type="time"
-                      value={workingHours[editingDay].start}
-                      onChange={(e) => {
-                        const newHours = [...workingHours]
-                        newHours[editingDay].start = e.target.value
-                        setWorkingHours(newHours)
-                      }}
-                      className="h-11"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Конец</Label>
-                    <Input
-                      type="time"
-                      value={workingHours[editingDay].end}
-                      onChange={(e) => {
-                        const newHours = [...workingHours]
-                        newHours[editingDay].end = e.target.value
-                        setWorkingHours(newHours)
-                      }}
-                      className="h-11"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-border space-y-2">
-                  <p className="text-sm font-medium">Копировать на другие дни</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        copyHoursToOtherDays(editingDay, [0, 1, 2, 3, 4])
-                      }}
-                    >
-                      Пн-Пт
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        copyHoursToOtherDays(editingDay, [5, 6])
-                      }}
-                    >
-                      Сб-Вс
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        copyHoursToOtherDays(editingDay, [0, 1, 2, 3, 4, 5, 6])
-                      }}
-                    >
-                      Все дни
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <Button className="w-full h-12" onClick={() => setEditingDay(null)}>
-                Готово
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* Bottom Actions */}
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border max-w-md mx-auto p-4 space-y-3">

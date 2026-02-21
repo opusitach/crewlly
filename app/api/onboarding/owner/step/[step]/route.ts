@@ -4,13 +4,6 @@ import { prisma } from "@/lib/prisma"
 import { getSessionUser } from "@/lib/auth"
 import { timezoneSchema } from "@/lib/validation/timezone"
 
-const workingHoursSchema = z.object({
-  weekday: z.number().min(0).max(6),
-  openTime: z.string().optional().nullable(),
-  closeTime: z.string().optional().nullable(),
-  isClosed: z.boolean().default(false),
-})
-
 const positionSchema = z.object({
   name: z.string().min(1),
   sortOrder: z.number().default(0),
@@ -29,7 +22,6 @@ const payloadSchema = z.object({
   addressText: z.string().optional(),
   timezone: timezoneSchema.optional(),
   currency: z.string().optional(),
-  workingHours: z.array(workingHoursSchema).optional(),
   positions: z.array(positionSchema).optional(),
   employees: z.array(employeeSchema).optional(),
 })
@@ -105,10 +97,7 @@ export async function PATCH(
       orderBy: { createdAt: "asc" },
     })
 
-    if (
-      !location &&
-      (data.locationName || data.organizationName || data.addressText || data.workingHours)
-    ) {
+    if (!location && (data.locationName || data.organizationName || data.addressText)) {
       location = await tx.location.create({
         data: {
           organizationId,
@@ -133,31 +122,6 @@ export async function PATCH(
           addressText: data.addressText,
         },
       })
-    }
-
-    if (location && data.workingHours && data.workingHours.length > 0) {
-      for (const wh of data.workingHours) {
-        await tx.locationWorkingHours.upsert({
-          where: {
-            locationId_weekday: {
-              locationId: location.id,
-              weekday: wh.weekday,
-            },
-          },
-          create: {
-            locationId: location.id,
-            weekday: wh.weekday,
-            openTime: wh.openTime ? new Date(`1970-01-01T${wh.openTime}:00`) : null,
-            closeTime: wh.closeTime ? new Date(`1970-01-01T${wh.closeTime}:00`) : null,
-            isClosed: wh.isClosed ?? false,
-          },
-          update: {
-            openTime: wh.openTime ? new Date(`1970-01-01T${wh.openTime}:00`) : null,
-            closeTime: wh.closeTime ? new Date(`1970-01-01T${wh.closeTime}:00`) : null,
-            isClosed: wh.isClosed ?? false,
-          },
-        })
-      }
     }
 
     if (data.positions && data.positions.length > 0) {
