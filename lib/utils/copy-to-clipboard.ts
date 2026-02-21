@@ -1,6 +1,29 @@
 function copyWithExecCommand(text: string): boolean {
   if (typeof document === "undefined") return false
 
+  // Force clipboard payload via copy event to avoid copying currently selected UI text.
+  let copiedFromEvent = false
+  const onCopy = (event: ClipboardEvent) => {
+    if (!event.clipboardData) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.clipboardData.setData("text/plain", text)
+    copiedFromEvent = true
+  }
+
+  document.addEventListener("copy", onCopy)
+  try {
+    document.execCommand("copy")
+  } catch {
+    // Ignore and continue to DOM-selection fallback below.
+  } finally {
+    document.removeEventListener("copy", onCopy)
+  }
+
+  if (copiedFromEvent) {
+    return true
+  }
+
   const textarea = document.createElement("textarea")
   textarea.value = text
   textarea.setAttribute("readonly", "")
