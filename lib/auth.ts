@@ -1,13 +1,12 @@
 import { cookies } from "next/headers"
 import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/prisma"
+import { resolveSessionCookieSecure } from "@/lib/session-cookie"
 
 export const SESSION_COOKIE = "session_token"
 const SESSION_TTL_DAYS = 30
 
-const isSecureCookie =
-  (typeof process !== "undefined" && process.env.COOKIE_SECURE === "true") ||
-  (typeof process !== "undefined" && process.env.NODE_ENV === "production")
+const isSecureCookie = resolveSessionCookieSecure()
 
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10)

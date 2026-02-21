@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crewlly — Функционал приложения по модулям</title>
+  <style>
+    :root {
+      --text: #111827;
+      --muted: #4b5563;
+      --line: #e5e7eb;
+      --head: #0f172a;
+      --accent: #0b5fff;
+      --bg-soft: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+      line-height: 1.45;
+      font-size: 13px;
+      background: white;
+    }
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 28px 34px 40px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.15;
+      color: var(--head);
+    }
+    .meta {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .intro {
+      margin: 0 0 18px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: var(--bg-soft);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    h2 {
+      margin: 18px 0 10px;
+      font-size: 18px;
+      color: var(--head);
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 6px;
+    }
+    h3 {
+      margin: 16px 0 8px;
+      font-size: 15px;
+      color: var(--head);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px;
+      table-layout: fixed;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px;
+      vertical-align: top;
+      font-size: 12px;
+    }
+    th {
+      background: #f3f4f6;
+      text-align: left;
+      font-weight: 600;
+    }
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    li { margin: 4px 0; }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #0b3db8;
+      background: #eaf2ff;
+      border: 1px solid #d7e5ff;
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin-right: 6px;
+      margin-bottom: 4px;
+    }
+    .small {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      background: #f3f4f6;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+    }
+    @media print {
+      .page { padding: 20px 24px 28px; }
+      h2, h3, .card { break-inside: avoid; }
+      table, tr, td, th { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Crewlly — функционал приложения</h1>
+    <p class="meta">Структурная карта по модулям платформы • источник: кодовая база <span class="code">/Users/chizhikov/crewlly-main</span></p>
+    <p class="intro">
+      Документ фиксирует реализованный функционал без проектных предположений: роли, ключевые сценарии, бизнес-правила и API-точки.
+    </p>
+
+    <h2>1. Краткая карта модулей</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 28px;">#</th>
+          <th style="width: 200px;">Модуль</th>
+          <th>Что покрывает</th>
+          <th style="width: 165px;">Роли</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Идентификация и доступ</td><td>Регистрация/вход, сессии, выбор режима owner/worker, RBAC-права.</td><td>Owner, Manager, Worker</td></tr>
+        <tr><td>2</td><td>Онбординг</td><td>Первичная настройка заведения и присоединение сотрудника по коду.</td><td>Owner, Worker</td></tr>
+        <tr><td>3</td><td>Организации и локации</td><td>Мультизаведенийность, выбор активного заведения, локации и базовые настройки.</td><td>Owner, Manager</td></tr>
+        <tr><td>4</td><td>Команда и должности</td><td>Сотрудники, позиции, pay-components, назначение должностей.</td><td>Owner, Manager</td></tr>
+        <tr><td>5</td><td>Планирование смен</td><td>Workday/Interval, календарь, фильтры, предотвращение/маркировка конфликтов.</td><td>Owner, Manager, Worker (read-only)</td></tr>
+        <tr><td>6</td><td>Процедуры смены</td><td>OPEN/CLOSE правила по должности: checklist/input/photo/cash.</td><td>Owner, Worker</td></tr>
+        <tr><td>7</td><td>Исполнение смены</td><td>Открытие/закрытие/отмена смен, force-операции owner, clock-in/out.</td><td>Owner, Manager, Worker</td></tr>
+        <tr><td>8</td><td>Касса</td><td>Поля открытия/закрытия, формулы, кассовые сессии, ревью, owner-edit, вложения чеков.</td><td>Owner, Manager</td></tr>
+        <tr><td>9</td><td>Чаевые и выручка</td><td>Метод деления чаевых, источник выручки, синхронизация с кассой и сменами.</td><td>Owner, Manager</td></tr>
+        <tr><td>10</td><td>Отчётность</td><td>Cash summary, аналитика по полям/формулам, earnings сотрудников/воркеров.</td><td>Owner, Manager, Worker</td></tr>
+        <tr><td>11</td><td>Payroll</td><td>Расчётные периоды, позиции payroll items, свод зарплата+чаевые.</td><td>Owner, Manager, Worker (view own)</td></tr>
+        <tr><td>12</td><td>Проверка и публикация</td><td>Очередь на проверку, публикация рабочего дня, ревью кассы.</td><td>Owner, Manager</td></tr>
+        <tr><td>13</td><td>Уведомления</td><td>Лента событий, read/unread, удаление, системные уведомления по ключевым действиям.</td><td>Owner, Manager, Worker</td></tr>
+        <tr><td>14</td><td>Сервисные модули</td><td>Фото-процедуры (S3 presign), ретеншн медиа, клиентское app-state.</td><td>Системно</td></tr>
+      </tbody>
+    </table>
+
+    <h2>2. Детализация модулей</h2>
+
+    <h3>Модуль 1. Идентификация и доступ</h3>
+    <ul>
+      <li>Session-based авторизация: регистрация, логин, logout, профиль <span class="code">/api/auth/*</span>.</li>
+      <li>Выбор базового режима пользователя: owner/worker <span class="code">/api/user/role</span>.</li>
+      <li>RBAC: системные роли <span class="code">owner</span>, <span class="code">manager</span>, <span class="code">worker</span> + матрица прав.</li>
+      <li>Ключевое поведение: owner/manager имеют расширенные права на смены, команду, кассу, payroll и отчёты.</li>
+    </ul>
+
+    <h3>Модуль 2. Онбординг</h3>
+    <ul>
+      <li>Owner onboarding: создание организации, таймзона/валюта, локация и часы, позиции, завершение активации.</li>
+      <li>Worker onboarding: проверка invite-code, присоединение к организации, выбор должностей.</li>
+      <li>Поддержаны пошаговые API: <span class="code">/api/onboarding/owner/start</span>, <span class="code">/step/[step]</span>, <span class="code">/finish</span>, <span class="code">/api/onboarding/employee</span>.</li>
+    </ul>
+
+    <h3>Модуль 3. Организации и локации</h3>
+    <ul>
+      <li>Поддержка нескольких заведений у пользователя (через membership).</li>
+      <li>Переключение активной организации <span class="code">/api/venues/select</span>.</li>
+      <li>Управление локациями и реквизитами организации: <span class="code">/api/locations</span>, <span class="code">/api/organizations</span>, legacy <span class="code">/api/venues</span>.</li>
+      <li>Для каждой локации автоматически заводится касса <span class="code">Main</span>.</li>
+    </ul>
+
+    <h3>Модуль 4. Команда и должности</h3>
+    <ul>
+      <li>Сотрудники: создание, поиск, профили, назначение локаций и должностей <span class="code">/api/employees</span>.</li>
+      <li>Должности: CRUD, soft-delete, сортировка, привязка к локации <span class="code">/api/positions</span>.</li>
+      <li>Оплата сотрудника через pay-components: <span class="code">hourly</span>, <span class="code">fixed_shift</span>, <span class="code">percent_revenue</span>.</li>
+      <li>Инвайты: email-invitation и invite-code (<span class="code">/api/invitations</span>, <span class="code">/api/invite-codes</span>).</li>
+    </ul>
+
+    <h3>Модуль 5. Планирование смен</h3>
+    <ul>
+      <li>Workday (контейнер дня): создание и публикация <span class="code">/api/workdays</span>, <span class="code">/api/workdays/[id]/publish</span>.</li>
+      <li>WorkInterval (смена сотрудника): CRUD + pay snapshot + связи с сотрудником/позицией <span class="code">/api/intervals</span>.</li>
+      <li>Поддержка ночных смен (переход через полночь) при вводе времени HH:mm.</li>
+      <li>Конфликты интервалов: обнаружение пересечений и статусы <span class="code">conflict</span>.</li>
+    </ul>
+
+    <h3>Модуль 6. Процедуры смены (Ruleset)</h3>
+    <ul>
+      <li>Шаблоны правил по должности и дню недели: <span class="code">OPEN</span>/<span class="code">CLOSE</span> + типы <span class="code">CHECKLIST/INPUT/PHOTO/CASH</span>.</li>
+      <li>API правил: <span class="code">/api/positions/[id]/rules*</span>, ruleset preview <span class="code">/api/positions/[id]/ruleset</span>.</li>
+      <li>При старте/закрытии смены создаются снапшоты правил для конкретного интервала.</li>
+      <li>Валидация обязательных пунктов и кассовых фото перед завершением этапа.</li>
+    </ul>
+
+    <h3>Модуль 7. Исполнение смены</h3>
+    <ul>
+      <li>Открытие смены: <span class="code">/api/work-intervals/[id]/open</span> (с проверкой OPEN-процедур).</li>
+      <li>Закрытие смены: <span class="code">/api/work-intervals/[id]/close</span> (проверка CLOSE-процедур + payroll snapshot).</li>
+      <li>Отмена запланированной смены: <span class="code">/api/work-intervals/[id]/cancel</span> с обязательной причиной.</li>
+      <li>Owner force-open/force-close разрешены только владельцу и требуют reason.</li>
+      <li>Clock-in/out: <span class="code">/api/clock</span> (фото/координаты/временные метки).</li>
+    </ul>
+
+    <h3>Модуль 8. Касса</h3>
+    <ul>
+      <li>Конфиг кассы на уровне локации: поля открытия/закрытия + формулы расчётов <span class="code">/api/cash/settings</span>.</li>
+      <li>Ограничения: уникальные keys, один источник чаевых, один источник выручки, проверка формул.</li>
+      <li>Сессии кассы: open/close/review/get/list <span class="code">/api/cash/sessions*</span>.</li>
+      <li>Owner-edit закрытых/проверенных сессий с audit trail и возвратом reviewed → closed при правке.</li>
+      <li>Чеки/вложения по сессии: <span class="code">/api/cash/sessions/[id]/receipts</span>.</li>
+      <li>Оптимистичная блокировка изменений через <span class="code">lockVersion</span>.</li>
+    </ul>
+
+    <h3>Модуль 9. Чаевые и выручка</h3>
+    <ul>
+      <li>Глобальный метод деления чаевых: <span class="code">equal</span> или <span class="code">by_hours</span> (<span class="code">/api/tips/settings</span>).</li>
+      <li>Синхронизация чаевых и выручки из кассовых данных в draft-днях.</li>
+      <li>Использование выручки как базы для компонента оплаты <span class="code">percent_revenue</span>.</li>
+    </ul>
+
+    <h3>Модуль 10. Отчётность</h3>
+    <ul>
+      <li>Сводка кассы: агрегаты по полям и формулам + предупреждения по формулам <span class="code">/api/reports/cash-summary</span>.</li>
+      <li>Детальные отчёты: по конкретному полю кассы <span class="code">/api/reports/cash-fields/[fieldKey]</span> и по формуле <span class="code">/api/reports/cash-formulas/[resultKey]</span>.</li>
+      <li>Earnings по сотруднику/воркеру: зарплата, чаевые, минуты, история начислений.</li>
+    </ul>
+
+    <h3>Модуль 11. Payroll</h3>
+    <ul>
+      <li>Создание payroll run за период с агрегацией завершённых интервалов <span class="code">/api/payroll/runs</span>.</li>
+      <li>Payroll items: минуты, gross, tips, total payout <span class="code">/api/payroll/items</span>.</li>
+      <li>Если расчёты интервала не зафиксированы, выполняется автопересчёт snapshot на лету.</li>
+    </ul>
+
+    <h3>Модуль 12. Проверка и публикация</h3>
+    <ul>
+      <li>Очередь проверки: завершённые смены в непубликованных днях + закрытые кассовые сессии.</li>
+      <li>Сводка очереди: <span class="code">/api/verifications/summary</span>.</li>
+      <li>Публикация workday переводит день в <span class="code">published</span> и закрывает редактирование кассы.</li>
+    </ul>
+
+    <h3>Модуль 13. Уведомления</h3>
+    <ul>
+      <li>Уведомления типов <span class="code">shift</span>, <span class="code">cash</span>, <span class="code">receipt</span>, <span class="code">system</span>.</li>
+      <li>API: список/фильтры, mark all read, mark one read, delete <span class="code">/api/notifications*</span>.</li>
+      <li>Событийные уведомления создаются при открытии/закрытии/отмене смен и кассовых операциях.</li>
+    </ul>
+
+    <h3>Модуль 14. Сервисные и инфраструктурные функции</h3>
+    <ul>
+      <li>Фото процедур: presigned upload URL (<span class="code">/api/procedures/presign</span>) + хранение ключей в БД.</li>
+      <li>Ретеншн медиа (cron endpoint): удаление устаревших фото процедур и маркировка <span class="code">photoDeletedAt</span>.</li>
+      <li>Клиентский key-value state: <span class="code">/api/state/[key]</span>.</li>
+    </ul>
+
+    <h2>3. Единые статусы и бизнес-ограничения</h2>
+    <div class="grid">
+      <div class="card">
+        <strong>Смены (work_intervals)</strong>
+        <ul>
+          <li><span class="badge">scheduled</span><span class="badge">in_progress</span><span class="badge">completed</span><span class="badge">canceled</span><span class="badge">conflict</span></li>
+          <li>Отмена допускается только из <span class="code">scheduled</span>.</li>
+          <li>Открытие/закрытие через force — только owner.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <strong>Рабочий день (workdays)</strong>
+        <ul>
+          <li><span class="badge">draft</span><span class="badge">published</span></li>
+          <li>После публикации кассовые значения не редактируются.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <strong>Кассовая сессия</strong>
+        <ul>
+          <li><span class="badge">open</span><span class="badge">closing_draft</span><span class="badge">closed</span><span class="badge">reviewed</span></li>
+          <li>Owner-edit доступен только для <span class="code">closed/reviewed</span>.</li>
+          <li>Действия защищены <span class="code">lockVersion</span>.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <strong>Оплата и деньги</strong>
+        <ul>
+          <li>Деньги хранятся в центах, проценты в basis points.</li>
+          <li>Pay-components поддерживают комбинированную модель начислений.</li>
+          <li>Percent revenue зависит от наличия базы выручки.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="small" style="margin-top:14px;">
+      Конец документа.
+    </p>
+  </div>
+</body>
+</html>
