@@ -32,15 +32,37 @@ const normalizeContentType = (value: string) => {
   return normalized
 }
 
-const parseHostname = (value: string | null) => {
+const parseHost = (value: string | null) => {
   if (!value) return null
   const candidate = value.split(",")[0]?.trim()
   if (!candidate) return null
   try {
-    return new URL(`http://${candidate}`).hostname
+    return new URL(`http://${candidate}`).host
   } catch {
     return null
   }
+}
+
+const resolveRequestAddress = (request: Request) => {
+  const requestUrl = new URL(request.url)
+  const host =
+    parseHost(request.headers.get("x-forwarded-host")) ||
+    parseHost(request.headers.get("host")) ||
+    requestUrl.host
+  const protocolHeader = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim()
+  const protocol =
+    protocolHeader === "http" || protocolHeader === "https"
+      ? `${protocolHeader}:`
+      : requestUrl.protocol
+  const hostname = (() => {
+    try {
+      return new URL(`http://${host}`).hostname
+    } catch {
+      return requestUrl.hostname
+    }
+  })()
+
+  return { host, protocol, hostname }
 }
 
 const resolvePresignEndpoint = (request: Request) => {
@@ -63,11 +85,9 @@ const resolvePresignEndpoint = (request: Request) => {
   try {
     const endpointUrl = new URL(internalEndpoint)
     if (endpointUrl.hostname === "minio") {
-      const requestHostname =
-        parseHostname(request.headers.get("x-forwarded-host")) ||
-        parseHostname(request.headers.get("host")) ||
-        new URL(request.url).hostname
-      endpointUrl.hostname = requestHostname
+      const requestAddress = resolveRequestAddress(request)
+      endpointUrl.host = requestAddress.host
+      endpointUrl.protocol = requestAddress.protocol
     }
     return endpointUrl.origin
   } catch {
