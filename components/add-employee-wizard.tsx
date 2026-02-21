@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
+import { copyToClipboard } from "@/lib/utils/copy-to-clipboard"
 import { ChevronLeft, Copy, Users } from "lucide-react"
 
 type InviteCodeResponse = {
@@ -59,55 +60,7 @@ export default function AddEmployeeWizard({
   const handleCopy = async () => {
     const codeToCopy = inviteCode?.trim()
     if (!codeToCopy) return
-
-    const fallbackCopy = (text: string) => {
-      const textarea = document.createElement("textarea")
-      textarea.value = text
-      textarea.setAttribute("readonly", "")
-      textarea.style.position = "fixed"
-      textarea.style.left = "-9999px"
-      textarea.style.opacity = "0"
-      document.body.appendChild(textarea)
-
-      const selection = document.getSelection()
-      const selectedRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
-
-      textarea.focus()
-      textarea.select()
-      textarea.setSelectionRange(0, textarea.value.length)
-
-      let copied = false
-      try {
-        copied = document.execCommand("copy")
-      } catch {
-        copied = false
-      }
-
-      if (selection) {
-        selection.removeAllRanges()
-        if (selectedRange) {
-          selection.addRange(selectedRange)
-        }
-      }
-
-      document.body.removeChild(textarea)
-      return copied
-    }
-
-    let copied = false
-    if (typeof window !== "undefined" && window.isSecureContext && navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(codeToCopy)
-        copied = true
-      } catch {
-        copied = false
-      }
-    }
-
-    if (!copied) {
-      copied = fallbackCopy(codeToCopy)
-    }
-
+    const copied = await copyToClipboard(codeToCopy)
     if (copied) {
       toast({ title: "Код скопирован" })
     } else {
