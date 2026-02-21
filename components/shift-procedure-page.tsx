@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -152,6 +152,7 @@ function CameraCaptureDialog({
   onCapture: (blob: Blob, previewUrl: string) => void
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -159,7 +160,18 @@ function CameraCaptureDialog({
     if (!open) return
 
     let active = true
-    navigator.mediaDevices
+    setError(null)
+
+    const mediaDevices = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined
+    if (!mediaDevices?.getUserMedia) {
+      const message = window.isSecureContext
+        ? "Камера недоступна в этом браузере. Загрузите фото через файл."
+        : "Камера в браузере работает только по HTTPS. Загрузите фото через файл."
+      setError(message)
+      return
+    }
+
+    mediaDevices
       .getUserMedia({ video: { facingMode: "environment" }, audio: false })
       .then((stream) => {
         if (!active) {
@@ -181,6 +193,16 @@ function CameraCaptureDialog({
       }
     }
   }, [open])
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const previewUrl = URL.createObjectURL(file)
+    onCapture(file, previewUrl)
+    onOpenChange(false)
+    event.target.value = ""
+  }
 
   const handleCapture = () => {
     const video = videoRef.current
@@ -207,7 +229,24 @@ function CameraCaptureDialog({
         </DialogHeader>
         <div className="space-y-4">
           {error ? (
-            <div className="text-sm text-destructive">{error}</div>
+            <div className="space-y-3">
+              <div className="text-sm text-destructive">{error}</div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Выбрать фото
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
           ) : (
             <video ref={videoRef} autoPlay playsInline className="w-full rounded-lg bg-black/20" />
           )}
