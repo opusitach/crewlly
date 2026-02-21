@@ -194,7 +194,6 @@ export default function CashSettingsView({
   const [locationId, setLocationId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [overwriteExistingSessions, setOverwriteExistingSessions] = useState(false)
   const [activeTab, setActiveTab] = useState<CashSettingsTab>(initialTab)
 
   useEffect(() => {
@@ -713,7 +712,6 @@ export default function CashSettingsView({
           locationId,
           fields: payloadFields,
           formulas: payloadFormulas,
-          overwriteExistingSessions,
         }),
       })
 
@@ -724,11 +722,8 @@ export default function CashSettingsView({
 
       toast({
         title: "Сохранено",
-        description: overwriteExistingSessions
-          ? "Настройки сохранены и применены к существующим сессиям"
-          : "Настройки кассы сохранены",
+        description: "Настройки кассы сохранены",
       })
-      setOverwriteExistingSessions(false)
       await loadSettings()
     } catch (error: any) {
       toast({
@@ -757,16 +752,6 @@ export default function CashSettingsView({
       </div>
 
       <div className="p-4 space-y-4">
-        <Card className="p-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="font-medium">Принудительный overwrite</p>
-            <p className="text-sm text-muted-foreground">
-              Если включено, новые поля и формулы будут применены к открытым и уже закрытым (не reviewed) сессиям.
-            </p>
-          </div>
-          <Switch checked={overwriteExistingSessions} onCheckedChange={(v) => setOverwriteExistingSessions(Boolean(v))} />
-        </Card>
-
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as CashSettingsTab)}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="open">Открытие</TabsTrigger>

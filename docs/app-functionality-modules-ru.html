@@ -3,309 +3,1202 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crewlly — Функционал приложения по модулям</title>
+  <title>Crewlly — полный мануал по функционалу</title>
   <style>
     :root {
-      --text: #111827;
-      --muted: #4b5563;
-      --line: #e5e7eb;
-      --head: #0f172a;
-      --accent: #0b5fff;
+      --text: #0f172a;
+      --muted: #475569;
+      --line: #e2e8f0;
       --bg-soft: #f8fafc;
+      --head: #020617;
+      --accent: #0b5fff;
+      --ok: #166534;
+      --warn: #92400e;
+      --danger: #b91c1c;
     }
     * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
     body {
-      margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       color: var(--text);
-      line-height: 1.45;
+      background: #fff;
+      line-height: 1.48;
       font-size: 13px;
-      background: white;
     }
     .page {
-      max-width: 900px;
+      max-width: 1000px;
       margin: 0 auto;
-      padding: 28px 34px 40px;
+      padding: 24px 28px 36px;
     }
     h1 {
-      margin: 0 0 8px;
-      font-size: 28px;
-      line-height: 1.15;
+      margin: 0;
+      font-size: 30px;
       color: var(--head);
+      line-height: 1.14;
+      letter-spacing: -0.01em;
     }
+    h2 {
+      margin: 22px 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+      font-size: 20px;
+      line-height: 1.2;
+      color: var(--head);
+      break-after: avoid;
+    }
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 16px;
+      line-height: 1.25;
+      color: var(--head);
+      break-after: avoid;
+    }
+    h4 {
+      margin: 12px 0 6px;
+      font-size: 14px;
+      line-height: 1.3;
+      color: var(--head);
+      break-after: avoid;
+    }
+    p { margin: 8px 0; }
+    ul, ol {
+      margin: 6px 0 8px;
+      padding-left: 18px;
+    }
+    li { margin: 4px 0; }
     .meta {
-      margin: 0 0 14px;
+      margin: 8px 0 0;
       color: var(--muted);
       font-size: 12px;
     }
-    .intro {
-      margin: 0 0 18px;
+    .note, .info, .warn, .danger {
+      margin: 10px 0;
+      border-radius: 10px;
       padding: 10px 12px;
-      border: 1px solid var(--line);
-      background: var(--bg-soft);
-      border-radius: 8px;
       font-size: 12px;
     }
-    h2 {
-      margin: 18px 0 10px;
-      font-size: 18px;
-      color: var(--head);
-      border-bottom: 1px solid var(--line);
-      padding-bottom: 6px;
+    .note {
+      border: 1px solid var(--line);
+      background: var(--bg-soft);
     }
-    h3 {
-      margin: 16px 0 8px;
-      font-size: 15px;
-      color: var(--head);
+    .info {
+      border: 1px solid #dbeafe;
+      background: #eff6ff;
+    }
+    .warn {
+      border: 1px solid #fde68a;
+      background: #fffbeb;
+      color: var(--warn);
+    }
+    .danger {
+      border: 1px solid #fecaca;
+      background: #fef2f2;
+      color: var(--danger);
+    }
+    .ok {
+      color: var(--ok);
+      font-weight: 600;
+    }
+    .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 11px;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 1px 4px;
+      white-space: nowrap;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      line-height: 1;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid #dbeafe;
+      background: #eff6ff;
+      color: #1d4ed8;
+      margin: 2px 6px 2px 0;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       margin: 8px 0 14px;
       table-layout: fixed;
+      break-inside: avoid;
     }
     th, td {
       border: 1px solid var(--line);
-      padding: 8px;
+      text-align: left;
       vertical-align: top;
+      padding: 7px 8px;
       font-size: 12px;
+      word-break: break-word;
     }
     th {
-      background: #f3f4f6;
-      text-align: left;
-      font-weight: 600;
+      background: #f8fafc;
+      font-weight: 700;
     }
-    ul {
-      margin: 0;
-      padding-left: 18px;
-    }
-    li { margin: 4px 0; }
-    .badge {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 600;
-      color: #0b3db8;
-      background: #eaf2ff;
-      border: 1px solid #d7e5ff;
-      border-radius: 999px;
-      padding: 2px 8px;
-      margin-right: 6px;
-      margin-bottom: 4px;
-    }
-    .small {
-      color: var(--muted);
-      font-size: 11px;
-    }
-    .code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      background: #f3f4f6;
-      padding: 1px 4px;
-      border-radius: 4px;
-      font-size: 11px;
-    }
-    .grid {
+    .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
-      margin-top: 8px;
+      margin: 8px 0;
     }
     .card {
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 10px;
       background: #fff;
+      break-inside: avoid;
     }
+    .small { font-size: 11px; color: var(--muted); }
+    .toc li { margin: 2px 0; }
+    .module { break-inside: avoid-page; }
+    .page-break { break-before: page; }
     @media print {
-      .page { padding: 20px 24px 28px; }
-      h2, h3, .card { break-inside: avoid; }
-      table, tr, td, th { break-inside: avoid; }
+      .page { padding: 16px 20px 24px; }
+      h2, h3, h4 { break-after: avoid; }
+      p, li { orphans: 3; widows: 3; }
+      .grid-2 { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
 <body>
   <div class="page">
-    <h1>Crewlly — функционал приложения</h1>
-    <p class="meta">Структурная карта по модулям платформы • источник: кодовая база <span class="code">/Users/chizhikov/crewlly-main</span></p>
-    <p class="intro">
-      Документ фиксирует реализованный функционал без проектных предположений: роли, ключевые сценарии, бизнес-правила и API-точки.
+    <h1>Crewlly — полный мануал по функционалу приложения</h1>
+    <p class="meta">
+      Источник: кодовая база <span class="code">/Users/chizhikov/crewlly-main</span><br/>
+      Формат: практический manual (что делает система, как использовать, какие ограничения, какой API)
     </p>
 
-    <h2>1. Краткая карта модулей</h2>
+    <div class="note">
+      <strong>Цель документа:</strong> дать полное и прикладное описание платформы по модулям без «воды».
+      Документ сочетает пользовательский и технический слой: <strong>человеческое объяснение + бизнес-правила + API</strong>.
+    </div>
+
+    <h2>Содержание</h2>
+    <ul class="toc">
+      <li>1. Границы и принцип описания</li>
+      <li>2. Роли и доступы</li>
+      <li>3. Доменная модель и статусы</li>
+      <li>4. Карта экранов, навигации и deep-link параметров</li>
+      <li>5. Сквозные сценарии по ролям</li>
+      <li>6. Полное описание модулей платформы</li>
+      <li>7. Сводка критичных бизнес-правил и ограничений</li>
+      <li>8. Полный каталог API endpoint-ов</li>
+    </ul>
+
+    <h2>1. Границы и принцип описания</h2>
+    <ul>
+      <li>Описано только то, что реально реализовано в текущем коде.</li>
+      <li>Включены owner, manager и worker сценарии.</li>
+      <li>Для каждого крупного модуля есть 4 слоя: пользовательский смысл, поток действий, ограничения, API.</li>
+      <li>Отдельно и подробно раскрыты темы из запроса: <strong>bulk в планнере смен</strong> и <strong>проверка смен</strong>.</li>
+    </ul>
+
+    <h2>2. Роли и доступы</h2>
     <table>
       <thead>
         <tr>
-          <th style="width: 28px;">#</th>
-          <th style="width: 200px;">Модуль</th>
-          <th>Что покрывает</th>
-          <th style="width: 165px;">Роли</th>
+          <th style="width: 120px;">Роль</th>
+          <th>Что может делать</th>
+          <th style="width: 260px;">Ключевые ограничения</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td>1</td><td>Идентификация и доступ</td><td>Регистрация/вход, сессии, выбор режима owner/worker, RBAC-права.</td><td>Owner, Manager, Worker</td></tr>
-        <tr><td>2</td><td>Онбординг</td><td>Первичная настройка заведения и присоединение сотрудника по коду.</td><td>Owner, Worker</td></tr>
-        <tr><td>3</td><td>Организации и локации</td><td>Мультизаведенийность, выбор активного заведения, локации и базовые настройки.</td><td>Owner, Manager</td></tr>
-        <tr><td>4</td><td>Команда и должности</td><td>Сотрудники, позиции, pay-components, назначение должностей.</td><td>Owner, Manager</td></tr>
-        <tr><td>5</td><td>Планирование смен</td><td>Workday/Interval, календарь, фильтры, предотвращение/маркировка конфликтов.</td><td>Owner, Manager, Worker (read-only)</td></tr>
-        <tr><td>6</td><td>Процедуры смены</td><td>OPEN/CLOSE правила по должности: checklist/input/photo/cash.</td><td>Owner, Worker</td></tr>
-        <tr><td>7</td><td>Исполнение смены</td><td>Открытие/закрытие/отмена смен, force-операции owner, clock-in/out.</td><td>Owner, Manager, Worker</td></tr>
-        <tr><td>8</td><td>Касса</td><td>Поля открытия/закрытия, формулы, кассовые сессии, ревью, owner-edit, вложения чеков.</td><td>Owner, Manager</td></tr>
-        <tr><td>9</td><td>Чаевые и выручка</td><td>Метод деления чаевых, источник выручки, синхронизация с кассой и сменами.</td><td>Owner, Manager</td></tr>
-        <tr><td>10</td><td>Отчётность</td><td>Cash summary, аналитика по полям/формулам, earnings сотрудников/воркеров.</td><td>Owner, Manager, Worker</td></tr>
-        <tr><td>11</td><td>Payroll</td><td>Расчётные периоды, позиции payroll items, свод зарплата+чаевые.</td><td>Owner, Manager, Worker (view own)</td></tr>
-        <tr><td>12</td><td>Проверка и публикация</td><td>Очередь на проверку, публикация рабочего дня, ревью кассы.</td><td>Owner, Manager</td></tr>
-        <tr><td>13</td><td>Уведомления</td><td>Лента событий, read/unread, удаление, системные уведомления по ключевым действиям.</td><td>Owner, Manager, Worker</td></tr>
-        <tr><td>14</td><td>Сервисные модули</td><td>Фото-процедуры (S3 presign), ретеншн медиа, клиентское app-state.</td><td>Системно</td></tr>
+        <tr>
+          <td><strong>Owner</strong></td>
+          <td>
+            Полный операционный и конфигурационный контур: команда, роли/правила, смены,
+            касса, verification, отчеты, payroll, переключение/добавление заведений,
+            owner-edit кассы, force open/close смен.
+          </td>
+          <td>
+            Нужна активная membership в организации и owner-доступ.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Manager</strong></td>
+          <td>
+            Операционное управление сменами, кассой, проверкой, сотрудниками, отчетами
+            (в рамках доступных permission).
+          </td>
+          <td>
+            Нет owner-only операций: изменение cash settings, owner-edit, force-действия owner.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Worker</strong></td>
+          <td>
+            Личный кабинет: ближайшая смена, выполнение процедур, свой планнер (read-only),
+            деньги/начисления, подключение к заведению по invite-коду.
+          </td>
+          <td>
+            Нет доступа к настройке кассы/ролей/зарплатных прогонов и к массовому планированию.
+          </td>
+        </tr>
       </tbody>
     </table>
 
-    <h2>2. Детализация модулей</h2>
+    <div class="info">
+      Авторизация — cookie session <span class="code">session_token</span>. Доступ контролируется сочетанием
+      <span class="code">access_roles</span>, <span class="code">access_permissions</span> и legacyRole fallback.
+    </div>
 
-    <h3>Модуль 1. Идентификация и доступ</h3>
-    <ul>
-      <li>Session-based авторизация: регистрация, логин, logout, профиль <span class="code">/api/auth/*</span>.</li>
-      <li>Выбор базового режима пользователя: owner/worker <span class="code">/api/user/role</span>.</li>
-      <li>RBAC: системные роли <span class="code">owner</span>, <span class="code">manager</span>, <span class="code">worker</span> + матрица прав.</li>
-      <li>Ключевое поведение: owner/manager имеют расширенные права на смены, команду, кассу, payroll и отчёты.</li>
-    </ul>
-
-    <h3>Модуль 2. Онбординг</h3>
-    <ul>
-      <li>Owner onboarding: создание организации, таймзона/валюта, локация и часы, позиции, завершение активации.</li>
-      <li>Worker onboarding: проверка invite-code, присоединение к организации, выбор должностей.</li>
-      <li>Поддержаны пошаговые API: <span class="code">/api/onboarding/owner/start</span>, <span class="code">/step/[step]</span>, <span class="code">/finish</span>, <span class="code">/api/onboarding/employee</span>.</li>
-    </ul>
-
-    <h3>Модуль 3. Организации и локации</h3>
-    <ul>
-      <li>Поддержка нескольких заведений у пользователя (через membership).</li>
-      <li>Переключение активной организации <span class="code">/api/venues/select</span>.</li>
-      <li>Управление локациями и реквизитами организации: <span class="code">/api/locations</span>, <span class="code">/api/organizations</span>, legacy <span class="code">/api/venues</span>.</li>
-      <li>Для каждой локации автоматически заводится касса <span class="code">Main</span>.</li>
-    </ul>
-
-    <h3>Модуль 4. Команда и должности</h3>
-    <ul>
-      <li>Сотрудники: создание, поиск, профили, назначение локаций и должностей <span class="code">/api/employees</span>.</li>
-      <li>Должности: CRUD, soft-delete, сортировка, привязка к локации <span class="code">/api/positions</span>.</li>
-      <li>Оплата сотрудника через pay-components: <span class="code">hourly</span>, <span class="code">fixed_shift</span>, <span class="code">percent_revenue</span>.</li>
-      <li>Инвайты: email-invitation и invite-code (<span class="code">/api/invitations</span>, <span class="code">/api/invite-codes</span>).</li>
-    </ul>
-
-    <h3>Модуль 5. Планирование смен</h3>
-    <ul>
-      <li>Workday (контейнер дня): создание и публикация <span class="code">/api/workdays</span>, <span class="code">/api/workdays/[id]/publish</span>.</li>
-      <li>WorkInterval (смена сотрудника): CRUD + pay snapshot + связи с сотрудником/позицией <span class="code">/api/intervals</span>.</li>
-      <li>Поддержка ночных смен (переход через полночь) при вводе времени HH:mm.</li>
-      <li>Конфликты интервалов: обнаружение пересечений и статусы <span class="code">conflict</span>.</li>
-    </ul>
-
-    <h3>Модуль 6. Процедуры смены (Ruleset)</h3>
-    <ul>
-      <li>Шаблоны правил по должности и дню недели: <span class="code">OPEN</span>/<span class="code">CLOSE</span> + типы <span class="code">CHECKLIST/INPUT/PHOTO/CASH</span>.</li>
-      <li>API правил: <span class="code">/api/positions/[id]/rules*</span>, ruleset preview <span class="code">/api/positions/[id]/ruleset</span>.</li>
-      <li>При старте/закрытии смены создаются снапшоты правил для конкретного интервала.</li>
-      <li>Валидация обязательных пунктов и кассовых фото перед завершением этапа.</li>
-    </ul>
-
-    <h3>Модуль 7. Исполнение смены</h3>
-    <ul>
-      <li>Открытие смены: <span class="code">/api/work-intervals/[id]/open</span> (с проверкой OPEN-процедур).</li>
-      <li>Закрытие смены: <span class="code">/api/work-intervals/[id]/close</span> (проверка CLOSE-процедур + payroll snapshot).</li>
-      <li>Отмена запланированной смены: <span class="code">/api/work-intervals/[id]/cancel</span> с обязательной причиной.</li>
-      <li>Owner force-open/force-close разрешены только владельцу и требуют reason.</li>
-      <li>Clock-in/out: <span class="code">/api/clock</span> (фото/координаты/временные метки).</li>
-    </ul>
-
-    <h3>Модуль 8. Касса</h3>
-    <ul>
-      <li>Конфиг кассы на уровне локации: поля открытия/закрытия + формулы расчётов <span class="code">/api/cash/settings</span>.</li>
-      <li>Ограничения: уникальные keys, один источник чаевых, один источник выручки, проверка формул.</li>
-      <li>Сессии кассы: open/close/review/get/list <span class="code">/api/cash/sessions*</span>.</li>
-      <li>Owner-edit закрытых/проверенных сессий с audit trail и возвратом reviewed → closed при правке.</li>
-      <li>Чеки/вложения по сессии: <span class="code">/api/cash/sessions/[id]/receipts</span>.</li>
-      <li>Оптимистичная блокировка изменений через <span class="code">lockVersion</span>.</li>
-    </ul>
-
-    <h3>Модуль 9. Чаевые и выручка</h3>
-    <ul>
-      <li>Глобальный метод деления чаевых: <span class="code">equal</span> или <span class="code">by_hours</span> (<span class="code">/api/tips/settings</span>).</li>
-      <li>Синхронизация чаевых и выручки из кассовых данных в draft-днях.</li>
-      <li>Использование выручки как базы для компонента оплаты <span class="code">percent_revenue</span>.</li>
-    </ul>
-
-    <h3>Модуль 10. Отчётность</h3>
-    <ul>
-      <li>Сводка кассы: агрегаты по полям и формулам + предупреждения по формулам <span class="code">/api/reports/cash-summary</span>.</li>
-      <li>Детальные отчёты: по конкретному полю кассы <span class="code">/api/reports/cash-fields/[fieldKey]</span> и по формуле <span class="code">/api/reports/cash-formulas/[resultKey]</span>.</li>
-      <li>Earnings по сотруднику/воркеру: зарплата, чаевые, минуты, история начислений.</li>
-    </ul>
-
-    <h3>Модуль 11. Payroll</h3>
-    <ul>
-      <li>Создание payroll run за период с агрегацией завершённых интервалов <span class="code">/api/payroll/runs</span>.</li>
-      <li>Payroll items: минуты, gross, tips, total payout <span class="code">/api/payroll/items</span>.</li>
-      <li>Если расчёты интервала не зафиксированы, выполняется автопересчёт snapshot на лету.</li>
-    </ul>
-
-    <h3>Модуль 12. Проверка и публикация</h3>
-    <ul>
-      <li>Очередь проверки: завершённые смены в непубликованных днях + закрытые кассовые сессии.</li>
-      <li>Сводка очереди: <span class="code">/api/verifications/summary</span>.</li>
-      <li>Публикация workday переводит день в <span class="code">published</span> и закрывает редактирование кассы.</li>
-    </ul>
-
-    <h3>Модуль 13. Уведомления</h3>
-    <ul>
-      <li>Уведомления типов <span class="code">shift</span>, <span class="code">cash</span>, <span class="code">receipt</span>, <span class="code">system</span>.</li>
-      <li>API: список/фильтры, mark all read, mark one read, delete <span class="code">/api/notifications*</span>.</li>
-      <li>Событийные уведомления создаются при открытии/закрытии/отмене смен и кассовых операциях.</li>
-    </ul>
-
-    <h3>Модуль 14. Сервисные и инфраструктурные функции</h3>
-    <ul>
-      <li>Фото процедур: presigned upload URL (<span class="code">/api/procedures/presign</span>) + хранение ключей в БД.</li>
-      <li>Ретеншн медиа (cron endpoint): удаление устаревших фото процедур и маркировка <span class="code">photoDeletedAt</span>.</li>
-      <li>Клиентский key-value state: <span class="code">/api/state/[key]</span>.</li>
-    </ul>
-
-    <h2>3. Единые статусы и бизнес-ограничения</h2>
-    <div class="grid">
+    <h2>3. Доменная модель и статусы</h2>
+    <div class="grid-2">
       <div class="card">
-        <strong>Смены (work_intervals)</strong>
+        <h3>Workday</h3>
+        <div class="badge">draft</div><div class="badge">published</div>
         <ul>
-          <li><span class="badge">scheduled</span><span class="badge">in_progress</span><span class="badge">completed</span><span class="badge">canceled</span><span class="badge">conflict</span></li>
-          <li>Отмена допускается только из <span class="code">scheduled</span>.</li>
-          <li>Открытие/закрытие через force — только owner.</li>
+          <li><strong>draft</strong>: день редактируемый.</li>
+          <li><strong>published</strong>: день опубликован/подтвержден (используется как признак review смен в verification).</li>
         </ul>
       </div>
       <div class="card">
-        <strong>Рабочий день (workdays)</strong>
+        <h3>WorkInterval (смена)</h3>
+        <div class="badge">scheduled</div><div class="badge">in_progress</div>
+        <div class="badge">completed</div><div class="badge">canceled</div><div class="badge">conflict</div>
         <ul>
-          <li><span class="badge">draft</span><span class="badge">published</span></li>
-          <li>После публикации кассовые значения не редактируются.</li>
+          <li>Редактирование в UI: только <span class="code">scheduled</span> и <span class="code">conflict</span>.</li>
+          <li>Отмена: только из <span class="code">scheduled</span>, всегда с причиной.</li>
         </ul>
       </div>
       <div class="card">
-        <strong>Кассовая сессия</strong>
+        <h3>CashSession</h3>
+        <div class="badge">open</div><div class="badge">closing_draft</div>
+        <div class="badge">closed</div><div class="badge">reviewed</div>
         <ul>
-          <li><span class="badge">open</span><span class="badge">closing_draft</span><span class="badge">closed</span><span class="badge">reviewed</span></li>
-          <li>Owner-edit доступен только для <span class="code">closed/reviewed</span>.</li>
-          <li>Действия защищены <span class="code">lockVersion</span>.</li>
+          <li>Review: только из <span class="code">closed</span>.</li>
+          <li>Owner-edit: только <span class="code">closed/reviewed</span>; при правке reviewed сессия возвращается в closed.</li>
+          <li>Конкурентный доступ: <span class="code">lockVersion</span>.</li>
         </ul>
       </div>
       <div class="card">
-        <strong>Оплата и деньги</strong>
+        <h3>Процедуры смены</h3>
+        <div class="badge">OPEN</div><div class="badge">CLOSE</div>
+        <div class="badge">CHECKLIST</div><div class="badge">INPUT</div>
+        <div class="badge">PHOTO</div><div class="badge">CASH</div>
         <ul>
-          <li>Деньги хранятся в центах, проценты в basis points.</li>
-          <li>Pay-components поддерживают комбинированную модель начислений.</li>
-          <li>Percent revenue зависит от наличия базы выручки.</li>
+          <li>Правила задаются на уровне должности и дня недели.</li>
+          <li>В смене используется snapshot правил.</li>
+          <li>Для CASH учитываются обязательные значения и photo-required по полям.</li>
         </ul>
       </div>
     </div>
 
-    <p class="small" style="margin-top:14px;">
-      Конец документа.
+    <h2>4. Карта экранов, навигации и deep-link</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 220px;">Маршрут/экран</th>
+          <th>Что делает</th>
+          <th style="width: 280px;">Важные переходы/параметры</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="code">/login</span>, <span class="code">/register</span></td>
+          <td>Вход/регистрация, создание сессии.</td>
+          <td>После входа: если role не выбрана → <span class="code">/select-role</span>.</td>
+        </tr>
+        <tr>
+          <td><span class="code">/select-role</span></td>
+          <td>Выбор режима owner/worker.</td>
+          <td>POST <span class="code">/api/user/role</span> и переход в соответствующий onboarding.</td>
+        </tr>
+        <tr>
+          <td><span class="code">/onboarding/owner</span></td>
+          <td>Первичная настройка owner.</td>
+          <td>По завершении → <span class="code">/app</span>.</td>
+        </tr>
+        <tr>
+          <td><span class="code">/onboarding/employee</span></td>
+          <td>Присоединение worker.</td>
+          <td>По завершении → <span class="code">/app</span>.</td>
+        </tr>
+        <tr>
+          <td><span class="code">/app</span></td>
+          <td>Главный контейнер owner/worker дашборда.</td>
+          <td>
+            Owner deep-link:
+            <span class="code">tab</span>,
+            <span class="code">cashTab=review_queue</span>,
+            <span class="code">reportsFrom</span>,
+            <span class="code">reportsTo</span>,
+            <span class="code">shiftsDate</span>.
+          </td>
+        </tr>
+        <tr>
+          <td><span class="code">/shifts</span>, <span class="code">/shift-planner</span></td>
+          <td>Планнер смен (обе ссылки ведут в один модуль).</td>
+          <td>Owner/manager: управление; worker: read-only версия в кабинете.</td>
+        </tr>
+        <tr>
+          <td><span class="code">/shift-procedures/[id]</span></td>
+          <td>Открытие/закрытие смены и выполнение правил.</td>
+          <td>Параметр <span class="code">when=OPEN|CLOSE</span>.</td>
+        </tr>
+        <tr>
+          <td><span class="code">/app/team</span></td>
+          <td>Отдельная owner-страница команды.</td>
+          <td>Фактически открывает <span class="code">EmployeesView</span>.</td>
+        </tr>
+        <tr>
+          <td><span class="code">/app/venues/new</span></td>
+          <td>Добавление нового заведения owner-ом.</td>
+          <td>Запускает owner onboarding в режиме <span class="code">new-venue</span>.</td>
+        </tr>
+        <tr>
+          <td><span class="code">/workday</span></td>
+          <td>Legacy-маршрут.</td>
+          <td>Redirect на <span class="code">/shifts</span>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>5. Сквозные сценарии по ролям</h2>
+
+    <h3>5.1 Типичный день owner/manager</h3>
+    <ol>
+      <li>Открывает <span class="code">/app</span> и смотрит KPI: сколько на проверке, выручка за сегодня/месяц, активные смены.</li>
+      <li>Если есть «требует внимания», идет в настройки (касса/команда/роли/чаевые).</li>
+      <li>В планнере создает/обновляет смены; при необходимости использует bulk.</li>
+      <li>После завершения смен проверяет процедуры и кассу в verification.</li>
+      <li>Публикует рабочие дни и завершает review кассовых смен.</li>
+      <li>Смотрит отчеты и при необходимости запускает payroll run.</li>
+    </ol>
+
+    <h3>5.2 Типичный день worker</h3>
+    <ol>
+      <li>Видит ближайшую смену и статус.</li>
+      <li>Перед стартом проходит OPEN-процедуры, при необходимости делает фото.</li>
+      <li>Открывает смену; в конце проходит CLOSE-процедуры и закрывает смену.</li>
+      <li>В табе planner смотрит только свои смены (без редактирования).</li>
+      <li>В табе money смотрит начисления за период.</li>
+    </ol>
+
+    <h2>6. Полное описание модулей платформы</h2>
+
+    <div class="module">
+      <h3>6.1 Аутентификация, сессия, контекст организации</h3>
+      <h4>Что это на человеческом языке</h4>
+      <p>
+        Это вход в систему и выбор “в каком заведении сейчас работаем”. Один пользователь может иметь доступ
+        к нескольким организациям и переключаться между ними без перелогина.
+      </p>
+      <h4>Ключевое поведение</h4>
+      <ul>
+        <li>Логин/регистрация создают cookie-сессию.</li>
+        <li>При логине берется активная membership (с учетом <span class="code">activeOrganizationId</span>).</li>
+        <li>При смене заведения меняется организационный контекст и defaultLocation.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>POST</td><td><span class="code">/api/auth/register</span></td><td>Регистрация и выдача сессии.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/auth/login</span></td><td>Логин, валидация статуса, выдача сессии.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/auth/logout</span></td><td>Удаление текущей сессии.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/auth/me</span></td><td>Текущий пользователь, организация, роль, defaultLocation.</td></tr>
+          <tr><td>POST/GET</td><td><span class="code">/api/user/role</span></td><td>Выбор/чтение primaryMode owner|worker.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/venues</span></td><td>Список доступных заведений (legacy API).</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/venues/select</span></td><td>Сделать организацию активной.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.2 Выбор роли и маршрутизация</h3>
+      <h4>Что видит пользователь</h4>
+      <p>После логина пользователь выбирает режим: владелец или сотрудник.</p>
+      <h4>Как работает</h4>
+      <ul>
+        <li>Выбор роли всегда сбрасывает <span class="code">onboardingReady=false</span>.</li>
+        <li>Если роль не выбрана, доступ в <span class="code">/app</span> блокируется редиректом в <span class="code">/select-role</span>.</li>
+        <li>Если роль выбрана, но onboarding не завершен: редирект в соответствующий onboarding.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>POST</td><td><span class="code">/api/user/role</span></td><td>Сохранить primaryMode и перевести в IN_PROGRESS onboarding.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/onboarding/status</span></td><td>Текущее состояние onboarding (NOT_STARTED/IN_PROGRESS/COMPLETED).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.3 Owner onboarding (initial + new-venue)</h3>
+      <h4>Что это для бизнеса</h4>
+      <p>
+        Первичный запуск заведения: создается организация, локация, график, роли,
+        invite-код и рабочая структура для смен/кассы/отчетов.
+      </p>
+      <h4>Режимы</h4>
+      <ul>
+        <li><strong>initial</strong>: короткий маршрут (в UI базово шаги 1, 2, 5).</li>
+        <li><strong>new-venue</strong>: расширенный маршрут добавления нового заведения owner-ом.</li>
+      </ul>
+      <h4>Что сохраняется</h4>
+      <ul>
+        <li>Организация: название, таймзона, валюта.</li>
+        <li>Локация: название, адрес, рабочие часы.</li>
+        <li>Должности (positions).</li>
+        <li>Код приглашения для сотрудников.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>POST</td><td><span class="code">/api/onboarding/owner/start</span></td><td>Старт draft-организации и owner membership.</td></tr>
+          <tr><td>PATCH</td><td><span class="code">/api/onboarding/owner/step/[step]</span></td><td>Сохранение шага мастера.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/onboarding/owner/finish</span></td><td>Финализация onboarding, onboardingReady=true.</td></tr>
+          <tr><td>GET/POST</td><td><span class="code">/api/onboarding/owner</span></td><td>Legacy endpoint полного owner-onboarding.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/invite-codes</span></td><td>Получить активный код приглашения (при необходимости сгенерировать).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.4 Worker onboarding и подключение к заведению</h3>
+      <h4>Что это для сотрудника</h4>
+      <p>
+        Сотрудник вводит код, система проверяет валидность приглашения,
+        показывает организацию/должности и завершает присоединение.
+      </p>
+      <h4>Проверки</h4>
+      <ul>
+        <li>Код должен быть активным, не просроченным, с доступным лимитом uses.</li>
+        <li>Если пользователь уже активный участник организации, возвращается статус ALREADY_MEMBER.</li>
+        <li>При blocked membership присоединение блокируется.</li>
+      </ul>
+      <h4>Результат успешного входа</h4>
+      <ul>
+        <li>Создается/активируется membership worker.</li>
+        <li>Создается/обновляется employee.</li>
+        <li>Пользователь переключается в worker режим, <span class="code">onboardingReady=true</span>.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET/POST</td><td><span class="code">/api/onboarding/employee</span></td><td>Проверка invitation code + завершение worker onboarding.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/worker/venues/join</span></td><td>Присоединение из рабочего кабинета по invite-коду.</td></tr>
+          <tr><td>GET/POST</td><td><span class="code">/api/invite-codes</span></td><td>Коды приглашения (owner/manager).</td></tr>
+          <tr><td>GET/POST/DELETE</td><td><span class="code">/api/invitations</span></td><td>Email-инвайты и их жизненный цикл.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.5 Организация, заведения, локации</h3>
+      <h4>Что делает модуль</h4>
+      <p>
+        Управляет структурой бизнеса: организация и ее локации. При создании локации автоматически создается касса Main.
+      </p>
+      <h4>Ключевые правила</h4>
+      <ul>
+        <li>При переключении заведения обновляется activeOrganizationId у пользователя.</li>
+        <li>Выбор заведения проверяет membership и active status организации.</li>
+        <li>При создании локации проверяется уникальность имени в организации.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET/PUT</td><td><span class="code">/api/organizations</span></td><td>Чтение/обновление организации.</td></tr>
+          <tr><td>GET/POST</td><td><span class="code">/api/locations</span></td><td>Список/создание локаций.</td></tr>
+          <tr><td>GET/POST</td><td><span class="code">/api/venues</span></td><td>Legacy API организаций (совместимость).</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/venues/select</span></td><td>Переключение активного заведения.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.6 Owner dashboard</h3>
+      <h4>Человеческое описание</h4>
+      <p>
+        Главный экран владельца: контроль операционки “здесь и сейчас” — что требует внимания,
+        что сейчас в работе и какие деньги/проверки на очереди.
+      </p>
+      <h4>Что есть на дашборде</h4>
+      <ul>
+        <li>KPI: активные смены, элементы на проверке, выручка за сегодня, выручка за месяц.</li>
+        <li>Список событий (notifications type shift/cash).</li>
+        <li>Блок «требует внимания»: касса, сотрудники без зарплаты, роли без правил, формула чаевых.</li>
+        <li>Быстрые переходы в review queue, отчеты и планнер смен.</li>
+      </ul>
+      <h4>Технические детали</h4>
+      <ul>
+        <li>Данные KPI и события обновляются периодически (polling ~20-30 сек).</li>
+        <li>Deep-link параметры позволяют открыть конкретную вкладку и контекст.</li>
+        <li>Есть переключатель заведения + add venue в одном потоке.</li>
+      </ul>
+      <h4>API, которые использует дашборд</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Для чего</th></tr></thead>
+        <tbody>
+          <tr><td>GET</td><td><span class="code">/api/verifications/summary</span></td><td>Счетчик «на проверке».</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/reports/cash-summary</span></td><td>KPI выручки за день/месяц.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/notifications</span></td><td>События и unread счетчик.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/cash/settings</span></td><td>Проверка конфигурации кассы.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/employees</span></td><td>Проверка зарплатной заполненности.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/positions</span></td><td>Проверка setup ролей/правил.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.7 Worker dashboard</h3>
+      <h4>Человеческое описание</h4>
+      <p>
+        Личный интерфейс сотрудника с тремя фокусами: моя ближайшая смена, мой график, мои деньги.
+      </p>
+      <h4>Табы</h4>
+      <ul>
+        <li><strong>Shift</strong>: карточка ближайшей смены, действия открыть/закрыть/отменить (с причиной).</li>
+        <li><strong>Planner</strong>: личный планнер (read-only, только свои интервалы).</li>
+        <li><strong>Money</strong>: начисления и история за выбранный период.</li>
+      </ul>
+      <h4>Дополнительно</h4>
+      <ul>
+        <li>Смена заведения из bottom sheet.</li>
+        <li>Подключение к новому заведению по invite-коду.</li>
+        <li>События и уведомления для worker в отдельном экране.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET</td><td><span class="code">/api/worker/next-shift</span></td><td>Ближайшая смена и salary preview.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/worker/earnings</span></td><td>Сводка + история начислений worker.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/cancel</span></td><td>Отмена своей запланированной смены.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/worker/venues/join</span></td><td>Присоединиться к заведению по invite-коду.</td></tr>
+          <tr><td>GET/PATCH</td><td><span class="code">/api/notifications</span></td><td>Список/mark-all-read.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.8 Команда: сотрудники, профили, зарплата, позиции</h3>
+      <h4>Что модуль дает бизнесу</h4>
+      <p>
+        Настраивает “кто работает, на каких ролях и по какой модели оплаты”,
+        что критично для смен, payroll, отчетов и мотивации.
+      </p>
+      <h4>Функции</h4>
+      <ul>
+        <li>Создание сотрудника (с user/membership/employee связями).</li>
+        <li>Назначение позиций сотруднику с primary позицией.</li>
+        <li>Настройка pay-components: hourly, fixed_shift, percent_revenue.</li>
+        <li>Контроль процентной модели: нужна корректная revenue basis настройка кассы.</li>
+        <li>Уведомления сотруднику при изменении оплаты.</li>
+      </ul>
+      <h4>Ограничения</h4>
+      <ul>
+        <li>Процентная оплата не разрешается без кассового источника выручки.</li>
+        <li>Некорректные pay-components отклоняются валидатором.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET/POST</td><td><span class="code">/api/employees</span></td><td>Список и создание сотрудников.</td></tr>
+          <tr><td>PUT</td><td><span class="code">/api/employees/[id]/positions</span></td><td>Обновление набора позиций сотрудника.</td></tr>
+          <tr><td>GET/PUT</td><td><span class="code">/api/employees/[id]/pay-components</span></td><td>Чтение/изменение pay-components.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/employees/[id]/earnings</span></td><td>Детализация начислений выбранного сотрудника.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.9 Роли (positions) и шаблоны правил процедур</h3>
+      <h4>Человеческое описание</h4>
+      <p>
+        Для каждой должности задаются правила до/после смены. Это стандартизирует процесс и снижает ошибки.
+      </p>
+      <h4>Что поддерживается</h4>
+      <ul>
+        <li>Типы правил: CHECKLIST, INPUT, PHOTO, CASH.</li>
+        <li>Привязка к этапу OPEN/CLOSE и к конкретному дню недели или default.</li>
+        <li>Лимит PHOTO правил: не более 10 на этап/контекст.</li>
+        <li>Для CLOSE required фактически всегда true.</li>
+        <li>Изменение шаблонов синхронизирует процедуры в запланированных сменах.</li>
+      </ul>
+      <h4>Критичное правило планнера</h4>
+      <div class="warn">
+        Для создания/обновления смены у позиции обязателен корректный default ruleset
+        (минимум OPEN и CLOSE правила). Иначе API вернет конфликт.
+      </div>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET/POST</td><td><span class="code">/api/positions</span></td><td>Список/создание должностей.</td></tr>
+          <tr><td>GET/PATCH/DELETE</td><td><span class="code">/api/positions/[id]</span></td><td>Детали, обновление, soft-delete.</td></tr>
+          <tr><td>GET/POST</td><td><span class="code">/api/positions/[id]/rules</span></td><td>Чтение/создание шаблонов правил.</td></tr>
+          <tr><td>PATCH/DELETE</td><td><span class="code">/api/positions/[id]/rules/[ruleId]</span></td><td>Обновление/удаление rule template.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/positions/[id]/ruleset</span></td><td>Какой ruleset реально применяется на дату.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module page-break">
+      <h3>6.10 Планнер смен — обычный режим (single create/edit)</h3>
+      <h4>Что это для пользователя</h4>
+      <p>
+        Планнер — центральный инструмент расписания. Менеджер выбирает день,
+        назначает сотрудника/позицию/время и получает сразу валидированный результат.
+      </p>
+      <h4>Поток</h4>
+      <ol>
+        <li>Выбор даты в месяце/неделе.</li>
+        <li>Заполнение формы смены (сотрудник, позиция, время, перерыв, pay-параметры).</li>
+        <li>Сохранение: если workday отсутствует, он создается автоматически.</li>
+        <li>Если есть пересечение по времени — возвращается overlap конфликт.</li>
+      </ol>
+      <h4>Важные правила</h4>
+      <ul>
+        <li>Поддерживаются HH:mm и ISO datetime payload.</li>
+        <li>Ночные смены поддерживаются (end &lt;= start в HH:mm → перенос end на следующий день).</li>
+        <li>Редактирование в UI доступно только для <span class="code">scheduled</span>/<span class="code">conflict</span>.</li>
+        <li>При смене pay-параметров расчетные payroll snapshot-поля инвалидируются и пересчитываются позже.</li>
+      </ul>
+      <h4>Конфликты</h4>
+      <ul>
+        <li>Обычное сохранение без override при overlap возвращает 409 + список конфликтующих интервалов.</li>
+        <li>Статус <span class="code">conflict</span> виден в карточке и подробностях.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET/POST</td><td><span class="code">/api/workdays</span></td><td>Чтение/создание рабочих дней.</td></tr>
+          <tr><td>GET/POST/PUT/DELETE</td><td><span class="code">/api/intervals</span></td><td>CRUD смен.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/workdays/[id]/publish</span></td><td>Публикация (дальше день считается reviewed в verification).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.11 Планнер смен — bulk режим (детально)</h3>
+      <h4>Зачем это нужно</h4>
+      <p>
+        Bulk режим ускоряет планирование однотипных смен сразу на много дат.
+        Владелец/менеджер один раз заполняет форму, система создает пакет интервалов.
+      </p>
+      <h4>Как включается</h4>
+      <ul>
+        <li>В планнере есть переключатель «Массово» (<span class="code">isBulkMode</span>).</li>
+        <li>В этом режиме календарь собирает множественный набор дат (<span class="code">bulkSelectedDates</span>).</li>
+      </ul>
+      <h4>Пошаговый поток bulk-create</h4>
+      <ol>
+        <li>Включить «Массово».</li>
+        <li>Выбрать нужные даты в месячном календаре.</li>
+        <li>Открыть форму и заполнить единые параметры смены.</li>
+        <li>При сохранении каждая дата проходит цикл:
+          <span class="code">getOrCreateWorkday(date)</span> → <span class="code">createInterval(...)</span>.</li>
+        <li>Для API-create в bulk передается <span class="code">allowConflictStatus: true</span>.</li>
+      </ol>
+      <h4>Что означает allowConflictStatus в bulk</h4>
+      <ul>
+        <li>Пакет не «падает целиком» из-за одного пересечения.</li>
+        <li>Конфликтные элементы могут быть созданы со статусом <span class="code">conflict</span> (вместо полного запрета пакета).</li>
+      </ul>
+      <h4>Поведение при ошибках bulk</h4>
+      <ul>
+        <li>Если не создано ни одной смены: ошибка операции.</li>
+        <li>Если часть создана: частичный успех с сообщением «создано N, ошибок M».</li>
+        <li>Если все создано: единый success toast.</li>
+      </ul>
+      <h4>Ограничения bulk</h4>
+      <ul>
+        <li>В <span class="code">readOnly</span> режиме bulk полностью отключен.</li>
+        <li>Позиция обязана иметь default OPEN/CLOSE ruleset.</li>
+        <li>Пересечения и конфликты по сотруднику все равно фиксируются системой.</li>
+      </ul>
+      <h4>API (bulk использует те же endpoint-ы)</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение в bulk</th></tr></thead>
+        <tbody>
+          <tr><td>POST</td><td><span class="code">/api/workdays</span></td><td>Автосоздание workday по каждой выбранной дате.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/intervals</span></td><td>Создание интервала на каждую дату с <span class="code">allowConflictStatus</span>.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/intervals</span></td><td>Обновление отображения созданного пакета/конфликтов.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.12 Исполнение смены: процедуры, open/close, cancel, clock</h3>
+      <h4>Что это на практике</h4>
+      <p>
+        Сотрудник не просто “нажимает открыть/закрыть”, а проходит обязательные правила,
+        включая чек-листы, поля, фото и кассовые вводы.
+      </p>
+      <h4>Что поддерживается</h4>
+      <ul>
+        <li>Загрузка процедур OPEN/CLOSE для конкретной смены.</li>
+        <li>Сохранение ответов всех типов правил.</li>
+        <li>Проверка required и photo-required для cash полей.</li>
+        <li>Force open/close owner-ом (только owner, только с причиной).</li>
+        <li>Cancel shift: только planned/scheduled, обязательно с причиной.</li>
+        <li>Clock-in/out с фото и геопозицией; при clock-out формируется payroll snapshot.</li>
+      </ul>
+      <h4>Бизнес-ограничения</h4>
+      <ul>
+        <li>Открыть нельзя уже открытую/закрытую смену.</li>
+        <li>Закрыть нельзя неоткрытую смену.</li>
+        <li>Если required правила не выполнены, open/close блокируются (кроме owner force).</li>
+        <li>Если CASH правило в workday уже заполнено другой сменой, кассовый блок становится lock/read-only для текущей смены.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET</td><td><span class="code">/api/work-intervals/[id]/procedures</span></td><td>Процедуры + pay preview + cash context.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/procedures/answers</span></td><td>Сохранить ответы по правилам.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/open</span></td><td>Открыть смену (валидации required).</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/close</span></td><td>Закрыть смену + payroll snapshot + cash/tips sync.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/cancel</span></td><td>Отменить запланированную смену.</td></tr>
+          <tr><td>POST/GET</td><td><span class="code">/api/clock</span></td><td>Clock-in/out и журнал отметок.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/procedures/presign</span></td><td>Presigned upload URL для фото.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.13 Касса: настройки полей и формул</h3>
+      <h4>Человеческое описание</h4>
+      <p>
+        Модуль определяет “какие данные кассы собираем” и “как считаем итоговые показатели”
+        (в том числе источник чаевых и выручки).
+      </p>
+      <h4>Что настраивается</h4>
+      <ul>
+        <li>Поля OPEN/CLOSE: required, photo-required, sign, порядок, revenue-basis.</li>
+        <li>Формулы: resultKey/resultLabel/expression/порядок.</li>
+        <li>Метки формул: источник чаевых и источник выручки.</li>
+      </ul>
+      <h4>Критичные ограничения</h4>
+      <ul>
+        <li>Настройку меняет только owner.</li>
+        <li>Хотя бы одно активное поле и хотя бы одна формула обязательны.</li>
+        <li>Не более одной tips-source формулы и одной revenue-source формулы.</li>
+        <li>Запрещено совмещать isTipsSource и isRevenueSource в одной формуле.</li>
+        <li>Revenue-basis поле должно быть CLOSE-полем и только одно.</li>
+        <li>По флагу <span class="code">overwriteExistingSessions</span> можно принудительно пересинхронизировать существующие open/closed сессии.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET/PUT</td><td><span class="code">/api/cash/settings</span></td><td>Чтение/изменение конфигурации кассы (по локации).</td></tr>
+          <tr><td>GET/PUT</td><td><span class="code">/api/tips/settings</span></td><td>Метод деления чаевых equal/by_hours.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.14 Кассовые сессии: open → close → review → owner-edit</h3>
+      <h4>Что это для операционки</h4>
+      <p>
+        Кассовая сессия хранит фактические денежные значения дня и подтверждается отдельным review-процессом.
+      </p>
+      <h4>Жизненный цикл</h4>
+      <ol>
+        <li><strong>Open</strong>: обязательные open-поля и создание snapshot.</li>
+        <li><strong>Close</strong>: обязательные close-поля, валидация, lockVersion-check, пересчет totals.</li>
+        <li><strong>Review</strong>: перевод статуса в reviewed.</li>
+        <li><strong>Owner-edit</strong>: owner правит closed/reviewed; reviewed после правки откатывается в closed.</li>
+      </ol>
+      <h4>Ключевые правила</h4>
+      <ul>
+        <li>Открытие кассы допустимо только в draft workday.</li>
+        <li>Закрытие кассы запрещено в published day.</li>
+        <li>Review только из closed.</li>
+        <li>Добавление receipt запрещено для reviewed.</li>
+        <li>Для конкурентной защиты используется <span class="code">lockVersion</span> в close/review/owner-edit.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET/POST</td><td><span class="code">/api/cash/sessions</span></td><td>Список/открытие кассовой сессии.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/cash/sessions/[id]</span></td><td>Детали сессии.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/cash/sessions/[id]/close</span></td><td>Закрытие кассовой сессии.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/cash/sessions/[id]/review</span></td><td>Проверка кассовой сессии.</td></tr>
+          <tr><td>PATCH</td><td><span class="code">/api/cash/sessions/[id]/owner-edit</span></td><td>Owner-правка закрытой/проверенной кассы.</td></tr>
+          <tr><td>GET/POST</td><td><span class="code">/api/cash/sessions/[id]/receipts</span></td><td>Список/добавление вложений.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module page-break">
+      <h3>6.15 Проверка смен и кассы (verification) — детально</h3>
+      <h4>Что это на простом языке</h4>
+      <p>
+        Это модуль финального контроля: подтвердить, что рабочие смены закрыты корректно,
+        а кассовые сессии проверены ответственным менеджером/owner.
+      </p>
+
+      <h4>Вкладки verification</h4>
+      <ul>
+        <li><strong>Work shifts</strong>: завершенные рабочие смены на выбранную дату.</li>
+        <li><strong>Cash sessions</strong>: закрытые и проверенные кассовые сессии на дату.</li>
+        <li><strong>Review queue</strong>: единая очередь того, что еще не подтверждено.</li>
+      </ul>
+
+      <h4>Критерий «смена проверена»</h4>
+      <div class="warn">
+        В текущей модели проверка смены определяется <strong>не отдельным флагом интервала</strong>,
+        а публикацией рабочего дня: <span class="code">workday.status === "published"</span>.
+      </div>
+      <ol>
+        <li>В Work shifts попадают интервалы со статусом <span class="code">completed</span>.</li>
+        <li>Кнопка «Проверено» вызывает <span class="code">POST /api/workdays/[id]/publish</span>.</li>
+        <li>После публикации day все completed интервалы этого дня в verification считаются reviewed.</li>
+      </ol>
+
+      <h4>Критерий «кассовая смена проверена»</h4>
+      <ol>
+        <li>В Cash sessions видны <span class="code">closed</span> и <span class="code">reviewed</span>.</li>
+        <li>Кнопка «Проверено» вызывает <span class="code">POST /api/cash/sessions/[id]/review</span>.</li>
+        <li>Проверенной считается сессия со статусом <span class="code">reviewed</span>.</li>
+      </ol>
+
+      <h4>Логика очереди Review queue</h4>
+      <ul>
+        <li>Очередь смен: <span class="code">interval.status=completed</span> и day еще не published.</li>
+        <li>Очередь кассы: <span class="code">cashSession.status=closed</span>.</li>
+        <li>Сводный счетчик в owner dashboard берется из <span class="code">/api/verifications/summary</span>.</li>
+      </ul>
+
+      <h4>Drill-down и что проверяется фактически</h4>
+      <ul>
+        <li>По смене: OPEN/CLOSE правила, фото, чек-листы, input-поля, фактическое время.</li>
+        <li>По кассе: snapshot полей open/close, формулы, чеки (receipts), cash photos из процедур.</li>
+      </ul>
+
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET</td><td><span class="code">/api/verifications/summary</span></td><td>workShiftsOnReview + cashSessionsOnReview + total.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/intervals</span></td><td>Источник рабочих смен для вкладок verification.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/cash/sessions</span></td><td>Источник кассовых сессий для verification.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/workdays/[id]/publish</span></td><td>Подтвердить/опубликовать рабочий день.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/cash/sessions/[id]/review</span></td><td>Подтвердить кассовую сессию.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.16 Отчеты и аналитика</h3>
+      <h4>Что пользователь получает</h4>
+      <p>
+        Управленческую картину по кассе и людям за период: динамика полей,
+        вычисления формул, предупреждения и детализация начислений сотрудников.
+      </p>
+      <h4>Функции</h4>
+      <ul>
+        <li>Кассовая сводка: количество сессий, поля open/close, формулы, formulaWarnings/formulaErrors.</li>
+        <li>Проваливание в конкретное поле кассы с историей по датам.</li>
+        <li>Проваливание в конкретную формулу с историей/ошибками.</li>
+        <li>Сводка по каждому сотруднику и карточка его начислений за период.</li>
+      </ul>
+      <h4>Важно</h4>
+      <ul>
+        <li>Перед расчетом отчет может автоматически синхронизировать недостающие cash sessions из процедур.</li>
+        <li>При ошибках формул отчет не падает целиком: возвращаются warnings/errors.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET</td><td><span class="code">/api/reports/cash-summary</span></td><td>Сводка по кассе и формулам.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/reports/cash-fields/[fieldKey]</span></td><td>Детализация одного поля.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/reports/cash-formulas/[resultKey]</span></td><td>Детализация одной формулы.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/employees/[id]/earnings</span></td><td>Начисления выбранного сотрудника.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/worker/earnings</span></td><td>Начисления текущего worker.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.17 Payroll</h3>
+      <h4>Что это делает</h4>
+      <p>
+        Формирует payroll run за период: зарплата + чаевые по сотрудникам,
+        даже если часть интервалов еще не имела сохраненного payroll snapshot.
+      </p>
+      <h4>Как работает</h4>
+      <ul>
+        <li>Берутся completed интервалы периода.</li>
+        <li>Для интервалов без расчетных полей выполняется on-the-fly пересчет.</li>
+        <li>Добавляются tip allocations из pools.</li>
+        <li>Формируются payroll items с total payout.</li>
+      </ul>
+      <h4>Доступ</h4>
+      <ul>
+        <li>Создание run: owner/manager.</li>
+        <li>Просмотр payroll items: owner/manager или worker только свои.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>POST</td><td><span class="code">/api/payroll/runs</span></td><td>Создать payroll run за период.</td></tr>
+          <tr><td>GET</td><td><span class="code">/api/payroll/items</span></td><td>Получить payroll items.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.18 Уведомления, account, профиль, настройки</h3>
+      <h4>Что это на пользовательском уровне</h4>
+      <p>
+        Лента событий и базовое управление аккаунтом внутри приложения.
+      </p>
+      <h4>Функциональность</h4>
+      <ul>
+        <li>Лента уведомлений: фильтр по статусу/типу, mark one, mark all, delete.</li>
+        <li>Owner profile: смена текущего заведения, переход к добавлению нового.</li>
+        <li>Worker/owner settings экраны есть, но переключатели в них сейчас локальные (UI-состояние без отдельного backend endpoint).</li>
+        <li>Пункты account hub <span class="code">language/help</span> отображаются, но отдельного серверного функционала для них в текущей реализации нет.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>GET/PATCH</td><td><span class="code">/api/notifications</span></td><td>Список уведомлений и mark-all-read.</td></tr>
+          <tr><td>PATCH/DELETE</td><td><span class="code">/api/notifications/[id]</span></td><td>Mark-read одного или удаление.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/auth/logout</span></td><td>Выход из аккаунта.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="module">
+      <h3>6.19 Инфраструктурные и сервисные функции</h3>
+      <h4>Что сюда входит</h4>
+      <ul>
+        <li>Загрузка фото в объектное хранилище по presigned URL.</li>
+        <li>Retention очистка старых медиа процедур (cron endpoint с секретом).</li>
+        <li>Key-value app state endpoint-ы.</li>
+        <li>Legacy venue settings storage поверх appState.</li>
+      </ul>
+      <h4>API</h4>
+      <table>
+        <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Назначение</th></tr></thead>
+        <tbody>
+          <tr><td>POST</td><td><span class="code">/api/procedures/presign</span></td><td>Получить upload URL для фото.</td></tr>
+          <tr><td>POST</td><td><span class="code">/api/internal/procedures/media-retention</span></td><td>Удаление старых фото процедур (batch cleanup).</td></tr>
+          <tr><td>GET/PUT</td><td><span class="code">/api/state/[key]</span></td><td>Общее key-value хранилище состояния.</td></tr>
+          <tr><td>GET/PUT</td><td><span class="code">/api/venues/[venueId]/settings</span></td><td>Legacy key-value для venue.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>7. Сводка критичных бизнес-правил и ограничений</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 260px;">Область</th>
+          <th>Правило</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Планнер / позиция</td>
+          <td>Без default OPEN/CLOSE ruleset позиция не может быть использована для create/update смены.</td>
+        </tr>
+        <tr>
+          <td>Планнер / редактирование</td>
+          <td>В UI редактируются только <span class="code">scheduled</span> и <span class="code">conflict</span>.</td>
+        </tr>
+        <tr>
+          <td>Планнер / ночные смены</td>
+          <td>Если HH:mm end &lt;= start, конец переносится на следующий день.</td>
+        </tr>
+        <tr>
+          <td>Bulk</td>
+          <td>Используется <span class="code">allowConflictStatus=true</span>; возможен частичный успех пакета.</td>
+        </tr>
+        <tr>
+          <td>Отмена смены</td>
+          <td>Только из <span class="code">scheduled</span> и только с причиной.</td>
+        </tr>
+        <tr>
+          <td>Force open/close смены</td>
+          <td>Только owner и только с заполненной причиной.</td>
+        </tr>
+        <tr>
+          <td>Касса / open</td>
+          <td>Открытие кассы допускается только в <span class="code">draft</span> workday.</td>
+        </tr>
+        <tr>
+          <td>Касса / close</td>
+          <td>Нельзя закрывать кассу в <span class="code">published</span> day; только open/closing_draft статусы.</td>
+        </tr>
+        <tr>
+          <td>Касса / review</td>
+          <td>Проверка кассы только из <span class="code">closed</span>.</td>
+        </tr>
+        <tr>
+          <td>Касса / owner-edit</td>
+          <td>Только owner; только для closed/reviewed; reviewed после правки становится closed.</td>
+        </tr>
+        <tr>
+          <td>Касса / receipts</td>
+          <td>Для reviewed сессии добавление вложений запрещено.</td>
+        </tr>
+        <tr>
+          <td>Verification / смены</td>
+          <td>Смена считается проверенной через <span class="code">workday.status=published</span>, не через флаг интервала.</td>
+        </tr>
+        <tr>
+          <td>Verification / очередь</td>
+          <td>На проверке: completed интервалы в непубликованных днях + closed cash sessions.</td>
+        </tr>
+        <tr>
+          <td>Конкурентный доступ</td>
+          <td>Критичные операции кассы учитывают <span class="code">lockVersion</span> и возвращают 409 при рассинхроне.</td>
+        </tr>
+        <tr>
+          <td>Payroll</td>
+          <td>При отсутствии snapshot у completed интервала выполняется пересчет при создании payroll run.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 class="page-break">8. Полный каталог API endpoint-ов</h2>
+    <p class="small">
+      Ниже перечислены все route-файлы из <span class="code">app/api/*</span>, сгруппированные по доменам.
     </p>
+
+    <h3>8.1 Auth и пользователь</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td><span class="code">/api/auth/register</span></td><td>Регистрация.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/auth/login</span></td><td>Вход.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/auth/logout</span></td><td>Выход.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/auth/me</span></td><td>Профиль + контекст организации.</td></tr>
+        <tr><td>POST/GET</td><td><span class="code">/api/user/role</span></td><td>Выбор/чтение primaryMode.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.2 Онбординг и приглашения</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td><span class="code">/api/onboarding/status</span></td><td>Статус onboarding.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/onboarding/owner/start</span></td><td>Старт owner onboarding.</td></tr>
+        <tr><td>PATCH</td><td><span class="code">/api/onboarding/owner/step/[step]</span></td><td>Сохранение шага owner onboarding.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/onboarding/owner/finish</span></td><td>Финал owner onboarding.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/onboarding/owner</span></td><td>Legacy owner onboarding endpoint.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/onboarding/employee</span></td><td>Worker onboarding.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/invite-codes</span></td><td>Коды приглашения.</td></tr>
+        <tr><td>GET/POST/DELETE</td><td><span class="code">/api/invitations</span></td><td>Email-приглашения.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.3 Организации, venues, локации</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>GET/PUT</td><td><span class="code">/api/organizations</span></td><td>Организация.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/locations</span></td><td>Локации.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/venues</span></td><td>Legacy venues API.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/venues/select</span></td><td>Выбор активного заведения.</td></tr>
+        <tr><td>GET/PUT</td><td><span class="code">/api/venues/[venueId]/settings</span></td><td>Legacy venue settings (appState).</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.4 Команда и роли</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>GET/POST</td><td><span class="code">/api/employees</span></td><td>Сотрудники.</td></tr>
+        <tr><td>PUT</td><td><span class="code">/api/employees/[id]/positions</span></td><td>Позиции сотрудника.</td></tr>
+        <tr><td>GET/PUT</td><td><span class="code">/api/employees/[id]/pay-components</span></td><td>Pay components сотрудника.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/employees/[id]/earnings</span></td><td>Начисления сотрудника.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/positions</span></td><td>Должности.</td></tr>
+        <tr><td>GET/PATCH/DELETE</td><td><span class="code">/api/positions/[id]</span></td><td>Операции по должности.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/positions/[id]/rules</span></td><td>Шаблоны правил.</td></tr>
+        <tr><td>PATCH/DELETE</td><td><span class="code">/api/positions/[id]/rules/[ruleId]</span></td><td>Операции по шаблону правила.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/positions/[id]/ruleset</span></td><td>Effective ruleset preview.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.5 Планирование и выполнение смен</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>GET/POST</td><td><span class="code">/api/workdays</span></td><td>Рабочие дни.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/workdays/[id]/publish</span></td><td>Публикация рабочего дня.</td></tr>
+        <tr><td>GET/POST/PUT/DELETE</td><td><span class="code">/api/intervals</span></td><td>CRUD интервалов смен.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/work-intervals/[id]/procedures</span></td><td>Процедуры по интервалу.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/procedures/answers</span></td><td>Сохранение ответов процедур.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/open</span></td><td>Открытие смены.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/close</span></td><td>Закрытие смены.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/work-intervals/[id]/cancel</span></td><td>Отмена смены.</td></tr>
+        <tr><td>POST/GET</td><td><span class="code">/api/clock</span></td><td>Clock-in/out и журнал.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.6 Касса, чаевые, проверка</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>GET/PUT</td><td><span class="code">/api/cash/settings</span></td><td>Настройки кассы.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/cash/sessions</span></td><td>Список/открытие кассовых сессий.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/cash/sessions/[id]</span></td><td>Детали кассовой сессии.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/cash/sessions/[id]/close</span></td><td>Закрытие кассовой сессии.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/cash/sessions/[id]/review</span></td><td>Review кассовой сессии.</td></tr>
+        <tr><td>PATCH</td><td><span class="code">/api/cash/sessions/[id]/owner-edit</span></td><td>Owner edit кассы.</td></tr>
+        <tr><td>GET/POST</td><td><span class="code">/api/cash/sessions/[id]/receipts</span></td><td>Вложения кассы.</td></tr>
+        <tr><td>GET/PUT</td><td><span class="code">/api/tips/settings</span></td><td>Метод деления чаевых.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/verifications/summary</span></td><td>Счетчики review-очереди.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.7 Отчеты и payroll</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td><span class="code">/api/reports/cash-summary</span></td><td>Сводка по кассе/формулам.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/reports/cash-fields/[fieldKey]</span></td><td>Детализация cash field.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/reports/cash-formulas/[resultKey]</span></td><td>Детализация cash formula.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/payroll/runs</span></td><td>Создание payroll run.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/payroll/items</span></td><td>Список payroll items.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.8 Worker-specific и уведомления</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td><span class="code">/api/worker/next-shift</span></td><td>Ближайшая смена worker.</td></tr>
+        <tr><td>GET</td><td><span class="code">/api/worker/earnings</span></td><td>Начисления текущего worker.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/worker/venues/join</span></td><td>Присоединение worker к заведению.</td></tr>
+        <tr><td>GET/PATCH</td><td><span class="code">/api/notifications</span></td><td>Лента уведомлений и mark-all-read.</td></tr>
+        <tr><td>PATCH/DELETE</td><td><span class="code">/api/notifications/[id]</span></td><td>Операции по одному уведомлению.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.9 Сервисные endpoint-ы</h3>
+    <table>
+      <thead><tr><th style="width: 95px;">Метод</th><th style="width: 300px;">Endpoint</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        <tr><td>GET/PUT</td><td><span class="code">/api/state/[key]</span></td><td>Системное key-value состояние.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/procedures/presign</span></td><td>Presigned URL для фото процедур.</td></tr>
+        <tr><td>POST</td><td><span class="code">/api/internal/procedures/media-retention</span></td><td>Очистка старых фотографий процедур.</td></tr>
+      </tbody>
+    </table>
+
+    <p class="small">Конец документа.</p>
   </div>
 </body>
 </html>
