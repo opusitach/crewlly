@@ -26,6 +26,9 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
   const { toast } = useToast()
 
   const totalSteps = 4
+  const selectedPositionNames = availablePositions
+    .filter((position) => selectedPositionIds.includes(position.id))
+    .map((position) => position.name)
 
   const nextStep = () => {
     if (step < 5) {
@@ -578,19 +581,15 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
                 <CheckCircle2 className="h-5 w-5 text-primary" strokeWidth={1.5} />
               </div>
               <div>
-                <p className="font-semibold">Café Central</p>
+                <p className="font-semibold">{inviteOrganization?.name ?? "Ваше заведение"}</p>
                 <p className="text-sm text-muted-foreground">Ваше заведение</p>
               </div>
             </div>
 
             <div className="pt-3 border-t border-border space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Должность</span>
-                <span className="font-medium">Официант</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Ставка</span>
-                <span className="font-medium">250 ₽/час</span>
+                <span className="text-muted-foreground">Должности</span>
+                <span className="font-medium text-right">{selectedPositionNames.join(", ") || "Не выбраны"}</span>
               </div>
             </div>
           </Card>
