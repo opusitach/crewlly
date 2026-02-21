@@ -58,17 +58,7 @@ services:
       done &&
       /usr/bin/mc mb --ignore-existing local/$$MINIO_BUCKET &&
       /usr/bin/mc anonymous set download local/$$MINIO_BUCKET &&
-      cat >/tmp/cors.json <<'EOF' &&
-      [
-        {
-          \"AllowedOrigins\": [\"*\"],
-          \"AllowedMethods\": [\"GET\", \"PUT\", \"POST\", \"HEAD\"],
-          \"AllowedHeaders\": [\"*\"],
-          \"ExposeHeaders\": [\"ETag\"],
-          \"MaxAgeSeconds\": 3000
-        }
-      ]
-      EOF
+      printf '%s' '[{\"AllowedOrigins\":[\"*\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"POST\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"ETag\"],\"MaxAgeSeconds\":3000}]' > /tmp/cors.json &&
       /usr/bin/mc cors set local/$$MINIO_BUCKET /tmp/cors.json;
       "
     environment:
