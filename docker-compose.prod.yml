@@ -1,4 +1,24 @@
 services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+      pgadmin:
+        condition: service_started
+      minio:
+        condition: service_started
+
   db:
     image: postgres:16
     restart: unless-stopped
@@ -6,6 +26,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
       POSTGRES_DB: ${POSTGRES_DB:-app}
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -25,8 +47,8 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?Set PGADMIN_DEFAULT_PASSWORD in .env.production}
       PGADMIN_CONFIG_SERVER_MODE: "False"
-    ports:
-      - "${PGADMIN_PORT:-5050}:80"
+    expose:
+      - "80"
     volumes:
       - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
       - pgadmin_data:/var/lib/pgadmin
@@ -37,10 +59,11 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
-    command: server /data --console-address ":9001"
-    ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      MINIO_CONSOLE_ADDRESS: ":9001"
+    command: server /data --address ":9000" --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
     volumes:
       - minio_data:/data
 
@@ -116,6 +139,8 @@ services:
         condition: service_started
       migrate:
         condition: service_completed_successfully
+    expose:
+      - "3001"
     healthcheck:
       test:
         [
@@ -152,8 +177,8 @@ services:
       AWS_S3_PUBLIC_BASE_URL: ${AWS_S3_PUBLIC_BASE_URL:?Set AWS_S3_PUBLIC_BASE_URL in .env.production}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio123}
-    ports:
-      - "${APP_PORT:-3000}:3000"
+    expose:
+      - "3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -162,3 +187,5 @@ volumes:
   pgdata:
   minio_data:
   pgadmin_data:
+  caddy_data:
+  caddy_config:
