@@ -1,6 +1,26 @@
 version: "3.9"
 
 services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+      pgadmin:
+        condition: service_started
+      minio:
+        condition: service_started
+
   frontend:
     build:
       context: .
@@ -10,20 +30,20 @@ services:
     command: npm run start
     environment:
       NODE_ENV: production
-      COOKIE_SECURE: "false"
+      COOKIE_SECURE: "true"
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: postgresql://app:app@db:5432/app
       PORT: 3000
       API_PROXY_TARGET: http://backend:3001
       AWS_REGION: us-east-1
       AWS_S3_ENDPOINT: http://minio:9000
-      AWS_S3_PRESIGN_ENDPOINT: http://localhost:9000
+      AWS_S3_PRESIGN_ENDPOINT: https://minio.example.com
       AWS_S3_BUCKET: crewlly-procedures
-      AWS_S3_PUBLIC_BASE_URL: http://localhost:9000/crewlly-procedures
+      AWS_S3_PUBLIC_BASE_URL: https://minio.example.com/crewlly-procedures
       AWS_ACCESS_KEY_ID: minio
       AWS_SECRET_ACCESS_KEY: minio123
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       backend:
         condition: service_started
@@ -38,19 +58,19 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      COOKIE_SECURE: "false"
+      COOKIE_SECURE: "true"
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: postgresql://app:app@db:5432/app
       PORT: 3001
       AWS_REGION: us-east-1
       AWS_S3_ENDPOINT: http://minio:9000
-      AWS_S3_PRESIGN_ENDPOINT: http://localhost:9000
+      AWS_S3_PRESIGN_ENDPOINT: https://minio.example.com
       AWS_S3_BUCKET: crewlly-procedures
-      AWS_S3_PUBLIC_BASE_URL: http://localhost:9000/crewlly-procedures
+      AWS_S3_PUBLIC_BASE_URL: https://minio.example.com/crewlly-procedures
       AWS_ACCESS_KEY_ID: minio
       AWS_SECRET_ACCESS_KEY: minio123
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     depends_on:
       db:
         condition: service_started
@@ -64,8 +84,8 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
       POSTGRES_DB: app
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -78,8 +98,8 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin
       PGADMIN_CONFIG_SERVER_MODE: "False"
-    ports:
-      - "5050:80"
+    expose:
+      - "80"
     volumes:
       - ./docker/pgadmin/servers.json:/pgadmin4/servers.json
 
@@ -89,10 +109,11 @@ services:
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio123
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+      MINIO_CONSOLE_ADDRESS: ":9001"
+    command: server /data --address ":9000" --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
     volumes:
       - minio_data:/data
 
@@ -114,3 +135,5 @@ services:
 volumes:
   pgdata:
   minio_data:
+  caddy_data:
+  caddy_config:
