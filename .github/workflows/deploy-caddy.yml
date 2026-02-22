@@ -97,8 +97,8 @@ jobs:
               attempt=0
               while true; do
                 headers="$(curl --silent --show-error --insecure --resolve "${domain}:443:127.0.0.1" -I "https://${domain}${path}" || true)"
-                status="$(printf '%s\n' "$headers" | awk 'toupper($1) ~ /^HTTP\\// { code=$2 } END { print code }')"
-                www_auth="$(printf '%s\n' "$headers" | awk 'BEGIN{IGNORECASE=1} /^WWW-Authenticate:/ { print; exit }')"
+                status="$(printf '%s\n' "$headers" | sed -n 's/^HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\1/p' | tail -n 1)"
+                www_auth="$(printf '%s\n' "$headers" | grep -i '^WWW-Authenticate:' | head -n 1 || true)"
 
                 if [ "$status" = "401" ] && printf '%s' "$www_auth" | grep -qi '^WWW-Authenticate: .*Basic'; then
                   echo "Basic Auth smoke check passed for https://${domain}${path}"
