@@ -96,7 +96,7 @@ jobs:
               path="${2:-/}"
               attempt=0
               while true; do
-                headers="$(curl --silent --show-error --insecure --resolve "${domain}:443:127.0.0.1" -I "https://${domain}${path}" || true)"
+                headers="$(curl -q --silent --show-error --insecure --resolve "${domain}:443:127.0.0.1" -H 'Authorization:' -D - -o /dev/null "https://${domain}${path}" || true)"
                 status="$(printf '%s\n' "$headers" | sed -n 's/^HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\1/p' | tail -n 1)"
                 www_auth="$(printf '%s\n' "$headers" | grep -i '^WWW-Authenticate:' | head -n 1 || true)"
 
