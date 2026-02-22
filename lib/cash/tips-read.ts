@@ -17,6 +17,17 @@ type CompiledTipsFormula = {
   formulaKeys: Set<string>
 }
 
+function toCentsFromCashSessionUnits(value: number) {
+  if (!Number.isSafeInteger(value)) {
+    throw new Error("Некорректное значение поля кассовой сессии")
+  }
+  const cents = value * 100
+  if (!Number.isSafeInteger(cents)) {
+    throw new Error("Значение поля кассовой сессии выходит за безопасный диапазон cents")
+  }
+  return cents
+}
+
 export async function computeWorkdayTipsTotalsFromCashSessions(
   db: TipsReadDb,
   targets: WorkdayTipsTarget[],
@@ -161,7 +172,7 @@ export async function computeWorkdayTipsTotalsFromCashSessions(
     for (const session of daySessions) {
       const valueMap: Record<string, number> = {}
       for (const fieldValue of session.fieldValues) {
-        valueMap[fieldValue.fieldKeySnapshot] = fieldValue.valueCents
+        valueMap[fieldValue.fieldKeySnapshot] = toCentsFromCashSessionUnits(fieldValue.valueCents)
       }
       for (const key of compiled.formulaKeys) {
         if (!Object.prototype.hasOwnProperty.call(valueMap, key)) {
@@ -189,4 +200,3 @@ export async function computeWorkdayTipsTotalsFromCashSessions(
 
   return tipsByWorkdayId
 }
-

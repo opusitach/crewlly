@@ -40,7 +40,7 @@ describe("earnings tips aggregation", () => {
         findMany: async () => [
           {
             workdayId: "wd_1",
-            fieldValues: [{ fieldKeySnapshot: "tips_total", valueCents: 17_600 }],
+            fieldValues: [{ fieldKeySnapshot: "tips_total", valueCents: 176 }],
           },
         ],
       },
@@ -107,7 +107,7 @@ describe("earnings tips aggregation", () => {
         findMany: async () => [
           {
             workdayId: "wd_2",
-            fieldValues: [{ fieldKeySnapshot: "tips_total", valueCents: 8_000 }],
+            fieldValues: [{ fieldKeySnapshot: "tips_total", valueCents: 80 }],
           },
         ],
       },
@@ -167,7 +167,7 @@ describe("earnings tips aggregation", () => {
         findMany: async () => [
           {
             workdayId: "wd_3",
-            fieldValues: [{ fieldKeySnapshot: "tips_total", valueCents: 17_600 }],
+            fieldValues: [{ fieldKeySnapshot: "tips_total", valueCents: 176 }],
           },
         ],
       },

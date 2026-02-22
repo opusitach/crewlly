@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { computeWorkdayTipsTotalsFromCashSessions } from "../lib/cash/tips-read"
 
 describe("tips read fallback", () => {
-  it("reads tips total from cash session values in cents", async () => {
+  it("converts cash session values from whole units to cents", async () => {
     const db = {
       cashSession: {
         findMany: async () => [
@@ -40,7 +40,6 @@ describe("tips read fallback", () => {
       { workdayId: "wd_1", locationId: "loc_1" },
     ])
 
-    expect(tipsByWorkday.get("wd_1")).toBe(12_345)
+    expect(tipsByWorkday.get("wd_1")).toBe(1_234_500)
   })
 })
-

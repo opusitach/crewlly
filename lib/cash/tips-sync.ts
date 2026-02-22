@@ -25,6 +25,17 @@ type ActiveCashFieldRow = {
   inputStage: string
 }
 
+function toCentsFromCashSessionUnits(value: number) {
+  if (!Number.isSafeInteger(value)) {
+    throw new Error("Некорректное значение поля кассовой сессии")
+  }
+  const cents = value * 100
+  if (!Number.isSafeInteger(cents)) {
+    throw new Error("Значение поля кассовой сессии выходит за безопасный диапазон cents")
+  }
+  return cents
+}
+
 export async function syncWorkdayTipsFromCashSessions(
   tx: Prisma.TransactionClient,
   input: { workdayId: string; locationId: string },
@@ -254,7 +265,7 @@ async function resolveTipsTotalAmountCents(
       const valueMap: Record<string, number> = {}
 
       for (const fieldValue of session.fieldValues) {
-        valueMap[fieldValue.fieldKeySnapshot] = fieldValue.valueCents
+        valueMap[fieldValue.fieldKeySnapshot] = toCentsFromCashSessionUnits(fieldValue.valueCents)
       }
 
       total += evaluateTipsFormula({

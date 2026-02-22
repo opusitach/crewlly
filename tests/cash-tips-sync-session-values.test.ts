@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { syncWorkdayTipsFromCashSessions } from "../lib/cash/tips-sync"
 
 describe("tips sync for cash sessions", () => {
-  it("does not multiply cash session formula result by 100 twice", async () => {
+  it("converts cash session formula result from whole units to cents exactly once", async () => {
     const tx = {
       workday: {
         findUnique: async () => ({ id: "wd_1", status: "draft" }),
@@ -70,7 +70,7 @@ describe("tips sync for cash sessions", () => {
     })
 
     expect(result.frozen).toBe(false)
-    expect(result.totalAmountCents).toBe(12_345)
+    expect(result.totalAmountCents).toBe(1_234_500)
     expect(result.allocationsCount).toBe(1)
   })
 })

@@ -3,6 +3,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg } from "@/lib/auth"
 import { computeIntervalMinutesWorked, computeIntervalPayrollSnapshot } from "@/lib/payroll/interval-compensation"
+import { syncCashSessionFromWorkdayProcedures } from "@/lib/cash/session-sync"
 import { syncWorkdayTipsFromCashSessions } from "@/lib/cash/tips-sync"
 import { computeEmployeeTipsByWorkdayForEarnings } from "@/lib/cash/earnings-tips"
 
@@ -154,6 +155,7 @@ export async function GET(request: Request, context: RouteContext) {
     try {
       await prisma.$transaction(async (tx) => {
         for (const target of workdaysToSync.values()) {
+          await syncCashSessionFromWorkdayProcedures(tx, target)
           await syncWorkdayTipsFromCashSessions(tx, target)
         }
       })
