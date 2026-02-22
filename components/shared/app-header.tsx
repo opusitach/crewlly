@@ -12,7 +12,7 @@ interface AppHeaderProps {
   onVenueChange?: () => void
   onAvatarClick: () => void
   onNotificationClick?: () => void
-  unreadCount?: number
+  unreadCount?: number | null
   avatarUrl?: string
   userName?: string
 }
@@ -26,10 +26,13 @@ export default function AppHeader({
   onVenueChange,
   onAvatarClick,
   onNotificationClick,
-  unreadCount = 0,
+  unreadCount,
   avatarUrl,
   userName,
 }: AppHeaderProps) {
+  const hasUnreadBadge = typeof unreadCount === "number" && unreadCount > 0
+  const unreadBadgeLabel = hasUnreadBadge ? (unreadCount > 9 ? "9+" : unreadCount) : null
+
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -77,9 +80,9 @@ export default function AppHeader({
                 className="relative flex-shrink-0 rounded-full h-9 w-9 hover:bg-muted/50 transition-colors flex items-center justify-center"
               >
                 <Bell className="h-5 w-5" strokeWidth={1.5} />
-                {unreadCount > 0 && (
+                {hasUnreadBadge && (
                   <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-destructive flex items-center justify-center">
-                    <span className="text-[9px] text-white font-bold">{unreadCount > 9 ? "9+" : unreadCount}</span>
+                    <span className="text-[9px] text-white font-bold">{unreadBadgeLabel}</span>
                   </div>
                 )}
               </button>

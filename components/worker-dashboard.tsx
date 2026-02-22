@@ -95,7 +95,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "settings" | "notifications">(
     resolvedTab === "profile" ? "profile" : "none",
   )
-  const [unreadNotifications, setUnreadNotifications] = useState(0)
+  const [unreadNotifications, setUnreadNotifications] = useState<number | null>(null)
   const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false)
   const [isJoinVenueOpen, setIsJoinVenueOpen] = useState(false)
   const [joinInviteCode, setJoinInviteCode] = useState("")
@@ -295,6 +295,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
 
   useEffect(() => {
     const loadUnreadNotifications = async () => {
+      setUnreadNotifications(null)
       try {
         const res = await fetch("/api/notifications?status=unread", { credentials: "include", cache: "no-store" })
         if (!res.ok) {
