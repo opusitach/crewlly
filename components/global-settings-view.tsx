@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, Check, Clock, Info, ReceiptText, ShieldCheck, Sparkles, UsersRound } from "lucide-react"
+import { ChevronLeft, Check, Clock, ReceiptText, ShieldCheck, Sparkles, UsersRound } from "lucide-react"
 import CashSettingsView, { type CashSettingsTab } from "@/components/cash-settings-view"
 import EmployeesView from "@/components/employees-view"
 import PositionRulesView from "@/components/position-rules-view"
@@ -92,19 +92,6 @@ function TipsDistributionSettingsView({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="p-4 space-y-6">
-        <Card className="p-4 bg-primary/5 border-primary/20">
-          <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" strokeWidth={1.5} />
-            <div className="space-y-1">
-              <p className="text-sm font-medium">Глобальная настройка</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Метод влияет на распределение чаевых в `tips_pools/tip_allocations` для всех новых и черновых рабочих
-                дней.
-              </p>
-            </div>
-          </div>
-        </Card>
-
         <div className="space-y-3">
           <h3 className="font-semibold">Метод распределения</h3>
 
