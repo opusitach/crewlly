@@ -1066,7 +1066,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         onNavigate={handleAccountNavigation}
       />
 
-      <BottomSheet isOpen={isVenueSelectorOpen} onClose={() => setIsVenueSelectorOpen(false)}>
+      <BottomSheet isOpen={isVenueSelectorOpen} onClose={() => setIsVenueSelectorOpen(false)} showCloseButton>
         <div className="space-y-3">
           <div>
             <h3 className="text-base font-semibold">Выберите заведение</h3>

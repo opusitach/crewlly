@@ -1004,7 +1004,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
         onNavigate={handleAccountNavigation}
       />
 
-      <BottomSheet isOpen={isVenueSelectorOpen} onClose={closeVenueSelector}>
+      <BottomSheet isOpen={isVenueSelectorOpen} onClose={closeVenueSelector} showCloseButton>
         <div className="space-y-3">
           <div>
             <h3 className="text-base font-semibold">Выберите заведение</h3>

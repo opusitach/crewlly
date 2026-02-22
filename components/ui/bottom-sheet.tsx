@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
+import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type BottomSheetProps = {
@@ -8,13 +9,10 @@ type BottomSheetProps = {
   onClose: () => void
   children: React.ReactNode
   className?: string
+  showCloseButton?: boolean
 }
 
-export function BottomSheet({ isOpen, onClose, children, className }: BottomSheetProps) {
-  const sheetRef = useRef<HTMLDivElement | null>(null)
-  const startYRef = useRef<number | null>(null)
-  const [dragY, setDragY] = useState(0)
-  const threshold = 120
+export function BottomSheet({ isOpen, onClose, children, className, showCloseButton = false }: BottomSheetProps) {
   const prevBodyOverflow = useRef<string | null>(null)
 
   useEffect(() => {
@@ -41,73 +39,33 @@ export function BottomSheet({ isOpen, onClose, children, className }: BottomShee
     }
   }, [isOpen])
 
-  const startDrag = (clientY: number) => {
-    startYRef.current = clientY
-  }
-
-  const moveDrag = (clientY: number) => {
-    if (startYRef.current === null) return
-    const delta = clientY - startYRef.current
-    setDragY(delta > 0 ? delta : 0)
-  }
-
-  const endDrag = () => {
-    if (dragY > threshold) {
-      onClose()
-    }
-    setDragY(0)
-    startYRef.current = null
-  }
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    // guard for non-pointer environments or synthetic events without preventDefault
-    try {
-      e.preventDefault()
-    } catch {
-      // ignore
-    }
-    try {
-      ;(e.target as HTMLElement)?.setPointerCapture?.(e.pointerId)
-    } catch {
-      // ignore
-    }
-    startDrag(e.clientY)
-  }
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (startYRef.current !== null) {
-      moveDrag(e.clientY)
-    }
-  }
-
-  const handlePointerUp = () => {
-    endDrag()
-  }
-
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end" onClick={onClose}>
       <div
-        ref={sheetRef}
         className={cn(
-          "bg-card text-card-foreground flex flex-col gap-3 rounded-xl border py-4 rounded-t-3xl rounded-b-none border-b-0 shadow-2xl max-w-md mx-auto w-full animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-hidden",
+          "bg-card text-card-foreground relative flex flex-col rounded-xl border py-4 rounded-t-3xl rounded-b-none border-b-0 shadow-2xl max-w-md mx-auto w-full animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-hidden",
           className,
         )}
-        style={{ transform: dragY ? `translateY(${dragY}px)` : undefined }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
-        <div
-          className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing select-none"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        >
-          <div className="h-1.5 w-14 rounded-full bg-muted" />
-        </div>
-        <div className="px-5 pb-4 overflow-auto max-h-[calc(90vh-56px)]">{children}</div>
+        {showCloseButton && (
+          <div className="flex justify-end px-5 pt-2 pb-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background/80 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Закрыть"
+            >
+              <X className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          </div>
+        )}
+        <div className="min-h-0 overflow-auto px-5 pb-4">{children}</div>
       </div>
     </div>
   )
 }
-
