@@ -16,7 +16,18 @@
 # API auth/authorization is handled by the application.
 {$CADDY_API_DOMAIN} {
   encode gzip zstd
-  reverse_proxy back:3001
+
+  @api path /api/*
+  handle @api {
+    reverse_proxy back:3001
+  }
+
+  # back is the same Next.js app and can render UI pages too.
+  # Protect non-API routes so the app cannot be accessed via API domain without Basic Auth.
+  handle {
+    import protected_basic_auth
+    reverse_proxy back:3001
+  }
 }
 
 {$CADDY_PGADMIN_DOMAIN} {
