@@ -1,5 +1,6 @@
-# Public frontend (intentionally without basic auth).
+# Frontend protected by HTTP Basic Auth.
 {$CADDY_APP_DOMAIN} {
+  import protected_basic_auth
   encode gzip zstd
   reverse_proxy front:3000
 }
