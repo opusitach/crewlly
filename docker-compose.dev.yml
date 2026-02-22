@@ -1,95 +1,176 @@
-version: "3.9"
-
 services:
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: deps
-    command: sh -c "npx prisma@5.19.1 generate && npx prisma@5.19.1 db push && npm run dev -- -H 0.0.0.0 -p 3000"
+  db:
+    image: postgres:16
+    restart: unless-stopped
     environment:
-      NODE_ENV: development
-      NEXT_TELEMETRY_DISABLED: "1"
-      WATCHPACK_POLLING: "1"
-      DATABASE_URL: postgresql://app:app@db:5432/app
-      PORT: 3000
-      API_PROXY_TARGET: http://backend:3001
-      AWS_REGION: us-east-1
-      AWS_S3_ENDPOINT: http://minio:9000
-      AWS_S3_PRESIGN_ENDPOINT: http://localhost:9000
-      AWS_S3_BUCKET: crewlly-procedures
-      AWS_S3_PUBLIC_BASE_URL: http://localhost:9000/crewlly-procedures
-      AWS_ACCESS_KEY_ID: minio
-      AWS_SECRET_ACCESS_KEY: minio123
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
     ports:
-      - "3000:3000"
+      - "${DEV_DB_PORT:-5432}:5432"
     volumes:
-      - .:/app
-      - frontend_node_modules:/app/node_modules
-      - frontend_next:/app/.next
-    depends_on:
-      minio:
-        condition: service_started
+      - dev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: deps
-    command: sh -c "npx prisma@5.19.1 generate && npx prisma@5.19.1 db push && npm run dev -- -H 0.0.0.0 -p 3001"
-    environment:
-      NODE_ENV: development
-      NEXT_TELEMETRY_DISABLED: "1"
-      WATCHPACK_POLLING: "1"
-      DATABASE_URL: postgresql://app:app@db:5432/app
-      PORT: 3001
-      AWS_REGION: us-east-1
-      AWS_S3_ENDPOINT: http://minio:9000
-      AWS_S3_PRESIGN_ENDPOINT: http://localhost:9000
-      AWS_S3_BUCKET: crewlly-procedures
-      AWS_S3_PUBLIC_BASE_URL: http://localhost:9000/crewlly-procedures
-      AWS_ACCESS_KEY_ID: minio
-      AWS_SECRET_ACCESS_KEY: minio123
-    ports:
-      - "3001:3001"
-    volumes:
-      - .:/app
-      - backend_node_modules:/app/node_modules
-      - backend_next:/app/.next
+  pgadmin:
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
     depends_on:
-      minio:
-        condition: service_started
+      db:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "${DEV_PGADMIN_PORT:-5050}:80"
+    volumes:
+      - ./infra/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - dev_pgadmin_data:/var/lib/pgadmin
 
   minio:
     image: minio/minio:RELEASE.2024-08-17T01-24-54Z
+    restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
-    command: server /data --console-address ":9001"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+      MINIO_CONSOLE_ADDRESS: ":9001"
+    command: server /data --address ":9000" --console-address ":9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${DEV_MINIO_API_PORT:-9000}:9000"
+      - "${DEV_MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
-      - minio_data:/data
+      - dev_minio_data:/data
 
   minio-init:
     image: minio/mc:latest
     depends_on:
-      - minio
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
-      /usr/bin/mc mb --ignore-existing local/$$MINIO_BUCKET &&
-      /usr/bin/mc anonymous set download local/$$MINIO_BUCKET;
-      "
+      minio:
+        condition: service_started
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - /opt/minio/minio-init.sh
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
-      MINIO_BUCKET: crewlly-procedures
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+      MINIO_BUCKET: ${AWS_S3_BUCKET:-crewlly-procedures}
+    volumes:
+      - ./infra/minio/minio-init.sh:/opt/minio/minio-init.sh:ro
+      - ./infra/minio/cors.json:/opt/minio/cors.json:ro
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
+    working_dir: /app
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        attempts=0
+        until npx prisma@5.19.1 db push; do
+          attempts=$$((attempts + 1))
+          if [ "$$attempts" -ge 30 ]; then
+            echo "Prisma db push failed after $$attempts attempts"
+            exit 1
+          fi
+          echo "Waiting for database to become ready..."
+          sleep 2
+        done
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
+    volumes:
+      - .:/app
+      - dev_migrate_node_modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  back:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
+    working_dir: /app
+    command: /bin/sh -ec "npx prisma@5.19.1 generate && npm run dev -- --hostname 0.0.0.0 -p 3001"
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      COOKIE_SECURE: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+      WATCHPACK_POLLING: "1"
+      CHOKIDAR_USEPOLLING: "1"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
+      PORT: 3001
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-http://minio:9000}
+      AWS_S3_PRESIGN_ENDPOINT: ${AWS_S3_PRESIGN_ENDPOINT:-http://localhost:9000}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-crewlly-procedures}
+      AWS_S3_PUBLIC_BASE_URL: ${AWS_S3_PUBLIC_BASE_URL:-http://localhost:9000/crewlly-procedures}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio123}
+    ports:
+      - "${DEV_BACK_PORT:-3001}:3001"
+    volumes:
+      - .:/app
+      - dev_back_node_modules:/app/node_modules
+      - dev_back_next:/app/.next
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+
+  front:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
+    working_dir: /app
+    command: /bin/sh -ec "npx prisma@5.19.1 generate && npm run dev -- --hostname 0.0.0.0 -p 3000"
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      COOKIE_SECURE: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+      WATCHPACK_POLLING: "1"
+      CHOKIDAR_USEPOLLING: "1"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
+      PORT: 3000
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://back:3001}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-http://minio:9000}
+      AWS_S3_PRESIGN_ENDPOINT: ${AWS_S3_PRESIGN_ENDPOINT:-http://localhost:9000}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-crewlly-procedures}
+      AWS_S3_PUBLIC_BASE_URL: ${AWS_S3_PUBLIC_BASE_URL:-http://localhost:9000/crewlly-procedures}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio123}
+    ports:
+      - "${DEV_FRONT_PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      - dev_front_node_modules:/app/node_modules
+      - dev_front_next:/app/.next
+    depends_on:
+      back:
+        condition: service_started
 
 volumes:
-  frontend_node_modules:
-  frontend_next:
-  backend_node_modules:
-  backend_next:
-  minio_data:
+  dev_pgdata:
+  dev_pgadmin_data:
+  dev_minio_data:
+  dev_migrate_node_modules:
+  dev_back_node_modules:
+  dev_back_next:
+  dev_front_node_modules:
+  dev_front_next:

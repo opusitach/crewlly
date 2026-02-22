@@ -222,22 +222,17 @@ pnpm test tests/database-integration.test.ts
 ## Docker
 
 ```bash
-# Все сервисы (frontend + backend + db + pgadmin)
-docker-compose up -d
+# Development (all local services + hot reload for front/back)
+docker compose -f docker-compose.dev.yml up -d --build
 
-# Production (frontend + backend + db + minio + migrate)
-cp docker/prod.env.example .env.production
-# отредактируйте секреты и публичные URL в .env.production
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+# Только front/back в dev (если data-сервисы уже запущены)
+docker compose -f docker-compose.dev.yml up -d --build front back
 
-# Development with hot reload (frontend/backend)
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Только БД в dev
+docker compose -f docker-compose.dev.yml up -d db
 
-# Только БД
-docker-compose up -d db
-
-# pgAdmin для управления БД
-docker-compose up -d pgadmin
+# pgAdmin для управления БД (dev)
+docker compose -f docker-compose.dev.yml up -d pgadmin
 # Открыть http://localhost:5050
 # Login: admin@local.test / admin
 ```
@@ -331,10 +326,6 @@ caddy hash-password --plaintext 'PASSWORD'
 - `deploy-data.yml` — деплоит только `db/minio/pgadmin`
 
 Все workflow работают через SSH, не делают `docker compose down` и не используют `--no-cache` в обычном деплое.
-
-### Legacy compose
-
-Старые `docker-compose.yml` и `docker-compose.prod.yml` оставлены временно как legacy для совместимости, но новые workflow их не используют.
 
 ## Contributing
 

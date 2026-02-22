@@ -1611,7 +1611,7 @@ export default function ShiftsView({
 
                 <div className="px-5 pb-6 h-full flex flex-col">
               {panelView === "list" ? (
-                <div className="flex items-start justify-between">
+                <div className="relative flex items-start justify-between">
                   <div>
                     <div className="text-xs uppercase tracking-widest text-white/80">Всего смен</div>
                     <div className="text-2xl font-semibold text-white">
@@ -1621,6 +1621,20 @@ export default function ShiftsView({
                       {format(safeSelectedDate, "d MMMM", { locale: ru })}
                     </div>
                   </div>
+                  {!readOnly && !showCollapseIcon && !isBulkMode && (
+                    <Button
+                      type="button"
+                      size="icon"
+                      className="absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white text-orange-600 shadow-sm hover:bg-white/90"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleOpenCreate(safeSelectedDate)
+                      }}
+                      aria-label={`Создать смену на ${format(safeSelectedDate, "d MMMM", { locale: ru })}`}
+                    >
+                      <Plus className="h-6 w-6" />
+                    </Button>
+                  )}
                   {showCollapseIcon ? (
                     <Button
                       variant="ghost"
