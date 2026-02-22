@@ -1,3 +1,11 @@
+(protected_basic_auth) {
+  basic_auth {
+    {$BASIC_AUTH_USER1_NAME} {$BASIC_AUTH_USER1_HASH}
+    {$BASIC_AUTH_USER2_NAME} {$BASIC_AUTH_USER2_HASH}
+    {$BASIC_AUTH_USER3_NAME} {$BASIC_AUTH_USER3_HASH}
+  }
+}
+
 # Frontend protected by HTTP Basic Auth.
 {$CADDY_APP_DOMAIN} {
   import protected_basic_auth
@@ -9,14 +17,6 @@
 {$CADDY_API_DOMAIN} {
   encode gzip zstd
   reverse_proxy back:3001
-}
-
-(protected_basic_auth) {
-  basic_auth {
-    {$BASIC_AUTH_USER1_NAME} {$BASIC_AUTH_USER1_HASH}
-    {$BASIC_AUTH_USER2_NAME} {$BASIC_AUTH_USER2_HASH}
-    {$BASIC_AUTH_USER3_NAME} {$BASIC_AUTH_USER3_HASH}
-  }
 }
 
 {$CADDY_PGADMIN_DOMAIN} {
