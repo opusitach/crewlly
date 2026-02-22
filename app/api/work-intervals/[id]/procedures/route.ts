@@ -303,6 +303,21 @@ export async function GET(request: Request, context: RouteContext) {
     const cashSourceByWhen = await findWorkdayCashSourceAnswers(prisma, {
       workdayId: interval.workday.id,
       whens: whenFilter ? [whenFilter] : undefined,
+      selection: {
+        mode: "complete",
+        fieldsByWhen: {
+          OPEN: cashFieldsByWhen.OPEN.map((field) => ({
+            key: field.key,
+            isRequired: field.isRequired,
+            isPhotoRequired: field.isPhotoRequired,
+          })),
+          CLOSE: cashFieldsByWhen.CLOSE.map((field) => ({
+            key: field.key,
+            isRequired: field.isRequired,
+            isPhotoRequired: field.isPhotoRequired,
+          })),
+        },
+      },
     })
 
     const openPackedValues: string[] = []

@@ -153,7 +153,10 @@ export async function syncCashSessionFromWorkdayProcedures(
       locationId: input.locationId,
       isActive: true,
     }),
-    findWorkdayCashSourceAnswers(tx, { workdayId: input.workdayId }),
+    findWorkdayCashSourceAnswers(tx, {
+      workdayId: input.workdayId,
+      selection: { mode: "non_empty" },
+    }),
     tx.workday.findUnique({
       where: { id: input.workdayId },
       select: { status: true },

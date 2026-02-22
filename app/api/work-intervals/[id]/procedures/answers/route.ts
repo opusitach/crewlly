@@ -105,6 +105,12 @@ export async function POST(request: Request, context: RouteContext) {
       const workdayCashSource = await findWorkdayCashSourceAnswer(tx, {
         workdayId: interval.workday.id,
         when,
+        selectionMode: "complete",
+        fields: cashFields.map((field) => ({
+          key: field.key,
+          isRequired: field.isRequired,
+          isPhotoRequired: field.isPhotoRequired,
+        })),
       })
 
       const ruleById = new Map(procedure.rules.map((rule) => [rule.id, rule]))

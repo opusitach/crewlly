@@ -129,6 +129,12 @@ export async function POST(request: Request, context: RouteContext) {
       const workdayCashSource = await findWorkdayCashSourceAnswer(tx, {
         workdayId: interval.workday.id,
         when: "OPEN",
+        selectionMode: "complete",
+        fields: cashFields.map((field) => ({
+          key: field.key,
+          isRequired: field.isRequired,
+          isPhotoRequired: field.isPhotoRequired,
+        })),
       })
       const cashLockedByWorkday = Boolean(workdayCashSource && workdayCashSource.workIntervalId !== interval.id)
 
