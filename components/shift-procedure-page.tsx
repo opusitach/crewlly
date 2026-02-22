@@ -98,6 +98,139 @@ type RuleAnswerState = {
   photoComment: string
 }
 
+type DraftRuleAnswerState = {
+  inputValue?: string
+  cashValues?: Record<string, string>
+  cashPhotos?: Record<string, { photoS3Key: string | null; photoUrl: string | null }>
+  checklist?: Record<string, boolean>
+  photoS3Key?: string | null
+  photoUrl?: string | null
+  photoComment?: string
+}
+
+type ProcedureDraftPayload = {
+  version: 1
+  savedAt: number
+  answers: Record<string, DraftRuleAnswerState>
+}
+
+const PROCEDURE_DRAFT_STORAGE_PREFIX = "crewlly:shift-procedure-draft:v1"
+const PROCEDURE_DRAFT_TTL_MS = 1000 * 60 * 60 * 12
+
+const getProcedureDraftStorageKey = (intervalId: string, when: ProcedureWhen) =>
+  `${PROCEDURE_DRAFT_STORAGE_PREFIX}:${intervalId}:${when}`
+
+const toDraftAnswers = (answers: Record<string, RuleAnswerState>): Record<string, DraftRuleAnswerState> =>
+  Object.fromEntries(
+    Object.entries(answers).map(([ruleId, state]) => [
+      ruleId,
+      {
+        inputValue: state.inputValue,
+        cashValues: state.cashValues,
+        cashPhotos: Object.fromEntries(
+          Object.entries(state.cashPhotos).map(([fieldKey, photo]) => [
+            fieldKey,
+            {
+              photoS3Key: photo?.photoS3Key ?? null,
+              photoUrl: photo?.photoUrl ?? null,
+            },
+          ]),
+        ),
+        checklist: state.checklist,
+        photoS3Key: state.photoS3Key,
+        photoUrl: state.photoUrl,
+        photoComment: state.photoComment,
+      },
+    ]),
+  )
+
+const hasMeaningfulDraftData = (answers: Record<string, DraftRuleAnswerState>) =>
+  Object.values(answers).some((state) => {
+    if ((state.inputValue ?? "").trim()) return true
+    if ((state.photoComment ?? "").trim()) return true
+    if (state.photoS3Key || state.photoUrl) return true
+    if (Object.values(state.cashValues ?? {}).some((value) => value.trim().length > 0)) return true
+    if (Object.values(state.checklist ?? {}).some(Boolean)) return true
+    return Object.values(state.cashPhotos ?? {}).some((photo) => Boolean(photo?.photoS3Key || photo?.photoUrl))
+  })
+
+const readProcedureDraftFromStorage = (storageKey: string): Record<string, DraftRuleAnswerState> | null => {
+  if (typeof window === "undefined") return null
+
+  try {
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as Partial<ProcedureDraftPayload>
+    if (!parsed || typeof parsed !== "object" || !parsed.answers || typeof parsed.answers !== "object") {
+      window.localStorage.removeItem(storageKey)
+      return null
+    }
+
+    if (typeof parsed.savedAt !== "number" || Date.now() - parsed.savedAt > PROCEDURE_DRAFT_TTL_MS) {
+      window.localStorage.removeItem(storageKey)
+      return null
+    }
+
+    return parsed.answers as Record<string, DraftRuleAnswerState>
+  } catch {
+    window.localStorage.removeItem(storageKey)
+    return null
+  }
+}
+
+const mergeAnswersWithDraft = (
+  baseAnswers: Record<string, RuleAnswerState>,
+  draftAnswers: Record<string, DraftRuleAnswerState> | null,
+) => {
+  if (!draftAnswers) return baseAnswers
+
+  const nextAnswers: Record<string, RuleAnswerState> = { ...baseAnswers }
+
+  for (const [ruleId, draft] of Object.entries(draftAnswers)) {
+    if (!draft || typeof draft !== "object") continue
+    const base = nextAnswers[ruleId]
+    if (!base) continue
+
+    const safeCashValues: Record<string, string> = Object.fromEntries(
+      Object.entries(draft.cashValues ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    )
+    const safeChecklist: Record<string, boolean> = Object.fromEntries(
+      Object.entries(draft.checklist ?? {}).map(([key, value]) => [key, Boolean(value)]),
+    )
+    const safeCashPhotos: RuleAnswerState["cashPhotos"] = Object.fromEntries(
+      Object.entries(draft.cashPhotos ?? {})
+        .filter((entry) => Boolean(entry[1]) && typeof entry[1] === "object")
+        .map(([fieldKey, photo]) => [
+          fieldKey,
+          {
+            photoS3Key: typeof photo?.photoS3Key === "string" ? photo.photoS3Key : null,
+            photoUrl: typeof photo?.photoUrl === "string" ? photo.photoUrl : null,
+            photoPreviewUrl: typeof photo?.photoUrl === "string" ? photo.photoUrl : null,
+          },
+        ]),
+    )
+
+    const draftPhotoUrl = typeof draft.photoUrl === "string" ? draft.photoUrl : draft.photoUrl === null ? null : undefined
+    const draftPhotoS3Key =
+      typeof draft.photoS3Key === "string" ? draft.photoS3Key : draft.photoS3Key === null ? null : undefined
+
+    nextAnswers[ruleId] = {
+      ...base,
+      inputValue: typeof draft.inputValue === "string" ? draft.inputValue : base.inputValue,
+      cashValues: { ...base.cashValues, ...safeCashValues },
+      cashPhotos: { ...base.cashPhotos, ...safeCashPhotos },
+      checklist: { ...base.checklist, ...safeChecklist },
+      photoS3Key: draftPhotoS3Key === undefined ? base.photoS3Key : draftPhotoS3Key,
+      photoUrl: draftPhotoUrl === undefined ? base.photoUrl : draftPhotoUrl,
+      photoPreviewUrl: draftPhotoUrl === undefined ? base.photoPreviewUrl : draftPhotoUrl,
+      photoComment: typeof draft.photoComment === "string" ? draft.photoComment : base.photoComment,
+    }
+  }
+
+  return nextAnswers
+}
+
 const isChecklistComplete = (rule: ProcedureRule, state?: RuleAnswerState) => {
   if (!state) return false
   if (rule.checklistItems.length === 0) return false
@@ -264,6 +397,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   const searchParams = useSearchParams()
   const { toast } = useToast()
   const whenParam = (searchParams.get("when") || "OPEN") as ProcedureWhen
+  const draftStorageKey = useMemo(() => getProcedureDraftStorageKey(intervalId, whenParam), [intervalId, whenParam])
 
   const [interval, setInterval] = useState<IntervalInfo | null>(null)
   const [procedure, setProcedure] = useState<ProcedureData | null>(null)
@@ -274,11 +408,18 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   const [cameraTarget, setCameraTarget] = useState<{ ruleId: string; cashFieldKey?: string } | null>(null)
   const [uploadingPhotoKey, setUploadingPhotoKey] = useState<string | null>(null)
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now())
+  const lastDraftSnapshotRef = useRef<string | null>(null)
 
   const toPhotoUploadKey = (ruleId: string, cashFieldKey?: string) => (cashFieldKey ? `${ruleId}:${cashFieldKey}` : ruleId)
 
   const canEdit = interval ? !["completed", "canceled"].includes(interval.status) : true
   const isOpenInProgress = whenParam === "OPEN" && interval?.status === "in_progress"
+
+  const clearDraftCache = () => {
+    if (typeof window === "undefined") return
+    window.localStorage.removeItem(draftStorageKey)
+    lastDraftSnapshotRef.current = null
+  }
 
   const refreshData = async () => {
     setIsLoading(true)
@@ -293,7 +434,9 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       }
       const procedures = json?.data?.procedures ?? []
       const nextProcedure = procedures[0] ?? null
-      setInterval(json?.data?.interval ?? null)
+      const nextInterval = (json?.data?.interval ?? null) as IntervalInfo | null
+      const nextCanEdit = nextInterval ? !["completed", "canceled"].includes(nextInterval.status) : true
+      setInterval(nextInterval)
       setProcedure(nextProcedure)
       if (nextProcedure) {
         const nextAnswers: Record<string, RuleAnswerState> = {}
@@ -335,7 +478,15 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
             photoComment: rule.answer?.photoComment ?? "",
           }
         }
-        setAnswers(nextAnswers)
+        if (!nextCanEdit && typeof window !== "undefined") {
+          window.localStorage.removeItem(draftStorageKey)
+        }
+        const mergedAnswers = nextCanEdit
+          ? mergeAnswersWithDraft(nextAnswers, readProcedureDraftFromStorage(draftStorageKey))
+          : nextAnswers
+        const mergedDraftSnapshot = toDraftAnswers(mergedAnswers)
+        lastDraftSnapshotRef.current = hasMeaningfulDraftData(mergedDraftSnapshot) ? JSON.stringify(mergedDraftSnapshot) : null
+        setAnswers(mergedAnswers)
       }
     } catch (err: any) {
       toast({
@@ -350,13 +501,46 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
 
   useEffect(() => {
     void refreshData()
-  }, [intervalId, whenParam])
+  }, [draftStorageKey, intervalId, whenParam])
+
+  useEffect(() => {
+    lastDraftSnapshotRef.current = null
+  }, [draftStorageKey])
 
   useEffect(() => {
     if (!isOpenInProgress) return
     const id = window.setInterval(() => setNowTimestamp(Date.now()), 1000)
     return () => window.clearInterval(id)
   }, [isOpenInProgress])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!procedure || isLoading || !canEdit) return
+
+    const timeoutId = window.setTimeout(() => {
+      const draftAnswers = toDraftAnswers(answers)
+
+      if (!hasMeaningfulDraftData(draftAnswers)) {
+        window.localStorage.removeItem(draftStorageKey)
+        lastDraftSnapshotRef.current = null
+        return
+      }
+
+      const nextSnapshot = JSON.stringify(draftAnswers)
+      if (nextSnapshot === lastDraftSnapshotRef.current) return
+
+      const payload: ProcedureDraftPayload = {
+        version: 1,
+        savedAt: Date.now(),
+        answers: draftAnswers,
+      }
+
+      window.localStorage.setItem(draftStorageKey, JSON.stringify(payload))
+      lastDraftSnapshotRef.current = nextSnapshot
+    }, 400)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [answers, canEdit, draftStorageKey, isLoading, procedure])
 
   const rules = procedure?.rules ?? []
   const visibleRules = useMemo(() => {
@@ -402,8 +586,10 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
     }))
   }
 
-  const saveAnswers = async () => {
+  const saveAnswers = async (options?: { silentSuccess?: boolean; refreshAfterSave?: boolean }) => {
     if (!procedure) return false
+    const silentSuccess = options?.silentSuccess === true
+    const refreshAfterSave = options?.refreshAfterSave !== false
     setIsSaving(true)
     try {
       const cashInputByRuleId = new Map<string, string>()
@@ -468,8 +654,12 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       if (!res.ok) {
         throw new Error(json?.error || "Не удалось сохранить")
       }
-      toast({ title: "Сохранено", description: "Ответы сохранены" })
-      await refreshData()
+      if (!silentSuccess) {
+        toast({ title: "Сохранено", description: "Ответы сохранены" })
+      }
+      if (refreshAfterSave) {
+        await refreshData()
+      }
       return true
     } catch (err: any) {
       toast({
@@ -491,7 +681,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
     }
     setIsSubmitting(true)
     try {
-      const saved = await saveAnswers()
+      const saved = await saveAnswers({ silentSuccess: true, refreshAfterSave: false })
       if (!saved) return
       const endpoint = whenParam === "OPEN" ? "open" : "close"
       const payload: { force: boolean; reason?: string } = { force: isForce }
@@ -513,6 +703,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
         description: "Статус смены обновлён",
       })
       await refreshData()
+      clearDraftCache()
       if (whenParam === "CLOSE") {
         router.replace("/app")
       }
@@ -943,9 +1134,6 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
             </div>
 
             <div className="space-y-2">
-              <Button className="w-full" onClick={saveAnswers} disabled={isSaving || !canEdit}>
-                {isSaving ? "Сохранение..." : "Сохранить"}
-              </Button>
               {whenParam === "OPEN" && interval?.status === "scheduled" && (
                 <>
                   {!canOpen && (
