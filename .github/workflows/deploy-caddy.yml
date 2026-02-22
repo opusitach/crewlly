@@ -40,9 +40,11 @@ jobs:
 
             test -f .env.production || { echo "Missing .env.production in $DEPLOY_PATH"; exit 1; }
             docker network inspect app_net >/dev/null 2>&1 || docker network create app_net
+            export COMPOSE_IGNORE_ORPHANS=1
 
             git pull --ff-only origin main
 
+            docker compose --env-file .env.production -f compose.caddy.yml run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
             docker compose --env-file .env.production -f compose.caddy.yml up -d caddy
             attempt=0
             until docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile; do

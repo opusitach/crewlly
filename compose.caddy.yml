@@ -4,6 +4,18 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    environment:
+      CADDY_APP_DOMAIN: ${CADDY_APP_DOMAIN:?Set CADDY_APP_DOMAIN in .env.production}
+      CADDY_API_DOMAIN: ${CADDY_API_DOMAIN:?Set CADDY_API_DOMAIN in .env.production}
+      CADDY_PGADMIN_DOMAIN: ${CADDY_PGADMIN_DOMAIN:?Set CADDY_PGADMIN_DOMAIN in .env.production}
+      CADDY_MINIO_API_DOMAIN: ${CADDY_MINIO_API_DOMAIN:?Set CADDY_MINIO_API_DOMAIN in .env.production}
+      CADDY_MINIO_CONSOLE_DOMAIN: ${CADDY_MINIO_CONSOLE_DOMAIN:?Set CADDY_MINIO_CONSOLE_DOMAIN in .env.production}
+      BASIC_AUTH_USER1_NAME: ${BASIC_AUTH_USER1_NAME:?Set BASIC_AUTH_USER1_NAME in .env.production}
+      BASIC_AUTH_USER1_HASH: ${BASIC_AUTH_USER1_HASH:?Set BASIC_AUTH_USER1_HASH in .env.production}
+      BASIC_AUTH_USER2_NAME: ${BASIC_AUTH_USER2_NAME:?Set BASIC_AUTH_USER2_NAME in .env.production}
+      BASIC_AUTH_USER2_HASH: ${BASIC_AUTH_USER2_HASH:?Set BASIC_AUTH_USER2_HASH in .env.production}
+      BASIC_AUTH_USER3_NAME: ${BASIC_AUTH_USER3_NAME:?Set BASIC_AUTH_USER3_NAME in .env.production}
+      BASIC_AUTH_USER3_HASH: ${BASIC_AUTH_USER3_HASH:?Set BASIC_AUTH_USER3_HASH in .env.production}
     ports:
       - "80:80"
       - "443:443"
