@@ -77,7 +77,7 @@ jobs:
             fi
 
             HOST_CADDYFILE_SHA="$(sha256sum infra/caddy/Caddyfile | cut -d' ' -f1)"
-            CONTAINER_CADDYFILE_SHA="$(docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy sh -lc 'sha256sum /etc/caddy/Caddyfile | cut -d\" \" -f1')"
+            CONTAINER_CADDYFILE_SHA="$(docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy sha256sum /etc/caddy/Caddyfile | cut -d' ' -f1)"
             if [ "$HOST_CADDYFILE_SHA" != "$CONTAINER_CADDYFILE_SHA" ]; then
               echo "Host/container Caddyfile mismatch after recreate."
               echo "Host SHA:      $HOST_CADDYFILE_SHA"
