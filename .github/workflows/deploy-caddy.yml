@@ -33,7 +33,9 @@ jobs:
           envs: DEPLOY_PATH
           script: |
             set -eu
-            DEPLOY_PATH="${DEPLOY_PATH:-/opt/myapp}"
+            DEPLOY_PATH="${DEPLOY_PATH:-/home/ubuntu/crewlly}"
+            echo "Using DEPLOY_PATH=$DEPLOY_PATH"
+            test -d "$DEPLOY_PATH" || { echo "Deploy path does not exist: $DEPLOY_PATH"; exit 1; }
             cd "$DEPLOY_PATH"
 
             test -f .env.production || { echo "Missing .env.production in $DEPLOY_PATH"; exit 1; }
