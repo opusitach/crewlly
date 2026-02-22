@@ -68,6 +68,13 @@ type CashSettingsResponse = {
   error?: string
 }
 
+type VerificationSummaryResponse = {
+  data?: {
+    totalOnReview?: number
+  }
+  error?: string
+}
+
 type CashFormulaRow = {
   id: string
   resultKey: string
@@ -93,6 +100,7 @@ type Props = {
 type VerificationTab = "work_shifts" | "cash_sessions" | "review_queue"
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/
+const REVIEW_QUEUE_POLL_INTERVAL_MS = 2000
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear()
@@ -303,6 +311,7 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
   const [reviewActionError, setReviewActionError] = useState<string | null>(null)
   const [publishingWorkdayIds, setPublishingWorkdayIds] = useState<Record<string, boolean>>({})
   const [reviewingCashSessionIds, setReviewingCashSessionIds] = useState<Record<string, boolean>>({})
+  const [reviewQueueCount, setReviewQueueCount] = useState(0)
 
   useEffect(() => {
     if (initialTab) {
@@ -431,9 +440,12 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
     }
   }
 
-  const loadReviewQueue = async (signal?: AbortSignal) => {
-    setIsReviewLoading(true)
-    setReviewLoadError(null)
+  const loadReviewQueue = async (signal?: AbortSignal, options?: { silent?: boolean }) => {
+    const silent = options?.silent === true
+    if (!silent) {
+      setIsReviewLoading(true)
+      setReviewLoadError(null)
+    }
     try {
       const [intervalsResponse, cashSessionsResponse] = await Promise.all([
         fetch("/api/intervals", {
@@ -474,18 +486,58 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
 
       setReviewWorkShifts(queueWorkShifts)
       setReviewCashSessions(queueCashSessions)
+      setReviewQueueCount(queueWorkShifts.length + queueCashSessions.length)
+      setReviewLoadError(null)
     } catch (error) {
       if (signal?.aborted) return
-      setReviewWorkShifts([])
-      setReviewCashSessions([])
+      if (!silent) {
+        setReviewWorkShifts([])
+        setReviewCashSessions([])
+        setReviewQueueCount(0)
+      }
       setReviewLoadError(error instanceof Error ? error.message : "Не удалось загрузить смены на проверке")
     } finally {
-      if (signal?.aborted) return
+      if (signal?.aborted || silent) return
       setIsReviewLoading(false)
     }
   }
 
+  const loadReviewQueueCount = async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch("/api/verifications/summary", {
+        credentials: "include",
+        cache: "no-store",
+        signal,
+      })
+      if (!response.ok) {
+        return
+      }
+      const json = (await response.json().catch(() => null)) as VerificationSummaryResponse | null
+      if (signal?.aborted) return
+      const total = Number(json?.data?.totalOnReview ?? 0)
+      setReviewQueueCount(Number.isFinite(total) ? Math.max(0, total) : 0)
+    } catch {
+      if (signal?.aborted) return
+    }
+  }
+
   const applyWorkdayPublished = (workdayId: string) => {
+    const removedShiftIds = new Set<string>()
+
+    for (const shift of reviewWorkShifts) {
+      if (shift.workdayId === workdayId && isShiftNeedsReview(shift)) {
+        removedShiftIds.add(shift.id)
+      }
+    }
+
+    if (removedShiftIds.size === 0) {
+      for (const shift of workShifts) {
+        if (shift.workdayId === workdayId && isShiftNeedsReview(shift)) {
+          removedShiftIds.add(shift.id)
+        }
+      }
+    }
+
     const applyToShift = (shift: VerificationShift) =>
       shift.workdayId === workdayId
         ? {
@@ -499,9 +551,16 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
 
     setWorkShifts((prev) => prev.map(applyToShift))
     setReviewWorkShifts((prev) => prev.map(applyToShift).filter((shift) => isShiftNeedsReview(shift)))
+    if (removedShiftIds.size > 0) {
+      setReviewQueueCount((prev) => Math.max(0, prev - removedShiftIds.size))
+    }
   }
 
   const applyCashSessionReviewed = (sessionId: string) => {
+    const wasPendingReview =
+      reviewCashSessions.some((session) => session.id === sessionId && isCashSessionNeedsReview(session)) ||
+      cashSessions.some((session) => session.id === sessionId && isCashSessionNeedsReview(session))
+
     const applyToSession = (session: CashSessionDetails) =>
       session.id === sessionId
         ? {
@@ -513,6 +572,9 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
 
     setCashSessions((prev) => prev.map(applyToSession))
     setReviewCashSessions((prev) => prev.map(applyToSession).filter((session) => isCashSessionNeedsReview(session)))
+    if (wasPendingReview) {
+      setReviewQueueCount((prev) => Math.max(0, prev - 1))
+    }
   }
 
   const markWorkShiftReviewed = async (shift: VerificationShift) => {
@@ -586,8 +648,29 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
     if (activeTab !== "review_queue") return
     const controller = new AbortController()
     void loadReviewQueue(controller.signal)
-    return () => controller.abort()
+    const intervalId = window.setInterval(() => {
+      void loadReviewQueue(controller.signal, { silent: true })
+    }, REVIEW_QUEUE_POLL_INTERVAL_MS)
+    return () => {
+      controller.abort()
+      window.clearInterval(intervalId)
+    }
   }, [activeTab])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadReviewQueueCount(controller.signal)
+    const intervalId = window.setInterval(() => {
+      void loadReviewQueueCount(controller.signal)
+    }, REVIEW_QUEUE_POLL_INTERVAL_MS)
+
+    return () => {
+      controller.abort()
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  const reviewQueueBadgeLabel = reviewQueueCount > 99 ? "99+" : String(reviewQueueCount)
 
   const selectedShift = useMemo(
     () => {
@@ -679,10 +762,15 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
             </Button>
             <Button
               variant={activeTab === "review_queue" ? "default" : "outline"}
-              className="h-10"
+              className="h-10 gap-1.5"
               onClick={() => setActiveTab("review_queue")}
             >
-              На проверке
+              <span>На проверке</span>
+              {reviewQueueCount > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-destructive-foreground">
+                  {reviewQueueBadgeLabel}
+                </span>
+              )}
             </Button>
           </div>
 
