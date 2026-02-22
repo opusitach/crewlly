@@ -44,6 +44,14 @@ jobs:
 
             git pull --ff-only origin main
 
+            # Guard against deploying an old Caddyfile revision where the frontend is public.
+            if grep -Fq '# Public frontend (intentionally without basic auth).' infra/caddy/Caddyfile; then
+              echo "Detected stale infra/caddy/Caddyfile after git pull: frontend is still configured as public."
+              echo "Current file (first 40 lines):"
+              sed -n '1,40p' infra/caddy/Caddyfile
+              exit 1
+            fi
+
             docker compose --env-file .env.production -f compose.caddy.yml run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
             docker compose --env-file .env.production -f compose.caddy.yml up -d caddy
             attempt=0
