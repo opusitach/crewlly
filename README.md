@@ -242,6 +242,97 @@ docker-compose up -d pgadmin
 # Login: admin@local.test / admin
 ```
 
+## Прод-деплой
+
+Новая схема прод-деплоя разделена на 3 compose-файла:
+
+- `compose.data.yml` — `db`, `minio`, `pgadmin` (редкие изменения)
+- `compose.app.yml` — `front`, `back` (+ one-shot `migrate`)
+- `compose.caddy.yml` — `caddy` (редкие роутинговые изменения)
+
+`Caddyfile` хранится в git по пути `infra/caddy/Caddyfile`, а секреты/пароли передаются через `.env.production`.
+
+Целевая структура (deploy-oriented):
+
+```text
+/
+├─ front/                 # placeholder для будущего split (код пока общий в корне)
+├─ back/                  # placeholder для будущего split (код пока общий в корне)
+├─ infra/
+│  ├─ caddy/
+│  │  └─ Caddyfile
+│  ├─ db/
+│  ├─ minio/
+│  │  ├─ cors.json
+│  │  └─ minio-init.sh
+│  └─ pgadmin/
+│     └─ servers.json
+├─ compose.app.yml
+├─ compose.caddy.yml
+├─ compose.data.yml
+├─ .env.example
+└─ .github/workflows/
+```
+
+### 1) Первый запуск: создать общую сеть
+
+```bash
+docker network create app_net
+```
+
+### 2) Создать `.env.production` на сервере
+
+```bash
+cp .env.example .env.production
+# заполните реальные значения (пароли, домены, caddy basic auth hashes)
+```
+
+Примечание:
+- `.env.production` не коммитится (игнорируется git)
+- для Caddy хеши паролей генерируются локально/на сервере и вставляются в `.env.production`
+
+### 3) Первый запуск (по порядку)
+
+```bash
+# 1. Data services
+docker compose --env-file .env.production -f compose.data.yml up -d db minio pgadmin
+
+# (опционально, один раз) инициализация bucket/CORS для MinIO
+docker compose --env-file .env.production -f compose.data.yml run --rm minio-init
+
+# 2. App services (front/back + миграции)
+docker compose --env-file .env.production -f compose.app.yml up -d --build front back
+
+# 3. Caddy reverse proxy
+docker compose --env-file .env.production -f compose.caddy.yml up -d caddy
+```
+
+### 4) Проверка Caddy конфигурации вручную
+
+```bash
+docker compose --env-file .env.production -f compose.caddy.yml exec caddy caddy validate --config /etc/caddy/Caddyfile
+```
+
+### 5) Генерация хеша пароля для Caddy Basic Auth
+
+```bash
+caddy hash-password --plaintext 'PASSWORD'
+```
+
+### GitHub Actions (выборочный деплой)
+
+В репозитории есть 3 workflow:
+
+- `deploy-app.yml` — деплоит только `front/back`
+- `deploy-caddy.yml` — деплоит/валидирует/reload только `caddy`
+- `deploy-data.yml` — деплоит только `db/minio/pgadmin`
+
+Все workflow работают через SSH, не делают `docker compose down` и не используют `--no-cache` в обычном деплое.
+
+### Legacy compose
+
+Старые `docker-compose.yml` и `docker-compose.prod.yml` оставлены временно как legacy для совместимости, но новые workflow их не используют.
+
 ## Contributing
 
 1. Создайте branch от `main`

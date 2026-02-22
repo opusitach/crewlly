@@ -1,0 +1,95 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    expose:
+      - "5432"
+    volumes:
+      # Keep legacy key `pgdata` to avoid accidental volume migration/data loss.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - app_net
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:?Set PGADMIN_EMAIL in .env.production}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?Set PGADMIN_PASSWORD in .env.production}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    expose:
+      - "80"
+    volumes:
+      - ./infra/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - app_net
+
+  minio:
+    image: minio/minio:RELEASE.2024-08-17T01-24-54Z
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env.production}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env.production}
+      MINIO_CONSOLE_ADDRESS: ":9001"
+    command: server /data --address ":9000" --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - app_net
+
+  # Optional one-shot helper for first-time MinIO bucket bootstrap.
+  # It is not part of the normal deploy-data workflow command.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - /opt/minio/minio-init.sh
+    env_file:
+      - .env.production
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env.production}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env.production}
+      MINIO_BUCKET: ${AWS_S3_BUCKET:-crewlly-procedures}
+    volumes:
+      - ./infra/minio/minio-init.sh:/opt/minio/minio-init.sh:ro
+      - ./infra/minio/cors.json:/opt/minio/cors.json:ro
+    networks:
+      - app_net
+
+volumes:
+  # Legacy key preserved intentionally. Renaming it would create a new empty volume.
+  pgdata:
+  minio_data:
+  pgadmin_data:
+
+networks:
+  app_net:
+    external: true
+    name: app_net

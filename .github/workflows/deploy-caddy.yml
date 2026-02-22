@@ -1,0 +1,59 @@
+name: Deploy Caddy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # Reverse proxy deploy: only Caddy compose/config changes should trigger it.
+      - ".github/workflows/deploy-caddy.yml"
+      - "compose.caddy.yml"
+      - "infra/caddy/**"
+
+concurrency:
+  group: deploy-caddy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+
+    steps:
+      - name: Deploy caddy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: DEPLOY_PATH
+          script: |
+            set -eu
+            DEPLOY_PATH="${DEPLOY_PATH:-/opt/myapp}"
+            cd "$DEPLOY_PATH"
+
+            test -f .env.production || { echo "Missing .env.production in $DEPLOY_PATH"; exit 1; }
+            docker network inspect app_net >/dev/null 2>&1 || docker network create app_net
+
+            git pull --ff-only origin main
+
+            docker compose --env-file .env.production -f compose.caddy.yml up -d caddy
+            attempt=0
+            until docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile; do
+              attempt=$((attempt + 1))
+              if [ "$attempt" -ge 10 ]; then
+                echo "Caddy validate failed after $attempt attempts"
+                exit 1
+              fi
+              echo "Retrying caddy validate..."
+              sleep 2
+            done
+
+            if ! docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile; then
+              echo "Caddy reload failed (possible first-start race); restarting caddy once..."
+              docker compose --env-file .env.production -f compose.caddy.yml restart caddy
+            fi

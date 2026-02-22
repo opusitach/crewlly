@@ -1,3 +1,5 @@
+# Legacy all-in-one production compose (kept temporarily for compatibility).
+# Prefer compose.data.yml + compose.app.yml + compose.caddy.yml and selective deploy workflows.
 services:
   caddy:
     image: caddy:2.8-alpine
@@ -6,7 +8,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -50,7 +52,7 @@ services:
     expose:
       - "80"
     volumes:
-      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./infra/pgadmin/servers.json:/pgadmin4/servers.json:ro
       - pgadmin_data:/var/lib/pgadmin
 
   minio:

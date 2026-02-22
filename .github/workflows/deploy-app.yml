@@ -1,0 +1,62 @@
+name: Deploy App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # GitHub Actions matches paths literally. App runtime code is still shared in the
+      # repo root (/front and /back are placeholders for future split), so watch both sets.
+      - ".github/workflows/deploy-app.yml"
+      - "compose.app.yml"
+      - "Dockerfile"
+      - "front/**"
+      - "back/**"
+      - "app/**"
+      - "components/**"
+      - "hooks/**"
+      - "lib/**"
+      - "prisma/**"
+      - "public/**"
+      - "styles/**"
+      - "package.json"
+      - "package-lock.json"
+      - "pnpm-lock.yaml"
+      - "next.config.mjs"
+      - "postcss.config.mjs"
+      - "tsconfig.json"
+      - "components.json"
+      - ".dockerignore"
+
+concurrency:
+  group: deploy-app
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+
+    steps:
+      - name: Deploy app stack via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: DEPLOY_PATH
+          script: |
+            set -eu
+            DEPLOY_PATH="${DEPLOY_PATH:-/opt/myapp}"
+            cd "$DEPLOY_PATH"
+
+            test -f .env.production || { echo "Missing .env.production in $DEPLOY_PATH"; exit 1; }
+            docker network inspect app_net >/dev/null 2>&1 || docker network create app_net
+
+            git pull --ff-only origin main
+
+            docker compose --env-file .env.production -f compose.app.yml up -d --build front back

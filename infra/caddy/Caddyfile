@@ -1,0 +1,37 @@
+# Public frontend (intentionally without basic auth).
+{$CADDY_APP_DOMAIN} {
+  encode gzip zstd
+  reverse_proxy front:3000
+}
+
+# API auth/authorization is handled by the application.
+{$CADDY_API_DOMAIN} {
+  encode gzip zstd
+  reverse_proxy back:3001
+}
+
+(protected_basic_auth) {
+  basic_auth {
+    {$BASIC_AUTH_USER1_NAME} {$BASIC_AUTH_USER1_HASH}
+    {$BASIC_AUTH_USER2_NAME} {$BASIC_AUTH_USER2_HASH}
+    {$BASIC_AUTH_USER3_NAME} {$BASIC_AUTH_USER3_HASH}
+  }
+}
+
+{$CADDY_PGADMIN_DOMAIN} {
+  import protected_basic_auth
+  encode gzip zstd
+  reverse_proxy pgadmin:80
+}
+
+{$CADDY_MINIO_API_DOMAIN} {
+  # Warning: basic auth here can break browser/mobile presigned URL flows.
+  # Keep enabled only if this endpoint is admin-only or clients add Basic Auth.
+  import protected_basic_auth
+  reverse_proxy minio:9000
+}
+
+{$CADDY_MINIO_CONSOLE_DOMAIN} {
+  import protected_basic_auth
+  reverse_proxy minio:9001
+}
