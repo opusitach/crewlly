@@ -95,7 +95,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "settings" | "notifications">(
     resolvedTab === "profile" ? "profile" : "none",
   )
-  const [unreadNotifications, setUnreadNotifications] = useState(3)
+  const [unreadNotifications, setUnreadNotifications] = useState(0)
   const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false)
   const [isJoinVenueOpen, setIsJoinVenueOpen] = useState(false)
   const [joinInviteCode, setJoinInviteCode] = useState("")
