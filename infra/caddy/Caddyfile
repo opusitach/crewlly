@@ -41,9 +41,8 @@
 }
 
 {$CADDY_MINIO_API_DOMAIN} {
-  # Warning: basic auth here can break browser/mobile presigned URL flows.
-  # Keep enabled only if this endpoint is admin-only or clients add Basic Auth.
-  import protected_basic_auth
+  # Do not protect S3 API with Caddy Basic Auth: browser/mobile presigned uploads
+  # do not include those credentials and will fail with 401/403.
   reverse_proxy minio:9000
 }
 

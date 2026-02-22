@@ -560,14 +560,24 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       if (!res.ok) {
         throw new Error(json?.error || "Не удалось получить ссылку для загрузки")
       }
-      const { uploadUrl, key, publicUrl } = json.data
+      const { uploadUrl, key, publicUrl, contentType } = json.data
+      const uploadContentType =
+        typeof contentType === "string" && contentType.trim().length > 0
+          ? contentType
+          : blob.type || "image/jpeg"
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": blob.type || "image/jpeg" },
+        headers: { "Content-Type": uploadContentType },
         body: blob,
       })
       if (!uploadRes.ok) {
-        throw new Error(`Не удалось загрузить фото (${uploadRes.status})`)
+        const uploadErrorText = (await uploadRes.text().catch(() => "")).trim()
+        const shortErrorText = uploadErrorText.replace(/\s+/g, " ").slice(0, 180)
+        throw new Error(
+          shortErrorText
+            ? `Не удалось загрузить фото (${uploadRes.status}): ${shortErrorText}`
+            : `Не удалось загрузить фото (${uploadRes.status})`,
+        )
       }
 
       if (target.cashFieldKey) {

@@ -179,6 +179,7 @@ export async function POST(request: Request) {
       uploadUrl: presigned.url,
       key: presigned.key,
       publicUrl: presigned.publicUrl,
+      contentType: normalizedContentType,
       maxUploadBytes: MAX_UPLOAD_BYTES,
     },
   })
