@@ -61,3 +61,61 @@ jobs:
               echo "Caddy reload failed (possible first-start race); restarting caddy once..."
               docker compose --env-file .env.production -f compose.caddy.yml restart caddy
             fi
+
+            command -v curl >/dev/null 2>&1 || { echo "curl is required for post-deploy smoke checks"; exit 1; }
+
+            get_env_value() {
+              key="$1"
+              value="$(sed -n "s/^${key}=//p" .env.production | tail -n 1 | tr -d '\r')"
+              # Strip one pair of wrapping single/double quotes if present.
+              case "$value" in
+                \"*\") value="${value#\"}"; value="${value%\"}" ;;
+                \'*\') value="${value#\'}"; value="${value%\'}" ;;
+              esac
+              printf '%s' "$value"
+            }
+
+            first_domain() {
+              # Caddy site addresses can be comma-separated; use the first host for smoke tests.
+              printf '%s' "$1" | cut -d',' -f1 | xargs
+            }
+
+            APP_DOMAIN="$(first_domain "$(get_env_value CADDY_APP_DOMAIN)")"
+            API_DOMAIN="$(first_domain "$(get_env_value CADDY_API_DOMAIN)")"
+
+            [ -n "$APP_DOMAIN" ] || { echo "CADDY_APP_DOMAIN is empty in .env.production"; exit 1; }
+            [ -n "$API_DOMAIN" ] || { echo "CADDY_API_DOMAIN is empty in .env.production"; exit 1; }
+
+            if [ "$APP_DOMAIN" = "$API_DOMAIN" ]; then
+              echo "CADDY_APP_DOMAIN and CADDY_API_DOMAIN must be different (got '$APP_DOMAIN')"
+              exit 1
+            fi
+
+            check_basic_auth_401() {
+              domain="$1"
+              path="${2:-/}"
+              attempt=0
+              while true; do
+                headers="$(curl --silent --show-error --insecure --resolve "${domain}:443:127.0.0.1" -I "https://${domain}${path}" || true)"
+                status="$(printf '%s\n' "$headers" | awk 'toupper($1) ~ /^HTTP\\// { code=$2 } END { print code }')"
+                www_auth="$(printf '%s\n' "$headers" | awk 'BEGIN{IGNORECASE=1} /^WWW-Authenticate:/ { print; exit }')"
+
+                if [ "$status" = "401" ] && printf '%s' "$www_auth" | grep -qi '^WWW-Authenticate: .*Basic'; then
+                  echo "Basic Auth smoke check passed for https://${domain}${path}"
+                  return 0
+                fi
+
+                attempt=$((attempt + 1))
+                if [ "$attempt" -ge 15 ]; then
+                  echo "Expected HTTP Basic Auth challenge on https://${domain}${path}, got status='${status:-none}'"
+                  echo "Response headers:"
+                  printf '%s\n' "$headers"
+                  return 1
+                fi
+                echo "Waiting for Caddy/TLS to become ready for ${domain} (attempt ${attempt}/15)..."
+                sleep 2
+              done
+            }
+
+            # Frontend must always challenge with HTTP Basic Auth.
+            check_basic_auth_401 "$APP_DOMAIN" "/"
