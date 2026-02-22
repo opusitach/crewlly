@@ -6,18 +6,10 @@
   }
 }
 
-(protected_basic_auth_front) {
-  basic_auth bcrypt CrewllyFront {
-    {$BASIC_AUTH_USER1_NAME} {$BASIC_AUTH_USER1_HASH}
-    {$BASIC_AUTH_USER2_NAME} {$BASIC_AUTH_USER2_HASH}
-    {$BASIC_AUTH_USER3_NAME} {$BASIC_AUTH_USER3_HASH}
-  }
-}
-
 # Frontend protected by HTTP Basic Auth.
 {$CADDY_APP_DOMAIN} {
   route {
-    import protected_basic_auth_front
+    import protected_basic_auth
     encode gzip zstd
     reverse_proxy front:3000
   }
@@ -36,7 +28,7 @@
     # back is the same Next.js app and can render UI pages too.
     # Protect non-API routes so the app cannot be accessed via API domain without Basic Auth.
     handle {
-      import protected_basic_auth_front
+      import protected_basic_auth
       reverse_proxy back:3001
     }
   }
