@@ -43,6 +43,9 @@ jobs:
             export COMPOSE_IGNORE_ORPHANS=1
 
             git pull --ff-only origin main
+            # Force-sync Caddy deploy files from origin/main in case local working tree on VPS
+            # diverged or has skipped/stale tracked files.
+            git checkout origin/main -- infra/caddy/Caddyfile compose.caddy.yml
 
             # Guard against deploying an old Caddyfile revision where the frontend is public.
             if grep -Fq '# Public frontend (intentionally without basic auth).' infra/caddy/Caddyfile; then
@@ -52,8 +55,11 @@ jobs:
               exit 1
             fi
 
+            echo "Host Caddyfile (first 25 lines):"
+            sed -n '1,25p' infra/caddy/Caddyfile
+
             docker compose --env-file .env.production -f compose.caddy.yml run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
-            docker compose --env-file .env.production -f compose.caddy.yml up -d caddy
+            docker compose --env-file .env.production -f compose.caddy.yml up -d --force-recreate caddy
             attempt=0
             until docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile; do
               attempt=$((attempt + 1))
@@ -68,6 +74,22 @@ jobs:
             if ! docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile; then
               echo "Caddy reload failed (possible first-start race); restarting caddy once..."
               docker compose --env-file .env.production -f compose.caddy.yml restart caddy
+            fi
+
+            HOST_CADDYFILE_SHA="$(sha256sum infra/caddy/Caddyfile | cut -d' ' -f1)"
+            CONTAINER_CADDYFILE_SHA="$(docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy sh -lc 'sha256sum /etc/caddy/Caddyfile | cut -d\" \" -f1')"
+            if [ "$HOST_CADDYFILE_SHA" != "$CONTAINER_CADDYFILE_SHA" ]; then
+              echo "Host/container Caddyfile mismatch after recreate."
+              echo "Host SHA:      $HOST_CADDYFILE_SHA"
+              echo "Container SHA: $CONTAINER_CADDYFILE_SHA"
+              CADDY_CID="$(docker compose --env-file .env.production -f compose.caddy.yml ps -q caddy || true)"
+              if [ -n "$CADDY_CID" ]; then
+                echo "Caddy container mounts:"
+                docker inspect "$CADDY_CID" --format '{{range .Mounts}}{{println .Type .Source " -> " .Destination}}{{end}}' || true
+              fi
+              echo "Container /etc/caddy/Caddyfile (first 25 lines):"
+              docker compose --env-file .env.production -f compose.caddy.yml exec -T caddy sh -lc 'sed -n "1,25p" /etc/caddy/Caddyfile' || true
+              exit 1
             fi
 
             command -v curl >/dev/null 2>&1 || { echo "curl is required for post-deploy smoke checks"; exit 1; }
