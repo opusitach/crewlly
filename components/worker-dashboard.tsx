@@ -654,18 +654,19 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const selectedVenueName = selectedVenue?.name ?? organization?.name ?? "Заведение"
   const navActiveTab: "shift" | "planner" | "money" | "profile" = accountView === "profile" ? "profile" : activeTab
   const showAppHeader = accountView !== "hub"
+  const showHeaderVenueSelector = accountView === "none" || accountView === "notifications"
   const appHeaderTitle =
-    accountView === "profile"
+    accountView === "notifications"
+      ? "Crewlly"
+      : accountView === "profile"
       ? "Профиль"
       : accountView === "settings"
         ? "Настройки"
-        : accountView === "notifications"
-          ? "Уведомления"
-          : activeTab === "planner"
-            ? "Смены"
-            : activeTab === "money"
-              ? "Деньги"
-              : "Моя смена"
+        : activeTab === "planner"
+          ? "Смены"
+          : activeTab === "money"
+            ? "Деньги"
+            : "Моя смена"
   const nextShiftStatusMeta = nextShift ? getShiftStatusMeta(nextShift.status) : null
   const nextShiftDateLine = nextShift ? formatShiftDateLine(nextShift.startAt) : ""
   const nextShiftDateBadge = nextShift ? getShiftDateBadge(nextShift.startAt) : null
@@ -732,7 +733,6 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     if (accountView === "notifications") {
       return (
         <NotificationsPage
-          hideHeader
           onBack={() => {
             setAccountView("none")
             setUnreadNotifications(0)
@@ -984,8 +984,9 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
       {showAppHeader && (
         <AppHeader
           title={appHeaderTitle}
+          titleAlign={accountView === "notifications" ? "left" : "center"}
           onBack={onBack}
-          showVenueSelector={accountView === "none"}
+          showVenueSelector={showHeaderVenueSelector}
           selectedVenue={selectedVenueName}
           onVenueChange={() => setIsVenueSelectorOpen(true)}
           onAvatarClick={openAccountHub}

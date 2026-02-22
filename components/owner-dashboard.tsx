@@ -257,6 +257,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   }
 
   const setTab = (nextTab: OwnerTab) => {
+    setAccountView("none")
     updateRouteForTab(nextTab)
   }
 

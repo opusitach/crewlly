@@ -21,7 +21,7 @@ type Notification = {
 }
 
 export default function NotificationsPage({ onBack, hideHeader = false }: { onBack: () => void; hideHeader?: boolean }) {
-  const [filter, setFilter] = useState<"all" | "unread">("all")
+  const [filter, setFilter] = useState<"all" | "unread">("unread")
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -147,20 +147,19 @@ export default function NotificationsPage({ onBack, hideHeader = false }: { onBa
           {/* Filters */}
           <div className="flex gap-2">
             <Button
+              variant={filter === "unread" ? "default" : "outline"}
+              className="flex-1 h-9 text-sm"
+              onClick={() => setFilter("unread")}
+            >
+              Не прочитано
+              {unreadCount > 0 && <span className="ml-1.5 opacity-70">({unreadCount})</span>}
+            </Button>
+            <Button
               variant={filter === "all" ? "default" : "outline"}
               className="flex-1 h-9 text-sm"
               onClick={() => setFilter("all")}
             >
               Все
-              {notifications.length > 0 && <span className="ml-1.5 opacity-70">({notifications.length})</span>}
-            </Button>
-            <Button
-              variant={filter === "unread" ? "default" : "outline"}
-              className="flex-1 h-9 text-sm"
-              onClick={() => setFilter("unread")}
-            >
-              Непрочитанные
-              {unreadCount > 0 && <span className="ml-1.5 opacity-70">({unreadCount})</span>}
             </Button>
           </div>
 
