@@ -61,4 +61,15 @@ jobs:
 
             git pull --ff-only origin main
 
+            export COMPOSE_IGNORE_ORPHANS=1
+
+            # One-time migration cleanup: remove legacy app containers (frontend/backend)
+            # from old all-in-one compose stacks so only split stack (front/back) remains.
+            if [ -f docker-compose.yml ]; then
+              docker compose --env-file .env.production -f docker-compose.yml rm -sf frontend backend || true
+            fi
+            if [ -f docker-compose.prod.yml ]; then
+              docker compose --env-file .env.production -f docker-compose.prod.yml rm -sf frontend backend || true
+            fi
+
             docker compose --env-file .env.production -f compose.app.yml up -d --build front back
