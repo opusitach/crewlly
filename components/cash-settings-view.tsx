@@ -185,9 +185,11 @@ const sortFormulas = (formulas: CashFormulaDraft[]) => {
 export default function CashSettingsView({
   onBack,
   initialTab = "open",
+  locationId: initialLocationId = null,
 }: {
   onBack: () => void
   initialTab?: CashSettingsTab
+  locationId?: string | null
 }) {
   const { toast } = useToast()
 
@@ -206,9 +208,9 @@ export default function CashSettingsView({
   const [percentInput, setPercentInput] = useState("10")
 
   useEffect(() => {
-    void loadSettings()
+    void loadSettings(initialLocationId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [initialLocationId])
 
   const openFields = useMemo(() => fields.filter((field) => field.isActive && field.inputStage === "open"), [fields])
   const closeFields = useMemo(() => fields.filter((field) => field.isActive && field.inputStage === "close"), [fields])
@@ -272,10 +274,11 @@ export default function CashSettingsView({
     }
   }, [activeFormulaLocalId, visibleFormulas])
 
-  const loadSettings = async () => {
+  const loadSettings = async (targetLocationId: string | null = initialLocationId) => {
     setLoading(true)
     try {
-      const res = await fetch("/api/cash/settings", { credentials: "include" })
+      const query = targetLocationId ? `?locationId=${encodeURIComponent(targetLocationId)}` : ""
+      const res = await fetch(`/api/cash/settings${query}`, { credentials: "include" })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(json?.error || "Не удалось загрузить настройки кассы")

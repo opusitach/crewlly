@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getCashAuthContext } from "@/lib/cash/access"
+import { getCashAuthContext, resolveOrganizationLocationId } from "@/lib/cash/access"
 import { syncCashSessionFromWorkdayProcedures } from "@/lib/cash/session-sync"
 import { syncWorkdayRevenueFromCashSessions } from "@/lib/cash/revenue-allocation"
 import { syncWorkdayTipsFromCashSessions } from "@/lib/cash/tips-sync"
@@ -20,6 +20,7 @@ const querySchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  locationId: z.string().uuid().optional(),
 })
 
 type CashInputStage = "open" | "close"
@@ -93,7 +94,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { dateFrom, dateTo } = parsed.data
+  const { dateFrom, dateTo, locationId: requestedLocationId } = parsed.data
   const fromDate = dateFrom ? new Date(dateFrom) : null
   const toDate = dateTo ? new Date(dateTo) : null
 
@@ -101,11 +102,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "dateTo must be >= dateFrom" }, { status: 400 })
   }
 
+  let scopedLocationId: string | null = null
+  if (requestedLocationId) {
+    const locationResult = await resolveOrganizationLocationId(auth.organizationId, requestedLocationId)
+    if (!locationResult.ok) {
+      return NextResponse.json({ error: locationResult.error }, { status: locationResult.status })
+    }
+    scopedLocationId = locationResult.locationId
+  }
+
   const workDateFilter = buildDateFilter(fromDate, toDate)
 
   const candidateWorkdays = await prisma.workday.findMany({
     where: {
       organizationId: auth.organizationId,
+      ...(scopedLocationId ? { locationId: scopedLocationId } : {}),
       ...(workDateFilter ?? {}),
       workIntervals: {
         some: {
@@ -157,6 +168,7 @@ export async function GET(request: Request) {
   const sessions = await prisma.cashSession.findMany({
     where: {
       cashRegister: {
+        ...(scopedLocationId ? { locationId: scopedLocationId } : {}),
         location: {
           organizationId: auth.organizationId,
         },
@@ -403,11 +415,19 @@ export async function GET(request: Request) {
 
   let formulaErrors = 0
   let evaluatedFormulaSessions = 0
+  let revenueTotalCents = 0
 
   for (const session of sessions) {
     const locationId = session.cashRegister.locationId
     const formulaConfig = compiledFormulaByLocation.get(locationId)
-    if (!formulaConfig) continue
+    const revenueBasisTotalForSession = session.fieldValues.reduce(
+      (sum, fieldValue) => (fieldValue.isRevenueBasisSnapshot ? sum + fieldValue.valueCents : sum),
+      0,
+    )
+    if (!formulaConfig) {
+      revenueTotalCents += revenueBasisTotalForSession
+      continue
+    }
 
     const runtimeValues = Object.fromEntries(
       session.fieldValues.map((fieldValue) => [fieldValue.fieldKeySnapshot, fieldValue.valueCents]),
@@ -415,6 +435,8 @@ export async function GET(request: Request) {
 
     const perSessionResults: FormulaSessionResult[] = []
     let failed = false
+    let sessionRevenueFromFormulaCents = 0
+    let hasRevenueSourceFormulaResult = false
 
     for (const formula of formulaConfig.orderedFormulas) {
       const meta = formulaConfig.metaByKey.get(formula.resultKey)
@@ -435,6 +457,10 @@ export async function GET(request: Request) {
       }
 
       runtimeValues[formula.resultKey] = evaluation.value
+      if (meta?.isRevenueSource) {
+        sessionRevenueFromFormulaCents += evaluation.value
+        hasRevenueSourceFormulaResult = true
+      }
       perSessionResults.push({
         resultKey: formula.resultKey,
         resultLabel: meta?.resultLabel ?? formula.resultLabel ?? formula.resultKey,
@@ -445,9 +471,13 @@ export async function GET(request: Request) {
       })
     }
 
-    if (failed) continue
+    if (failed) {
+      revenueTotalCents += revenueBasisTotalForSession
+      continue
+    }
 
     evaluatedFormulaSessions += 1
+    revenueTotalCents += hasRevenueSourceFormulaResult ? sessionRevenueFromFormulaCents : revenueBasisTotalForSession
 
     for (const result of perSessionResults) {
       const mapKey = `${result.resultKey}:${result.resultLabel}`
@@ -489,6 +519,7 @@ export async function GET(request: Request) {
         currency: organization?.currency ?? null,
         sessionsCount: sessions.length,
         evaluatedFormulaSessions,
+        revenueTotalCents,
         cashFields,
         formulas,
         formulaWarnings,

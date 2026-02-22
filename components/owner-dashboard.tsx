@@ -67,11 +67,18 @@ type CashSummaryFormulaItem = {
   isRevenueSource?: boolean
 }
 
+type CashSummaryFieldItem = {
+  totalValueCents: number
+  isRevenueBasis?: boolean
+}
+
 type CashSummaryResponse = {
   data?: {
     summary?: {
       currency?: string | null
+      revenueTotalCents?: number | null
       formulas?: CashSummaryFormulaItem[]
+      cashFields?: CashSummaryFieldItem[]
     }
   }
 }
@@ -95,11 +102,59 @@ const isDateInputValue = (value: string | null | undefined): value is string =>
 
 const formatRevenueAmount = (value: number | null, currency: string) => {
   if (value == null) return "—"
-  return new Intl.NumberFormat("ru-RU", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value)
+  try {
+    return new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(value)
+  } catch {
+    return `${Math.round(value)} ${currency}`
+  }
+}
+
+const sumCashSummaryTotals = (items: Array<{ totalValueCents: number }>) =>
+  items.reduce((acc, item) => {
+    const value = Number(item?.totalValueCents)
+    return acc + (Number.isFinite(value) ? value : 0)
+  }, 0)
+
+const findRevenueWidgetTotalCents = (response: CashSummaryResponse | null) => {
+  const summary = response?.data?.summary
+  const explicitRevenueTotal = summary?.revenueTotalCents
+  const formulas = Array.isArray(summary?.formulas) ? summary.formulas : []
+  const revenueFormulas = formulas.filter((formula) => formula?.isRevenueSource === true)
+  if (revenueFormulas.length > 0) {
+    const fallbackFromFormulas = sumCashSummaryTotals(revenueFormulas)
+    if (
+      typeof explicitRevenueTotal === "number" &&
+      Number.isFinite(explicitRevenueTotal) &&
+      (explicitRevenueTotal !== 0 || fallbackFromFormulas === 0)
+    ) {
+      return explicitRevenueTotal
+    }
+    return fallbackFromFormulas
+  }
+
+  const cashFields = Array.isArray(summary?.cashFields) ? summary.cashFields : []
+  const revenueBasisFields = cashFields.filter((field) => field?.isRevenueBasis === true)
+  if (revenueBasisFields.length > 0) {
+    const fallbackFromFields = sumCashSummaryTotals(revenueBasisFields)
+    if (
+      typeof explicitRevenueTotal === "number" &&
+      Number.isFinite(explicitRevenueTotal) &&
+      (explicitRevenueTotal !== 0 || fallbackFromFields === 0)
+    ) {
+      return explicitRevenueTotal
+    }
+    return fallbackFromFields
+  }
+
+  if (typeof explicitRevenueTotal === "number" && Number.isFinite(explicitRevenueTotal)) {
+    return explicitRevenueTotal
+  }
+
+  return null
 }
 
 export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
@@ -334,25 +389,16 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       const now = new Date()
       const todayDate = toDateInputValue(now)
       const monthStart = toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1))
-      const monthEnd = todayDate
-
-      const findRevenueFormulaTotal = (response: CashSummaryResponse | null) => {
-        const formulas = Array.isArray(response?.data?.summary?.formulas) ? response?.data?.summary?.formulas : []
-        const revenueSources = formulas.filter((formula) => formula?.isRevenueSource === true)
-        if (revenueSources.length === 0) return null
-        return revenueSources.reduce((acc, formula) => {
-          const value = Number(formula.totalValueCents)
-          return acc + (Number.isFinite(value) ? value : 0)
-        }, 0)
-      }
+      const monthEnd = toDateInputValue(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+      const locationQuery = attentionLocationId ? `&locationId=${encodeURIComponent(attentionLocationId)}` : ""
 
       try {
         const [todayRes, monthRes] = await Promise.all([
-          fetch(`/api/reports/cash-summary?dateFrom=${todayDate}&dateTo=${todayDate}`, {
+          fetch(`/api/reports/cash-summary?dateFrom=${todayDate}&dateTo=${todayDate}${locationQuery}`, {
             credentials: "include",
             cache: "no-store",
           }),
-          fetch(`/api/reports/cash-summary?dateFrom=${monthStart}&dateTo=${monthEnd}`, {
+          fetch(`/api/reports/cash-summary?dateFrom=${monthStart}&dateTo=${monthEnd}${locationQuery}`, {
             credentials: "include",
             cache: "no-store",
           }),
@@ -374,8 +420,8 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
 
         const currency = monthJson?.data?.summary?.currency ?? todayJson?.data?.summary?.currency ?? "CZK"
         setRevenueCurrency(currency)
-        setTodayRevenueAmount(findRevenueFormulaTotal(todayJson))
-        setMonthRevenueAmount(findRevenueFormulaTotal(monthJson))
+        setTodayRevenueAmount(findRevenueWidgetTotalCents(todayJson))
+        setMonthRevenueAmount(findRevenueWidgetTotalCents(monthJson))
       } catch {
         if (!active) return
         setTodayRevenueAmount(null)
@@ -392,7 +438,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       active = false
       window.clearInterval(intervalId)
     }
-  }, [activeTab, isAuthLoading, isAuthenticated])
+  }, [activeTab, isAuthLoading, isAuthenticated, attentionLocationId])
 
   useEffect(() => {
     if (activeTab !== "dashboard" || isAuthLoading || !isAuthenticated) return
@@ -794,6 +840,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
           onBack={() => setTab("dashboard")}
           initialScreen={settingsInitialScreen}
           initialCashTab={settingsInitialCashTab}
+          cashLocationId={attentionLocationId}
         />
       )
     }

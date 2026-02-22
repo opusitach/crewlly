@@ -150,10 +150,12 @@ export default function GlobalSettingsView({
   onBack,
   initialScreen = "home",
   initialCashTab = "open",
+  cashLocationId = null,
 }: {
   onBack: () => void
   initialScreen?: SettingsScreen
   initialCashTab?: CashSettingsTab
+  cashLocationId?: string | null
 }) {
   const [settingsScreen, setSettingsScreen] = useState<SettingsScreen>(initialScreen)
 
@@ -162,7 +164,13 @@ export default function GlobalSettingsView({
   }, [initialScreen])
 
   if (settingsScreen === "cash") {
-    return <CashSettingsView onBack={() => setSettingsScreen("home")} initialTab={initialCashTab} />
+    return (
+      <CashSettingsView
+        onBack={() => setSettingsScreen("home")}
+        initialTab={initialCashTab}
+        locationId={cashLocationId}
+      />
+    )
   }
 
   if (settingsScreen === "team") {
