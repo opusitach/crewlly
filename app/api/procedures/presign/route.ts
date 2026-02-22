@@ -43,6 +43,105 @@ const parseHost = (value: string | null) => {
   }
 }
 
+const isIpv4Hostname = (value: string) => {
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) return false
+  return value.split(".").every((part) => {
+    const num = Number(part)
+    return Number.isInteger(num) && num >= 0 && num <= 255
+  })
+}
+
+const isIpHostname = (value: string) => {
+  const normalized = value.replace(/^\[(.*)\]$/, "$1")
+  return isIpv4Hostname(normalized) || normalized.includes(":")
+}
+
+const isPrivateOrLocalIpv4 = (value: string) => {
+  if (!isIpv4Hostname(value)) return false
+  const [a, b] = value.split(".").map(Number)
+  if (a === 10 || a === 127) return true
+  if (a === 192 && b === 168) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  return false
+}
+
+const isInternalHostname = (hostname: string) => {
+  const normalized = hostname.trim().toLowerCase()
+  if (!normalized) return false
+  if (normalized === "minio" || normalized === "localhost") return true
+  if (normalized.endsWith(".local") || normalized.endsWith(".internal")) return true
+  if (normalized === "::1") return true
+  return isPrivateOrLocalIpv4(normalized)
+}
+
+const toOrigin = (value: string | undefined | null) => {
+  if (!value) return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  try {
+    return new URL(trimmed).origin
+  } catch {
+    const host = parseHost(trimmed)
+    if (!host) return undefined
+    const hostname = (() => {
+      try {
+        return new URL(`http://${host}`).hostname
+      } catch {
+        return host
+      }
+    })()
+    const protocol = !isIpHostname(hostname) && hostname !== "localhost" ? "https:" : "http:"
+    return `${protocol}//${host}`
+  }
+}
+
+const resolveCaddyMinioOrigin = (request: Request) => {
+  const configured = process.env.CADDY_MINIO_API_DOMAIN
+  if (!configured) return undefined
+
+  const fromUrl = toOrigin(configured)
+  if (fromUrl) return fromUrl
+
+  const host = parseHost(configured)
+  if (!host) return undefined
+
+  const requestAddress = resolveRequestAddress(request)
+  const hostname = (() => {
+    try {
+      return new URL(`http://${host}`).hostname
+    } catch {
+      return host
+    }
+  })()
+
+  const protocol =
+    requestAddress.protocol === "http:" && !isIpHostname(hostname) && hostname !== "localhost"
+      ? "https:"
+      : requestAddress.protocol
+
+  return `${protocol}//${host}`
+}
+
+const requiresPublicPresignEndpoint = () => {
+  const internalEndpoint = process.env.AWS_S3_ENDPOINT
+  if (!internalEndpoint) return false
+
+  try {
+    const parsed = new URL(internalEndpoint)
+    return isInternalHostname(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
+const isInternalOrigin = (origin: string) => {
+  try {
+    return isInternalHostname(new URL(origin).hostname)
+  } catch {
+    return false
+  }
+}
+
 const resolveRequestAddress = (request: Request) => {
   const requestUrl = new URL(request.url)
   const host =
@@ -66,28 +165,34 @@ const resolveRequestAddress = (request: Request) => {
 }
 
 const resolvePresignEndpoint = (request: Request) => {
-  const explicit = process.env.AWS_S3_PRESIGN_ENDPOINT
-  if (explicit) return explicit
+  const explicit = toOrigin(process.env.AWS_S3_PRESIGN_ENDPOINT)
+  if (explicit && !isInternalOrigin(explicit)) return explicit
 
   const publicBase = process.env.AWS_S3_PUBLIC_BASE_URL
   if (publicBase) {
     try {
       const parsed = new URL(publicBase)
-      return `${parsed.protocol}//${parsed.host}`
+      const origin = `${parsed.protocol}//${parsed.host}`
+      if (!isInternalOrigin(origin)) {
+        return origin
+      }
     } catch {
       // Ignore malformed URL and continue with fallback.
     }
   }
+
+  const caddyMinioOrigin = resolveCaddyMinioOrigin(request)
+  if (caddyMinioOrigin && !isInternalOrigin(caddyMinioOrigin)) return caddyMinioOrigin
 
   const internalEndpoint = process.env.AWS_S3_ENDPOINT
   if (!internalEndpoint) return undefined
 
   try {
     const endpointUrl = new URL(internalEndpoint)
-    if (endpointUrl.hostname === "minio") {
-      const requestAddress = resolveRequestAddress(request)
-      endpointUrl.host = requestAddress.host
-      endpointUrl.protocol = requestAddress.protocol
+    if (isInternalHostname(endpointUrl.hostname)) {
+      // Do not fall back to the app request host (often app domain or raw IP).
+      // That produces broken presigned URLs that point to the wrong service.
+      return undefined
     }
     return endpointUrl.origin
   } catch {
@@ -168,6 +273,15 @@ export async function POST(request: Request) {
     ? `procedures/${interval.workday.organizationId}/${workIntervalId}/${ruleId}/${cashFieldKey}/${crypto.randomUUID()}`
     : `procedures/${interval.workday.organizationId}/${workIntervalId}/${ruleId}/${crypto.randomUUID()}`
   const presignEndpoint = resolvePresignEndpoint(request)
+  if (!presignEndpoint && requiresPublicPresignEndpoint()) {
+    return NextResponse.json(
+      {
+        error:
+          "S3 public upload endpoint is not configured. Set AWS_S3_PRESIGN_ENDPOINT or AWS_S3_PUBLIC_BASE_URL (or CADDY_MINIO_API_DOMAIN).",
+      },
+      { status: 500 },
+    )
+  }
   const presigned = await createPresignedUploadUrl({
     key,
     contentType: normalizedContentType,
