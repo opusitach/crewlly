@@ -38,6 +38,7 @@ type CashFormulaDraft = {
 export type CashSettingsTab = "open" | "close" | "formula"
 
 const FORMULA_OPERATOR_BUTTONS = ["+", "-", "(", ")"] as const
+const DEFAULT_NEW_FORMULA_LABEL = "Новый расчет"
 
 const CYRILLIC_TO_LATIN: Record<string, string> = {
   а: "a",
@@ -111,6 +112,9 @@ const createBaseFieldKeyFromLabel = (label: string, inputStage: "open" | "close"
   }
   return key.slice(0, 64)
 }
+
+const getDefaultFieldLabel = (inputStage: "open" | "close") =>
+  inputStage === "open" ? "Новое поле открытия" : "Новое поле закрытия"
 
 const createBaseFormulaKeyFromLabel = (label: string) => {
   const latin = transliterateToLatin(label)
@@ -336,7 +340,7 @@ export default function CashSettingsView({
   }
 
   const addField = (inputStage: "open" | "close") => {
-    const defaultLabel = inputStage === "open" ? "Новое поле открытия" : "Новое поле закрытия"
+    const defaultLabel = getDefaultFieldLabel(inputStage)
     const usedFieldKeys = new Set(fields.filter((field) => field.isActive).map((field) => field.key))
     const nextFieldKey = createUniqueKey(createBaseFieldKeyFromLabel(defaultLabel, inputStage), usedFieldKeys)
 
@@ -344,7 +348,7 @@ export default function CashSettingsView({
       {
         localId: createLocalId(),
         key: nextFieldKey,
-        label: defaultLabel,
+        label: "",
         inputStage,
         isRequired: true,
         isPhotoRequired: false,
@@ -431,7 +435,7 @@ export default function CashSettingsView({
   }
 
   const addFormula = () => {
-    const defaultLabel = "Новый расчет"
+    const defaultLabel = DEFAULT_NEW_FORMULA_LABEL
     const localId = createLocalId()
 
     setFormulas((prev) => {
@@ -441,7 +445,7 @@ export default function CashSettingsView({
       const nextFormula: CashFormulaDraft = {
         localId,
         resultKey,
-        resultLabel: defaultLabel,
+        resultLabel: "",
         expression: "",
         isTipsSource: false,
         isRevenueSource: false,
@@ -781,7 +785,7 @@ export default function CashSettingsView({
                     <Input
                       value={field.label}
                       onChange={(e) => updateFieldLabel(field.localId, e.target.value)}
-                      placeholder="Например, Депозит"
+                      placeholder={getDefaultFieldLabel(field.inputStage)}
                     />
                   </div>
 
@@ -826,7 +830,7 @@ export default function CashSettingsView({
                     <Input
                       value={field.label}
                       onChange={(e) => updateFieldLabel(field.localId, e.target.value)}
-                      placeholder="Например, Доход за день"
+                      placeholder={getDefaultFieldLabel(field.inputStage)}
                     />
                   </div>
 
@@ -906,7 +910,7 @@ export default function CashSettingsView({
                         <Input
                           value={activeFormula.resultLabel}
                           onChange={(e) => updateFormulaLabel(activeFormula.localId, e.target.value)}
-                          placeholder="Например, Чистый доход"
+                          placeholder={DEFAULT_NEW_FORMULA_LABEL}
                         />
                         <p className="text-xs text-muted-foreground">
                           Технические ключи скрыты. В интерфейсе отображается только название расчета.
