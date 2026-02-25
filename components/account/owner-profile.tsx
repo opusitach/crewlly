@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { ChevronLeft, Mail, Phone, Building2, Edit2, Camera, ChevronRight, LogOut } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useAuthStore } from "@/lib/store/auth-store"
+import { getEmailValidationError } from "@/lib/validation/email"
 
 interface OwnerProfileProps {
   onBack: () => void
@@ -20,6 +21,10 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
   const router = useRouter()
   const { user, venues, selectedVenueId, selectVenue, updateUser, updateVenue, isHydrated, hydrate } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [emailTouched, setEmailTouched] = useState(false)
+  const [emailValidationRequested, setEmailValidationRequested] = useState(false)
   const [profileData, setProfileData] = useState({
     name: user?.name ?? "",
     email: user?.email ?? "",
@@ -32,6 +37,8 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
   )
   const [venueName, setVenueName] = useState(currentVenue?.name ?? "")
   const currentVenueId = currentVenue?.id ?? null
+  const emailError = getEmailValidationError(profileData.email)
+  const showEmailError = isEditing && Boolean(emailError) && (emailTouched || emailValidationRequested)
 
   // Ensure hydration
   useEffect(() => {
@@ -51,13 +58,68 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
     }
   }, [user, currentVenue])
 
-  const handleSave = async () => {
-    await updateUser({ name: profileData.name, email: profileData.email, id: user?.id ?? crypto.randomUUID() })
-    if (currentVenueId) {
-      await updateVenue(currentVenueId, { name: venueName })
-      await selectVenue(currentVenueId)
+  const resetEmailValidation = () => {
+    setEmailTouched(false)
+    setEmailValidationRequested(false)
+  }
+
+  const requestEmailValidation = () => {
+    setEmailTouched(true)
+    setEmailValidationRequested(true)
+  }
+
+  const handleEmailChange = (value: string) => {
+    setProfileData((prev) => ({ ...prev, email: value }))
+    setSaveError(null)
+    setEmailTouched(true)
+  }
+
+  const handleEditToggle = () => {
+    if (isSaving) return
+
+    if (!isEditing) {
+      resetEmailValidation()
+      setSaveError(null)
+      setIsEditing(true)
+      return
     }
+
+    if (emailError) {
+      requestEmailValidation()
+      return
+    }
+
+    setProfileData((prev) => ({ ...prev, email: prev.email.trim() }))
+    resetEmailValidation()
     setIsEditing(false)
+  }
+
+  const handleSave = async () => {
+    if (isSaving) return
+
+    if (emailError) {
+      requestEmailValidation()
+      return
+    }
+
+    const trimmedEmail = profileData.email.trim()
+    setSaveError(null)
+    setIsSaving(true)
+
+    try {
+      await updateUser({ name: profileData.name, email: trimmedEmail })
+      if (currentVenueId) {
+        await updateVenue(currentVenueId, { name: venueName })
+        await selectVenue(currentVenueId)
+      }
+      setProfileData((prev) => ({ ...prev, email: trimmedEmail }))
+      resetEmailValidation()
+      setIsEditing(false)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Не удалось сохранить профиль")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const getInitials = (name: string) => {
@@ -81,7 +143,7 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setIsEditing(!isEditing)}
+              onClick={handleEditToggle}
               className="rounded-full h-9 w-9"
             >
               <Edit2 className="h-4 w-4" strokeWidth={1.5} />
@@ -121,17 +183,30 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
           <h3 className="text-sm font-semibold text-muted-foreground">Контактная информация</h3>
 
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-xs text-muted-foreground">
+            <Label htmlFor="email" className={`text-xs ${showEmailError ? "text-destructive" : "text-muted-foreground"}`}>
               Email
             </Label>
             {isEditing ? (
-              <Input
-                id="email"
-                type="email"
-                value={profileData.email}
-                onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                className="h-9"
-              />
+              <div className="space-y-1.5">
+                <Input
+                  id="email"
+                  type="email"
+                  value={profileData.email}
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  onBlur={() => setEmailTouched(true)}
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  title="Введите email латиницей в формате name@example.com"
+                  aria-invalid={showEmailError || undefined}
+                  aria-describedby={showEmailError ? "owner-email-error" : undefined}
+                  className="h-9"
+                />
+                {showEmailError && (
+                  <p id="owner-email-error" className="text-xs text-destructive">
+                    {emailError}
+                  </p>
+                )}
+              </div>
             ) : (
               <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
                 <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
@@ -193,9 +268,12 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
         </Card>
 
         {isEditing && (
-          <Button className="w-full h-10" onClick={handleSave}>
-            Сохранить изменения
-          </Button>
+          <div className="space-y-2">
+            {saveError && <p className="text-xs text-destructive">{saveError}</p>}
+            <Button className="w-full h-10" onClick={handleSave} disabled={Boolean(emailError) || isSaving}>
+              {isSaving ? "Сохраняем..." : "Сохранить изменения"}
+            </Button>
+          </div>
         )}
 
         <Button variant="destructive" className="w-full h-10 mt-2" onClick={onLogout}>

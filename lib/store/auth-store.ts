@@ -26,6 +26,14 @@ interface AccessRole {
   name: string
 }
 
+type UserUpdateInput = {
+  fullName?: string
+  name?: string
+  email?: string
+  phone?: string | null
+  avatarUrl?: string | null
+}
+
 interface Venue {
   id: string
   name: string
@@ -58,7 +66,7 @@ interface AuthStore {
   selectVenue: (venueId: string) => Promise<void>
   addVenue: (data: Partial<Venue> & { name: string }) => Promise<void>
   updateVenue: (venueId: string, data: Partial<Venue>) => Promise<void>
-  updateUser: (data: Partial<User> & { id: string }) => Promise<void>
+  updateUser: (data: UserUpdateInput) => Promise<void>
   clear: () => void
 }
 
@@ -390,18 +398,41 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 
   updateUser: async (data) => {
-    set((state) => {
-      if (!state.user) return state
-      const nextName = data.fullName ?? data.name ?? state.user.fullName ?? state.user.name
-      return {
-        user: {
-          ...state.user,
-          ...data,
-          fullName: nextName,
-          name: nextName,
-        },
-      }
+    const payload: Record<string, unknown> = {}
+
+    if (data.fullName !== undefined) payload.fullName = data.fullName
+    if (data.name !== undefined) payload.name = data.name
+    if (data.email !== undefined) payload.email = data.email
+    if (data.phone !== undefined) payload.phone = data.phone
+    if (data.avatarUrl !== undefined) payload.avatarUrl = data.avatarUrl
+
+    const res = await fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
     })
+    const json = await res.json().catch(() => null)
+
+    if (!res.ok) {
+      const errorMsg =
+        typeof json?.error === "string"
+          ? json.error
+          : "Не удалось обновить профиль"
+      throw new Error(errorMsg)
+    }
+
+    if (!json?.user) return
+
+    const mappedUser = mapUser(json.user)
+    set((state) => ({
+      user: state.user
+        ? {
+            ...state.user,
+            ...mappedUser,
+          }
+        : mappedUser,
+    }))
   },
 
   clear: () => {

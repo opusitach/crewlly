@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ChevronLeft, Mail, Phone, Edit2, Camera, LogOut } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
+import { useAuthStore } from "@/lib/store/auth-store"
+import { getEmailValidationError } from "@/lib/validation/email"
 
 interface WorkerProfileProps {
   onBack: () => void
@@ -16,7 +18,12 @@ interface WorkerProfileProps {
 }
 
 export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: WorkerProfileProps) {
+  const { updateUser } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [emailTouched, setEmailTouched] = useState(false)
+  const [emailValidationRequested, setEmailValidationRequested] = useState(false)
   const [profileData, setProfileData] = useState({
     name: "",
     email: "",
@@ -24,6 +31,8 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
     avatarUrl: "",
     positions: [] as string[],
   })
+  const emailError = getEmailValidationError(profileData.email)
+  const showEmailError = isEditing && Boolean(emailError) && (emailTouched || emailValidationRequested)
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -67,6 +76,61 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
       .slice(0, 2)
   }
 
+  const resetEmailValidation = () => {
+    setEmailTouched(false)
+    setEmailValidationRequested(false)
+  }
+
+  const requestEmailValidation = () => {
+    setEmailTouched(true)
+    setEmailValidationRequested(true)
+  }
+
+  const handleEmailChange = (value: string) => {
+    setProfileData((prev) => ({ ...prev, email: value }))
+    setSaveError(null)
+    setEmailTouched(true)
+  }
+
+  const finishEditing = async () => {
+    if (isSaving) return
+
+    if (emailError) {
+      requestEmailValidation()
+      return
+    }
+
+    const trimmedEmail = profileData.email.trim()
+    const trimmedPhone = profileData.phone?.trim() || null
+
+    setSaveError(null)
+    setIsSaving(true)
+
+    try {
+      await updateUser({ email: trimmedEmail, phone: trimmedPhone })
+      setProfileData((prev) => ({ ...prev, email: trimmedEmail, phone: trimmedPhone }))
+      resetEmailValidation()
+      setIsEditing(false)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Не удалось сохранить профиль")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleEditToggle = async () => {
+    if (isSaving) return
+
+    if (!isEditing) {
+      resetEmailValidation()
+      setSaveError(null)
+      setIsEditing(true)
+      return
+    }
+
+    await finishEditing()
+  }
+
   return (
     <div className="min-h-screen bg-background max-w-md mx-auto pb-6">
       {!hideHeader && (
@@ -80,7 +144,7 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={handleEditToggle}
                 className="rounded-full h-9 w-9"
               >
                 <Edit2 className="h-4 w-4" strokeWidth={1.5} />
@@ -96,7 +160,7 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
             <Button
               variant={isEditing ? "default" : "outline"}
               size="sm"
-              onClick={() => setIsEditing(!isEditing)}
+              onClick={handleEditToggle}
             >
               <Edit2 className="h-4 w-4 mr-1.5" strokeWidth={1.5} />
               {isEditing ? "Готово" : "Редактировать"}
@@ -140,17 +204,30 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
           <h3 className="text-sm font-semibold text-muted-foreground">Контактная информация</h3>
 
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-xs text-muted-foreground">
+            <Label htmlFor="email" className={`text-xs ${showEmailError ? "text-destructive" : "text-muted-foreground"}`}>
               Email
             </Label>
             {isEditing ? (
-              <Input
-                id="email"
-                type="email"
-                value={profileData.email}
-                onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                className="h-9"
-              />
+              <div className="space-y-1.5">
+                <Input
+                  id="email"
+                  type="email"
+                  value={profileData.email}
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  onBlur={() => setEmailTouched(true)}
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  title="Введите email латиницей в формате name@example.com"
+                  aria-invalid={showEmailError || undefined}
+                  aria-describedby={showEmailError ? "worker-email-error" : undefined}
+                  className="h-9"
+                />
+                {showEmailError && (
+                  <p id="worker-email-error" className="text-xs text-destructive">
+                    {emailError}
+                  </p>
+                )}
+              </div>
             ) : (
               <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
                 <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
@@ -169,7 +246,10 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
                   id="phone"
                   type="tel"
                   value={profileData.phone}
-                  onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                  onChange={(e) => {
+                    setSaveError(null)
+                    setProfileData({ ...profileData, phone: e.target.value })
+                  }}
                   className="h-9"
                 />
               ) : (
@@ -183,9 +263,12 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
         </Card>
 
         {isEditing && (
-          <Button className="w-full h-10" onClick={() => setIsEditing(false)}>
-            Сохранить изменения
-          </Button>
+          <div className="space-y-2">
+            {saveError && <p className="text-xs text-destructive">{saveError}</p>}
+            <Button className="w-full h-10" onClick={finishEditing} disabled={Boolean(emailError) || isSaving}>
+              {isSaving ? "Сохраняем..." : "Сохранить изменения"}
+            </Button>
+          </div>
         )}
 
         <Button variant="destructive" className="w-full h-10 mt-2" onClick={onLogout}>
