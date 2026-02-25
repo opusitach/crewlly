@@ -13,6 +13,7 @@ import AccountHub from "@/components/account/account-hub"
 import WorkerProfile from "@/components/account/worker-profile"
 import WorkerSettings from "@/components/account/worker-settings"
 import NotificationsPage from "@/components/account/notifications-page"
+import HelpPage from "@/components/account/help-page"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
 import {
   Dialog,
@@ -92,7 +93,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const [isMonthSummaryLoading, setIsMonthSummaryLoading] = useState(false)
   const [dashboardEvents, setDashboardEvents] = useState<DashboardNotification[]>([])
   const [isEventsLoading, setIsEventsLoading] = useState(false)
-  const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "settings" | "notifications">(
+  const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "settings" | "notifications" | "help">(
     resolvedTab === "profile" ? "profile" : "none",
   )
   const [unreadNotifications, setUnreadNotifications] = useState<number | null>(null)
@@ -517,6 +518,11 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
         setAccountView("settings")
         updateRouteForTab("shift")
       }, 100)
+    } else if (screen === "help") {
+      setTimeout(() => {
+        setAccountView("help")
+        updateRouteForTab("shift")
+      }, 100)
     }
   }
 
@@ -662,6 +668,8 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
       ? "Профиль"
       : accountView === "settings"
         ? "Настройки"
+        : accountView === "help"
+          ? "Помощь"
         : activeTab === "planner"
           ? "Смены"
           : activeTab === "money"
@@ -728,6 +736,10 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
 
     if (accountView === "settings") {
       return <WorkerSettings onBack={() => setAccountView("none")} hideHeader />
+    }
+
+    if (accountView === "help") {
+      return <HelpPage onBack={() => setAccountView("none")} userRole="worker" hideHeader />
     }
 
     if (accountView === "notifications") {

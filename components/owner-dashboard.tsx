@@ -27,6 +27,7 @@ import OwnerBottomNav, { type OwnerTab } from "@/components/shared/owner-bottom-
 import AccountHub from "@/components/account/account-hub"
 import OwnerProfile from "@/components/account/owner-profile"
 import NotificationsPage from "@/components/account/notifications-page"
+import HelpPage from "@/components/account/help-page"
 import TeamMovedHint from "@/components/notifications/team-moved-hint"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { useAuthStore } from "@/lib/store/auth-store"
@@ -171,7 +172,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const initialReportsToDate = isDateInputValue(reportsToParam) ? reportsToParam : undefined
   const initialShiftsDate = isDateInputValue(shiftsDateParam) ? shiftsDateParam : undefined
   const [activeTab, setActiveTab] = useState<OwnerTab>(() => resolvedTab)
-  const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "notifications">("none")
+  const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "notifications" | "help">("none")
   const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false)
   const [showTeamHint, setShowTeamHint] = useState(true)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
@@ -735,6 +736,8 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       setSettingsInitialScreen("home")
       setSettingsInitialCashTab("open")
       setTab("settings")
+    } else if (screen === "help") {
+      setTimeout(() => setAccountView("help"), 100)
     } else if (screen === "team") {
       setShowTeamHint(false)
       router.push("/app/team")
@@ -814,6 +817,9 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const renderAccountOverlay = () => {
     if (accountView === "profile") {
       return <OwnerProfile onBack={() => setAccountView("none")} onLogout={handleLogout} />
+    }
+    if (accountView === "help") {
+      return <HelpPage onBack={() => setAccountView("none")} userRole="owner" />
     }
     if (accountView === "notifications") {
       return (
