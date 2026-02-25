@@ -1100,6 +1100,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       {/* Header */}
       <AppHeader
         title="Crewlly"
+        titleHref="/"
         titleAlign="left"
         onBack={onBack}
         showVenueSelector

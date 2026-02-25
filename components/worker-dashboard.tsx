@@ -996,6 +996,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
       {showAppHeader && (
         <AppHeader
           title={appHeaderTitle}
+          titleHref={appHeaderTitle === "Crewlly" ? "/" : undefined}
           titleAlign={accountView === "notifications" ? "left" : "center"}
           onBack={onBack}
           showVenueSelector={showHeaderVenueSelector}

@@ -1,10 +1,12 @@
 "use client"
 
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronDown, Bell } from "lucide-react"
 
 interface AppHeaderProps {
   title: string
+  titleHref?: string
   onBack?: () => void
   titleAlign?: "center" | "left"
   showVenueSelector?: boolean
@@ -19,6 +21,7 @@ interface AppHeaderProps {
 
 export default function AppHeader({
   title,
+  titleHref,
   onBack,
   titleAlign = "center",
   showVenueSelector,
@@ -42,6 +45,14 @@ export default function AppHeader({
       .slice(0, 2)
   }
 
+  const titleNode = titleHref ? (
+    <Link href={titleHref} className="hover:opacity-80 transition-opacity">
+      {title}
+    </Link>
+  ) : (
+    title
+  )
+
   return (
     <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl">
       <div className="p-3 space-y-2">
@@ -58,7 +69,7 @@ export default function AppHeader({
                   <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
                 </Button>
               ) : null}
-              <h1 className="text-lg font-semibold truncate">{title}</h1>
+              <h1 className="text-lg font-semibold truncate">{titleNode}</h1>
             </div>
           ) : (
             <>
@@ -69,7 +80,7 @@ export default function AppHeader({
               ) : (
                 <div className="w-9" />
               )}
-              <h1 className="text-lg font-semibold truncate px-2">{title}</h1>
+              <h1 className="text-lg font-semibold truncate px-2">{titleNode}</h1>
             </>
           )}
 
