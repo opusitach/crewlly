@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -12,6 +13,9 @@ import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { Camera, ChevronLeft, GripVertical, ListChecks, Pencil, ReceiptText, Trash2, Type } from "lucide-react"
 
+type WeekdayValue = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN"
+type ListDayFilterValue = "default" | WeekdayValue
+
 type RuleTemplate = {
   id: string
   when: "OPEN" | "CLOSE"
@@ -19,7 +23,7 @@ type RuleTemplate = {
   title: string
   required: boolean
   order: number
-  dayOfWeek: string | null
+  dayOfWeek: WeekdayValue | null
   checklistItems: { id: string; title: string; order: number }[]
 }
 
@@ -31,7 +35,7 @@ type Position = {
   needsRulesSetup?: boolean
 }
 
-const DAY_OPTIONS = [
+const DAY_FILTER_OPTIONS = [
   { value: "default", label: "По умолчанию" },
   { value: "MON", label: "Понедельник" },
   { value: "TUE", label: "Вторник" },
@@ -40,7 +44,32 @@ const DAY_OPTIONS = [
   { value: "FRI", label: "Пятница" },
   { value: "SAT", label: "Суббота" },
   { value: "SUN", label: "Воскресенье" },
-]
+] as const satisfies ReadonlyArray<{ value: ListDayFilterValue; label: string }>
+
+const WEEKDAY_OPTIONS = [
+  { value: "MON", label: "Понедельник" },
+  { value: "TUE", label: "Вторник" },
+  { value: "WED", label: "Среда" },
+  { value: "THU", label: "Четверг" },
+  { value: "FRI", label: "Пятница" },
+  { value: "SAT", label: "Суббота" },
+  { value: "SUN", label: "Воскресенье" },
+] as const satisfies ReadonlyArray<{ value: WeekdayValue; label: string }>
+
+const DAY_LABELS: Record<ListDayFilterValue, string> = Object.fromEntries(
+  DAY_FILTER_OPTIONS.map((item) => [item.value, item.label]),
+) as Record<ListDayFilterValue, string>
+
+const SHORT_DAY_LABELS: Record<ListDayFilterValue, string> = {
+  default: "По умолчанию",
+  MON: "Пн",
+  TUE: "Вт",
+  WED: "Ср",
+  THU: "Чт",
+  FRI: "Пт",
+  SAT: "Сб",
+  SUN: "Вс",
+}
 
 const WHEN_LABELS: Record<RuleTemplate["when"], string> = {
   OPEN: "Открытие",
@@ -55,6 +84,8 @@ const RULE_TYPE_LABELS: Record<RuleTemplate["type"], string> = {
 }
 
 const CASH_RULE_TITLE = "Касса"
+const CHECKLIST_FIRST_ITEM_PLACEHOLDER = "Пункт"
+const CHECKLIST_NEW_ITEM_PLACEHOLDER = "Новый пункт"
 
 const emptyForm = {
   id: null as string | null,
@@ -62,7 +93,7 @@ const emptyForm = {
   type: "CHECKLIST" as RuleTemplate["type"],
   required: true,
   order: 0,
-  checklistItems: [{ title: "Пункт", order: 0 }],
+  checklistItems: [{ title: "", order: 0, placeholder: CHECKLIST_FIRST_ITEM_PLACEHOLDER }],
 }
 
 export default function PositionRulesView({ onBack }: { onBack?: () => void } = {}) {
@@ -77,7 +108,9 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
   const [rules, setRules] = useState<RuleTemplate[]>([])
   const [isRulesLoading, setIsRulesLoading] = useState(false)
   const [selectedWhen, setSelectedWhen] = useState<RuleTemplate["when"]>("OPEN")
-  const [selectedDay, setSelectedDay] = useState<string>("default")
+  const [selectedListDay, setSelectedListDay] = useState<ListDayFilterValue>("default")
+  const [isDefaultFormScope, setIsDefaultFormScope] = useState(true)
+  const [selectedFormDays, setSelectedFormDays] = useState<WeekdayValue[]>([])
   const [formState, setFormState] = useState({ ...emptyForm })
   const [isSaving, setIsSaving] = useState(false)
   const [isReordering, setIsReordering] = useState(false)
@@ -98,7 +131,28 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
     setTouchDropTargetRuleId(ruleId)
   }, [])
 
-  const resetForm = useCallback(() => setFormState({ ...emptyForm }), [])
+  const resetFormFields = useCallback(() => setFormState({ ...emptyForm }), [])
+  const applyFormScope = useCallback((nextScope: { default: true } | { default: false; days: WeekdayValue[] }) => {
+    if (nextScope.default) {
+      setIsDefaultFormScope(true)
+      setSelectedFormDays([])
+      return
+    }
+    const nextDays = Array.from(new Set(nextScope.days))
+    setIsDefaultFormScope(false)
+    setSelectedFormDays(nextDays)
+  }, [])
+  const syncFormScopeWithListFilter = useCallback(() => {
+    if (selectedListDay === "default") {
+      applyFormScope({ default: true })
+      return
+    }
+    applyFormScope({ default: false, days: [selectedListDay] })
+  }, [applyFormScope, selectedListDay])
+  const resetFormDraft = useCallback(() => {
+    resetFormFields()
+    syncFormScopeWithListFilter()
+  }, [resetFormFields, syncFormScopeWithListFilter])
   const resetTouchDragState = useCallback(() => {
     setTouchDraggingRule(null)
     setTouchDropTargetRule(null)
@@ -161,6 +215,12 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
   }, [selectedWhen])
 
   useEffect(() => {
+    if (formState.type !== "CASH") return
+    if (isDefaultFormScope && selectedFormDays.length === 0) return
+    applyFormScope({ default: true })
+  }, [applyFormScope, formState.type, isDefaultFormScope, selectedFormDays.length])
+
+  useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
 
     const media = window.matchMedia("(pointer: coarse)")
@@ -184,9 +244,9 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
   const filteredRules = useMemo(() => {
     return rules
       .filter((rule) => rule.when === selectedWhen)
-      .filter((rule) => (selectedDay === "default" ? rule.dayOfWeek == null : rule.dayOfWeek === selectedDay))
+      .filter((rule) => (selectedListDay === "default" ? rule.dayOfWeek == null : rule.dayOfWeek === selectedListDay))
       .sort((a, b) => a.order - b.order)
-  }, [rules, selectedWhen, selectedDay])
+  }, [rules, selectedWhen, selectedListDay])
 
   const nextOrder = useMemo(() => {
     if (filteredRules.length === 0) return 1
@@ -197,11 +257,12 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
     (positionId: string) => {
       setSelectedPositionId(positionId)
       setSelectedWhen("OPEN")
-      setSelectedDay("default")
-      resetForm()
+      setSelectedListDay("default")
+      resetFormFields()
+      applyFormScope({ default: true })
       setIsEditorOpen(true)
     },
-    [resetForm],
+    [applyFormScope, resetFormFields],
   )
 
   const handleRoleTap = (positionId: string) => {
@@ -220,15 +281,55 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
 
   const startEdit = (rule: RuleTemplate) => {
     const normalizedTitle = rule.type === "CASH" ? CASH_RULE_TITLE : rule.title
+    if (rule.dayOfWeek == null) {
+      applyFormScope({ default: true })
+    } else {
+      applyFormScope({ default: false, days: [rule.dayOfWeek] })
+    }
     setFormState({
       id: rule.id,
       title: normalizedTitle,
       type: rule.type,
       required: rule.required,
       order: rule.order,
-      checklistItems: rule.checklistItems.map((item) => ({ title: item.title, order: item.order })),
+      checklistItems: rule.checklistItems.map((item, index) => ({
+        title: item.title,
+        order: item.order,
+        placeholder: index === 0 ? CHECKLIST_FIRST_ITEM_PLACEHOLDER : CHECKLIST_NEW_ITEM_PLACEHOLDER,
+      })),
     })
   }
+
+  const toggleFormDay = useCallback((day: WeekdayValue) => {
+    setSelectedFormDays((prev) => {
+      const nextSet = new Set(isDefaultFormScope ? [] : prev)
+      if (nextSet.has(day)) {
+        nextSet.delete(day)
+      } else {
+        nextSet.add(day)
+      }
+      const nextDays = WEEKDAY_OPTIONS.map((item) => item.value).filter((value) => nextSet.has(value))
+
+      if (nextDays.length === WEEKDAY_OPTIONS.length) {
+        setIsDefaultFormScope(true)
+        return []
+      }
+
+      setIsDefaultFormScope(false)
+      return nextDays
+    })
+  }, [isDefaultFormScope])
+
+  const formScopeSummary = useMemo(() => {
+    if (isDefaultFormScope) return "По умолчанию (общий набор правил для дня без отдельной настройки)"
+    if (selectedFormDays.length === 0) return "Выберите хотя бы один день недели"
+    if (selectedFormDays.length === 1) return `Только ${DAY_LABELS[selectedFormDays[0]].toLowerCase()}`
+    return `Выбрано дней: ${selectedFormDays.length}`
+  }, [isDefaultFormScope, selectedFormDays])
+
+  const formScopeTargetCount = isDefaultFormScope ? 1 : selectedFormDays.length
+  const isFormScopeValid = isDefaultFormScope || selectedFormDays.length > 0
+  const isFormScopeLockedByCash = formState.type === "CASH"
 
   const handleSave = async () => {
     if (!selectedPositionId) return
@@ -242,16 +343,25 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       toast({ title: "Нужны пункты чек-листа", variant: "destructive" })
       return
     }
+    if (!isFormScopeValid) {
+      toast({ title: "Выберите день недели или «По умолчанию»", variant: "destructive" })
+      return
+    }
 
     setIsSaving(true)
     try {
+      const targetWeekdays = isDefaultFormScope ? [] : selectedFormDays
       const payload = {
         when: selectedWhen,
         type: formState.type,
         title: normalizedTitle,
         required: selectedWhen === "CLOSE" ? true : formState.required,
         order: formState.id ? formState.order : nextOrder,
-        dayOfWeek: selectedDay === "default" ? null : selectedDay,
+        ...(isDefaultFormScope
+          ? { dayOfWeek: null as null }
+          : targetWeekdays.length === 1
+            ? { dayOfWeek: targetWeekdays[0] }
+            : { dayOfWeeks: targetWeekdays }),
         checklistItems:
           formState.type === "CHECKLIST"
             ? formState.checklistItems.map((item, index) => ({
@@ -278,7 +388,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       }
 
       toast({ title: "Сохранено" })
-      resetForm()
+      resetFormFields()
       await Promise.all([loadPositions(), loadRules(selectedPositionId)])
     } catch (err: any) {
       toast({ title: "Ошибка", description: err?.message || "Не удалось сохранить", variant: "destructive" })
@@ -452,7 +562,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
         onOpenChange={(open) => {
           setIsEditorOpen(open)
           if (!open) {
-            resetForm()
+            resetFormDraft()
             resetTouchDragState()
           }
         }}
@@ -472,7 +582,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                   variant={selectedWhen === item ? "default" : "outline"}
                   onClick={() => {
                     setSelectedWhen(item)
-                    resetForm()
+                    resetFormDraft()
                   }}
                 >
                   {WHEN_LABELS[item]}
@@ -484,66 +594,54 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
               <div className="text-sm font-semibold">{formState.id ? "Редактировать правило" : "Новое правило"}</div>
 
               <div className="space-y-2">
-                <Label>День недели</Label>
-                <Select value={selectedDay} onValueChange={setSelectedDay}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="z-[80]">
-                    {DAY_OPTIONS.map((day) => (
-                      <SelectItem key={day.value} value={day.value}>
-                        {day.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
                 <Label>Название</Label>
                 <Input
                   value={formState.title}
                   onChange={(event) => setFormState((prev) => ({ ...prev, title: event.target.value }))}
                   disabled={formState.type === "CASH"}
+                  placeholder="Введите название правила"
+                  className="placeholder:opacity-60"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Тип</Label>
-                <Select
-                  value={formState.type}
-                  onValueChange={(value) =>
-                    setFormState((prev) => {
-                      const nextType = value as RuleTemplate["type"]
-                      if (nextType === "CASH") {
-                        return { ...prev, type: nextType, title: CASH_RULE_TITLE }
-                      }
-                      if (prev.type === "CASH" && prev.title === CASH_RULE_TITLE) {
-                        return { ...prev, type: nextType, title: "" }
-                      }
-                      return { ...prev, type: nextType }
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="z-[80]">
-                    <SelectItem value="CHECKLIST">{RULE_TYPE_LABELS.CHECKLIST}</SelectItem>
-                    <SelectItem value="INPUT">{RULE_TYPE_LABELS.INPUT}</SelectItem>
-                    <SelectItem value="PHOTO">{RULE_TYPE_LABELS.PHOTO}</SelectItem>
-                    <SelectItem value="CASH">{RULE_TYPE_LABELS.CASH}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                <div className="space-y-2">
+                  <Label>Тип</Label>
+                  <Select
+                    value={formState.type}
+                    onValueChange={(value) =>
+                      setFormState((prev) => {
+                        const nextType = value as RuleTemplate["type"]
+                        if (nextType === "CASH") {
+                          return { ...prev, type: nextType, title: CASH_RULE_TITLE }
+                        }
+                        if (prev.type === "CASH" && prev.title === CASH_RULE_TITLE) {
+                          return { ...prev, type: nextType, title: "" }
+                        }
+                        return { ...prev, type: nextType }
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="z-[80]">
+                      <SelectItem value="CHECKLIST">{RULE_TYPE_LABELS.CHECKLIST}</SelectItem>
+                      <SelectItem value="INPUT">{RULE_TYPE_LABELS.INPUT}</SelectItem>
+                      <SelectItem value="PHOTO">{RULE_TYPE_LABELS.PHOTO}</SelectItem>
+                      <SelectItem value="CASH">{RULE_TYPE_LABELS.CASH}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={selectedWhen === "CLOSE" ? true : formState.required}
-                  onCheckedChange={(checked) => setFormState((prev) => ({ ...prev, required: checked }))}
-                  disabled={selectedWhen === "CLOSE"}
-                />
-                <Label>{selectedWhen === "CLOSE" ? "Обязательное (для закрытия всегда включено)" : "Обязательное"}</Label>
+                <div className="flex items-center gap-2 md:pb-2">
+                  <Switch
+                    checked={selectedWhen === "CLOSE" ? true : formState.required}
+                    onCheckedChange={(checked) => setFormState((prev) => ({ ...prev, required: checked }))}
+                    disabled={selectedWhen === "CLOSE"}
+                  />
+                  <Label>{selectedWhen === "CLOSE" ? "Обязательное (для закрытия всегда включено)" : "Обязательное"}</Label>
+                </div>
               </div>
 
               {formState.type === "CHECKLIST" && (
@@ -554,6 +652,8 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                       <div key={index} className="flex items-center gap-2">
                         <Input
                           value={item.title}
+                          placeholder={item.placeholder ?? (index === 0 ? CHECKLIST_FIRST_ITEM_PLACEHOLDER : CHECKLIST_NEW_ITEM_PLACEHOLDER)}
+                          className="placeholder:opacity-60"
                           onChange={(event) => {
                             const nextTitle = event.target.value
                             setFormState((prev) => {
@@ -585,7 +685,14 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                       onClick={() =>
                         setFormState((prev) => ({
                           ...prev,
-                          checklistItems: [...prev.checklistItems, { title: "Новый пункт", order: prev.checklistItems.length + 1 }],
+                          checklistItems: [
+                            ...prev.checklistItems,
+                            {
+                              title: "",
+                              order: prev.checklistItems.length + 1,
+                              placeholder: CHECKLIST_NEW_ITEM_PLACEHOLDER,
+                            },
+                          ],
                         }))
                       }
                     >
@@ -595,12 +702,83 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                 </div>
               )}
 
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Область действия правила</Label>
+                  {formState.id ? (
+                    <Badge variant="outline">Редактирование / копирование</Badge>
+                  ) : (
+                    <Badge variant="outline">Новое правило</Badge>
+                  )}
+                </div>
+
+                <div className="relative rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <div
+                    className={`space-y-3 transition ${
+                      isFormScopeLockedByCash ? "pointer-events-none select-none blur-[3px] opacity-70" : ""
+                    }`}
+                    aria-disabled={isFormScopeLockedByCash}
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={isDefaultFormScope ? "default" : "outline"}
+                        onClick={() => applyFormScope({ default: true })}
+                        disabled={isSaving || isReordering || isFormScopeLockedByCash}
+                      >
+                        По умолчанию
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">
+                        Или выберите один или несколько дней недели. При выборе дней правило сохранится отдельно для каждого дня.
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {WEEKDAY_OPTIONS.map((day) => {
+                          const isSelected = !isDefaultFormScope && selectedFormDays.includes(day.value)
+                          return (
+                            <Button
+                              key={day.value}
+                              type="button"
+                              size="sm"
+                              variant={isSelected ? "default" : "outline"}
+                              onClick={() => toggleFormDay(day.value)}
+                              disabled={isSaving || isReordering || isFormScopeLockedByCash}
+                              className="min-w-[108px] justify-start"
+                            >
+                              {day.label}
+                            </Button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    <div className={`text-xs ${isFormScopeValid ? "text-muted-foreground" : "text-destructive"}`}>
+                      {formScopeSummary}
+                      {!isDefaultFormScope && selectedFormDays.length > 1 && (
+                        <span> • Будет создано/обновлено правил: {formScopeTargetCount}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {isFormScopeLockedByCash && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/35 backdrop-blur-[1px] px-4 text-center">
+                      <div className="rounded-md border border-border/70 bg-background/90 px-3 py-2 text-xs font-medium text-foreground shadow-sm">
+                        Правило касса задается по-умолчанию для всех дней
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={handleSave} disabled={isSaving || isReordering}>
                   {isSaving ? "Сохранение..." : formState.id ? "Сохранить изменения" : "Добавить правило"}
                 </Button>
                 {formState.id && (
-                  <Button variant="outline" onClick={resetForm} className="flex-1" disabled={isSaving || isReordering}>
+                  <Button variant="outline" onClick={resetFormDraft} className="flex-1" disabled={isSaving || isReordering}>
                     Отмена
                   </Button>
                 )}
@@ -608,12 +786,33 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
             </Card>
 
             <div className="space-y-3">
-              <div className="text-sm font-semibold">Созданные правила</div>
+              <div className="space-y-2">
+                <div className="text-sm font-semibold">Созданные правила</div>
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-2">
+                  <Label className="text-xs">Фильтр списка (какие правила показывать ниже)</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAY_FILTER_OPTIONS.map((day) => (
+                      <Button
+                        key={day.value}
+                        type="button"
+                        size="sm"
+                        variant={selectedListDay === day.value ? "default" : "outline"}
+                        onClick={() => setSelectedListDay(day.value)}
+                        disabled={isSaving || isReordering}
+                      >
+                        {day.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
               {isRulesLoading && <Card className="p-4 text-sm text-muted-foreground">Загрузка правил...</Card>}
 
               {!isRulesLoading && filteredRules.length === 0 && (
-                <Card className="p-4 text-sm text-muted-foreground">Для выбранного этапа и дня недели правила пока не созданы.</Card>
+                <Card className="p-4 text-sm text-muted-foreground">
+                  Для выбранного этапа и фильтра ({DAY_LABELS[selectedListDay].toLowerCase()}) правила пока не созданы.
+                </Card>
               )}
 
               {!isRulesLoading &&
@@ -679,8 +878,13 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                             {rule.type === "CASH" ? CASH_RULE_TITLE : rule.title}{" "}
                             {rule.required && <span className="text-destructive">*</span>}
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {RULE_TYPE_LABELS[rule.type]} • Порядок {rule.order}
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span>
+                              {RULE_TYPE_LABELS[rule.type]} • Порядок {rule.order}
+                            </span>
+                            <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                              {SHORT_DAY_LABELS[rule.dayOfWeek ?? "default"]}
+                            </Badge>
                           </div>
                         </div>
                       </div>
