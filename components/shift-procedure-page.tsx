@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useToast } from "@/hooks/use-toast"
+import { roundPayrollHourlyMinutes } from "@/lib/payroll/interval-compensation"
 import { cn } from "@/lib/utils"
 import {
   decodeCashProcedureValues,
@@ -848,7 +849,8 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
     if (payPreview.salaryMessage) return payPreview.salaryMessage
     const currency = payPreview.currency ?? null
     if (isOpenInProgress) {
-      const hourlyPart = Math.round(((payPreview.hourlyRateCents ?? 0) * elapsedMinutesFromTimer) / 60)
+      const roundedHourlyMinutes = roundPayrollHourlyMinutes(elapsedMinutesFromTimer)
+      const hourlyPart = Math.round(((payPreview.hourlyRateCents ?? 0) * roundedHourlyMinutes) / 60)
       const fixedPart = payPreview.fixedShiftRateCents ?? 0
       const total = hourlyPart + fixedPart
       return total > 0 ? formatMoney(total, currency) : "—"

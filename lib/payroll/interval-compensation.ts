@@ -28,6 +28,16 @@ const toDiffMinutes = (from: Date, to: Date) =>
 
 const toSafeBreakMinutes = (value?: number | null) => Math.max(0, Math.floor(value ?? 0))
 
+export const roundPayrollHourlyMinutes = (minutes: number) => {
+  const safeMinutes = Math.max(0, Math.floor(minutes))
+  const fullHoursMinutes = Math.floor(safeMinutes / 60) * 60
+  const remainderMinutes = safeMinutes % 60
+
+  if (remainderMinutes < 15) return fullHoursMinutes
+  if (remainderMinutes < 45) return fullHoursMinutes + 30
+  return fullHoursMinutes + 60
+}
+
 const resolveValidRange = (from?: Date | null, to?: Date | null) => {
   if (!(from instanceof Date) || !(to instanceof Date)) return null
   if (to.getTime() <= from.getTime()) return null
@@ -86,10 +96,11 @@ export const computeIntervalCompensation = (input: {
   let fixedPayCents = 0
   let percentPayCents = 0
   let unresolvedPercentRevenue = false
+  const roundedHourlyMinutes = roundPayrollHourlyMinutes(input.minutesWorked)
 
   for (const component of input.components) {
     if (component.componentType === "hourly" && component.amountCents != null) {
-      hourlyPayCents += Math.round((component.amountCents * input.minutesWorked) / 60)
+      hourlyPayCents += Math.round((component.amountCents * roundedHourlyMinutes) / 60)
       continue
     }
 
