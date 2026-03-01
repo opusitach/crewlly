@@ -100,6 +100,7 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
   const employee = useShiftStore((state) => state.employees.find((emp) => emp.id === employeeId))
   const orgPositions = useShiftStore((state) => state.positions)
   const refreshEmployees = useShiftStore((state) => state.refreshEmployees)
+  const updateEmployee = useShiftStore((state) => state.updateEmployee)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteAction, setDeleteAction] = useState<"archive" | "delete" | null>(null)
   const [isEditingPay, setIsEditingPay] = useState(false)
@@ -139,6 +140,7 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
         const json = await res.json()
         const components = (json?.data ?? []) as PayComponent[]
         setPayState(buildPayStateFromComponents(components))
+        updateEmployee(employee.id, { payComponents: components })
       } catch {
         toast({ title: "Не удалось загрузить оплату", variant: "destructive" })
       } finally {
@@ -147,7 +149,7 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
     }
 
     void loadPayComponents()
-  }, [employee?.id, toast])
+  }, [employee?.id, toast, updateEmployee])
 
   const hasActivePay = useMemo(
     () => Object.values(payState).some((component) => component.isActive),
@@ -232,6 +234,7 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
 
   const handleSavePay = async () => {
     if (!employee) return
+    const previousPayComponents = employee.payComponents
     const payload = PAY_OPTIONS.map((option) => {
       const state = payState[option.key]
       if (!state.isActive) {
@@ -244,6 +247,13 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
       const amountCents = toCents(state.value)
       return { componentType: option.key, amountCents, isActive: true }
     })
+    const optimisticPayComponents: PayComponent[] = payload.map((item) => ({
+      componentType: item.componentType,
+      amountCents: "amountCents" in item ? item.amountCents ?? null : null,
+      rateBp: "rateBp" in item ? item.rateBp ?? null : null,
+      isActive: item.isActive ?? false,
+      priority: 0,
+    }))
 
     if (
       payload.some(
@@ -257,6 +267,7 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
     }
 
     setIsSavingPay(true)
+    updateEmployee(employee.id, { payComponents: optimisticPayComponents })
     try {
       const res = await fetch(`/api/employees/${employee.id}/pay-components`, {
         method: "PUT",
@@ -271,9 +282,11 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
       const json = await res.json()
       const components = (json?.data ?? []) as PayComponent[]
       setPayState(buildPayStateFromComponents(components))
+      updateEmployee(employee.id, { payComponents: components })
       setIsEditingPay(false)
       toast({ title: "Оплата обновлена" })
     } catch (error: any) {
+      updateEmployee(employee.id, { payComponents: previousPayComponents })
       toast({ title: error?.message || "Не удалось сохранить оплату", variant: "destructive" })
     } finally {
       setIsSavingPay(false)

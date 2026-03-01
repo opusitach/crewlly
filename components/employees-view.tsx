@@ -21,7 +21,7 @@ type EmployeeView = {
 }
 
 const hasConfiguredPay = (payComponents: PayComponent[] | undefined) =>
-  Boolean(payComponents?.some((component) => component.amountCents != null || component.rateBp != null))
+  Boolean(payComponents?.some((component) => component.isActive && (component.amountCents != null || component.rateBp != null)))
 
 export default function EmployeesView({ onBack }: { onBack: () => void }) {
   const [showAddWizard, setShowAddWizard] = useState(false)
