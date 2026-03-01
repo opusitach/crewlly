@@ -55,6 +55,8 @@ import { decodeCashProcedureValues } from "@/lib/cash/procedure-values"
 
 const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 const INTERVAL_OVERLAP_ERROR_CODE = "INTERVAL_OVERLAP"
+const INTERVAL_IN_PAST_ERROR_CODE = "INTERVAL_IN_PAST"
+const STATUS_SYNC_INTERVAL_MS = 3000
 
 const STATUS_STYLES = {
   scheduled: "bg-[#5BDACD] text-white border-0",
@@ -270,6 +272,33 @@ const resolvePlannerDate = (value?: string) => {
   return new Date()
 }
 
+const timeInputPattern = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+const resolveIntervalStartForDate = (dateValue: string, timeValue: string) => {
+  const parsedDate = parseDate(dateValue)
+  if (!isValid(parsedDate)) return null
+
+  const match = timeInputPattern.exec(timeValue)
+  if (!match) return null
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  parsedDate.setHours(hours, minutes, 0, 0)
+  return parsedDate
+}
+
+const isIntervalStartInPast = (dateValue: string, timeValue: string, now = new Date()) => {
+  const startAt = resolveIntervalStartForDate(dateValue, timeValue)
+  if (!startAt) return false
+  return startAt.getTime() < now.getTime()
+}
+
+const formatShiftDateForToast = (dateValue: string) => {
+  const parsedDate = parseDate(dateValue)
+  if (!isValid(parsedDate)) return dateValue
+  return format(parsedDate, "d MMMM yyyy", { locale: ru })
+}
+
 export default function ShiftsView({
   onBack,
   readOnly = false,
@@ -289,6 +318,7 @@ export default function ShiftsView({
     createInterval,
     updateInterval,
     deleteInterval,
+    selectedLocationId,
   } = useShiftStore()
 
   const [displayDate, setDisplayDate] = useState(() => resolvePlannerDate(initialDate))
@@ -327,6 +357,8 @@ export default function ShiftsView({
   const [activeFilter, setActiveFilter] = useState<"employee" | "position" | "status" | null>(null)
   const filtersHidden = hideFilters
   const autoRefreshInFlightRef = useRef(false)
+  const versionSyncInFlightRef = useRef(false)
+  const plannerVersionRef = useRef<string | null>(null)
   const safeDisplayDate = useMemo(
     () => (isValid(displayDate) ? displayDate : new Date()),
     [displayDate],
@@ -378,32 +410,78 @@ export default function ShiftsView({
   }, [refreshVisibleRange])
 
   useEffect(() => {
-    if (!readOnly) return
+    plannerVersionRef.current = null
+  }, [refreshRange.dateFrom, refreshRange.dateTo, selectedLocationId])
 
-    const refreshIfVisible = () => {
+  const syncPlannerVersion = useMemo(
+    () => async () => {
+      if (versionSyncInFlightRef.current) return
+      versionSyncInFlightRef.current = true
+      try {
+        const params = new URLSearchParams({
+          dateFrom: refreshRange.dateFrom,
+          dateTo: refreshRange.dateTo,
+        })
+        if (selectedLocationId) {
+          params.set("locationId", selectedLocationId)
+        }
+
+        const res = await fetch(`/api/workdays/version?${params.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+        })
+        if (!res.ok) return
+
+        const json = await res.json().catch(() => null)
+        const nextSignature = typeof json?.data?.signature === "string" ? json.data.signature : null
+        if (!nextSignature) return
+
+        const previousSignature = plannerVersionRef.current
+        if (previousSignature == null) {
+          plannerVersionRef.current = nextSignature
+          return
+        }
+        if (previousSignature === nextSignature) return
+
+        await refreshVisibleRange()
+        plannerVersionRef.current = nextSignature
+      } catch (error) {
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("Failed to sync planner version", error)
+        }
+      } finally {
+        versionSyncInFlightRef.current = false
+      }
+    },
+    [refreshRange.dateFrom, refreshRange.dateTo, refreshVisibleRange, selectedLocationId],
+  )
+
+  useEffect(() => {
+    const syncIfVisible = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return
       if (typeof navigator !== "undefined" && !navigator.onLine) return
-      void refreshVisibleRange()
+      void syncPlannerVersion()
     }
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        refreshIfVisible()
+        syncIfVisible()
       }
     }
 
-    const intervalId = window.setInterval(refreshIfVisible, 45000)
-    window.addEventListener("focus", refreshIfVisible)
-    window.addEventListener("online", refreshIfVisible)
+    syncIfVisible()
+    const intervalId = window.setInterval(syncIfVisible, STATUS_SYNC_INTERVAL_MS)
+    window.addEventListener("focus", syncIfVisible)
+    window.addEventListener("online", syncIfVisible)
     document.addEventListener("visibilitychange", handleVisibility)
 
     return () => {
       window.clearInterval(intervalId)
-      window.removeEventListener("focus", refreshIfVisible)
-      window.removeEventListener("online", refreshIfVisible)
+      window.removeEventListener("focus", syncIfVisible)
+      window.removeEventListener("online", syncIfVisible)
       document.removeEventListener("visibilitychange", handleVisibility)
     }
-  }, [readOnly, refreshVisibleRange])
+  }, [syncPlannerVersion])
 
   useEffect(() => {
     if (panelView === "details" && !selectedInterval) {
@@ -571,8 +649,19 @@ export default function ShiftsView({
     const stillVisible = filteredIntervals.some((interval) => interval.id === selectedInterval.id)
     if (!stillVisible) {
       setSelectedInterval(null)
+      return
     }
-  }, [filteredIntervals, selectedInterval])
+
+    const latestInterval = intervals.find((interval) => interval.id === selectedInterval.id)
+    if (!latestInterval) {
+      setSelectedInterval(null)
+      return
+    }
+
+    if (latestInterval !== selectedInterval) {
+      setSelectedInterval(latestInterval)
+    }
+  }, [filteredIntervals, intervals, selectedInterval])
 
   const intervalsByDate = useMemo(() => {
     const map = new Map<string, WorkInterval[]>()
@@ -751,9 +840,44 @@ export default function ShiftsView({
       })
       return
     }
+    if (state.lastIntervalErrorCode === INTERVAL_IN_PAST_ERROR_CODE) {
+      const selectedDateLabel = formatShiftDateForToast(selectedDateStr)
+      const selectedTimeLabel = formValues.startTime || "--:--"
+      toast({
+        title: "Смена в прошлом недоступна",
+        description: `Для владельца доступно только текущее и будущее время. Выбрано: ${selectedDateLabel}, ${selectedTimeLabel}.`,
+        variant: "destructive",
+      })
+      return
+    }
     toast({
       title: "Ошибка",
       description: state.lastIntervalError || fallbackMessage,
+      variant: "destructive",
+    })
+  }
+
+  const showPastShiftToast = (options?: { date?: string; time?: string; skippedCount?: number }) => {
+    const dateLabel = options?.date ? formatShiftDateForToast(options.date) : null
+    const timeLabel = options?.time || "--:--"
+
+    if (typeof options?.skippedCount === "number") {
+      toast({
+        title: "Смена в прошлом недоступна",
+        description:
+          options.skippedCount === 1
+            ? "Одна дата пропущена: нельзя назначать смены задним числом. Оставьте только текущее или будущее время."
+            : `Пропущено дат в прошлом: ${options.skippedCount}. Назначайте смены только на текущее или будущее время.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    toast({
+      title: "Смена в прошлом недоступна",
+      description: dateLabel
+        ? `Нельзя назначить смену на ${dateLabel}, ${timeLabel}. Выберите текущее или будущее время.`
+        : "Нельзя назначить смену задним числом. Выберите текущее или будущее время.",
       variant: "destructive",
     })
   }
@@ -772,6 +896,7 @@ export default function ShiftsView({
 
   const handleSaveInterval = async () => {
     if (readOnly) return
+    const isBulkSave = bulkCreateDates.length > 0 && !editingInterval
     if (!formValues.positionId) {
       toast({
         title: "Нужна позиция",
@@ -780,9 +905,12 @@ export default function ShiftsView({
       })
       return
     }
+    if (!editingInterval && !isBulkSave && isIntervalStartInPast(selectedDateStr, formValues.startTime)) {
+      showPastShiftToast({ date: selectedDateStr, time: formValues.startTime })
+      return
+    }
     try {
       const customPayPayload = buildCustomPayPayload(formValues)
-      const isBulkSave = bulkCreateDates.length > 0 && !editingInterval
       let shouldShowSuccessToast = true
       if (editingInterval) {
         const status = getIntervalStatus(editingInterval)
@@ -808,9 +936,19 @@ export default function ShiftsView({
         }
       } else if (isBulkSave) {
         const uniqueDates = Array.from(new Set(bulkCreateDates)).sort()
+        const now = new Date()
+        const validDates = uniqueDates.filter((dateStr) => !isIntervalStartInPast(dateStr, formValues.startTime, now))
+        const skippedPastDatesCount = uniqueDates.length - validDates.length
+        if (validDates.length === 0) {
+          showPastShiftToast({ skippedCount: skippedPastDatesCount })
+          return
+        }
+        if (skippedPastDatesCount > 0) {
+          showPastShiftToast({ skippedCount: skippedPastDatesCount })
+        }
         let createdCount = 0
         let failedCount = 0
-        for (const dateStr of uniqueDates) {
+        for (const dateStr of validDates) {
           const targetWorkday = await getOrCreateWorkday(dateStr)
           if (!targetWorkday) {
             failedCount += 1

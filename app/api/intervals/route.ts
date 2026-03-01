@@ -19,6 +19,7 @@ import { getDefaultRuleCountsForPosition, isDefaultRulesetConfigured } from "@/l
 const customPayTypeValues = ["hourly", "fixed_shift", "percent_revenue"] as const
 type CustomPayTypeValue = (typeof customPayTypeValues)[number]
 const POSITION_RULES_NOT_CONFIGURED_CODE = "POSITION_RULES_NOT_CONFIGURED"
+const WORK_INTERVAL_IN_PAST_ERROR_CODE = "INTERVAL_IN_PAST"
 
 const customPayTypeInputSchema = z
   .union([z.array(z.enum(customPayTypeValues)), z.enum(customPayTypeValues)])
@@ -513,6 +514,16 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: "Время окончания должно быть позже времени начала.",
+        },
+        { status: 400 },
+      )
+    }
+
+    if (startAt.getTime() < Date.now()) {
+      return NextResponse.json(
+        {
+          error: "Нельзя создать рабочий интервал в прошлом. Выберите текущее или будущее время.",
+          code: WORK_INTERVAL_IN_PAST_ERROR_CODE,
         },
         { status: 400 },
       )
