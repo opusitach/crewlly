@@ -20,7 +20,6 @@ import {
   Clock,
   TrendingUp,
   Edit,
-  MoreVertical,
   AlertTriangle,
   Archive,
   Trash2,
@@ -416,9 +415,7 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
               <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
             </Button>
             <h1 className="text-lg font-semibold">Профиль сотрудника</h1>
-            <Button variant="ghost" size="icon" className="rounded-full">
-              <MoreVertical className="h-5 w-5" strokeWidth={1.5} />
-            </Button>
+            <div className="h-9 w-9" aria-hidden="true" />
           </div>
         </div>
       </div>
