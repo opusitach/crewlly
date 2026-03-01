@@ -336,6 +336,8 @@ export default function ShiftsView({
   const [isBulkMode, setIsBulkMode] = useState(false)
   const [bulkSelectedDates, setBulkSelectedDates] = useState<string[]>([])
   const [bulkCreateDates, setBulkCreateDates] = useState<string[]>([])
+  const [isSavingInterval, setIsSavingInterval] = useState(false)
+  const saveIntervalInFlightRef = useRef(false)
 
   const [editingInterval, setEditingInterval] = useState<WorkInterval | null>(null)
   const [selectedInterval, setSelectedInterval] = useState<WorkInterval | null>(null)
@@ -896,6 +898,7 @@ export default function ShiftsView({
 
   const handleSaveInterval = async () => {
     if (readOnly) return
+    if (saveIntervalInFlightRef.current) return
     const isBulkSave = bulkCreateDates.length > 0 && !editingInterval
     if (!formValues.positionId) {
       toast({
@@ -909,6 +912,8 @@ export default function ShiftsView({
       showPastShiftToast({ date: selectedDateStr, time: formValues.startTime })
       return
     }
+    saveIntervalInFlightRef.current = true
+    setIsSavingInterval(true)
     try {
       const customPayPayload = buildCustomPayPayload(formValues)
       let shouldShowSuccessToast = true
@@ -1019,6 +1024,9 @@ export default function ShiftsView({
         description: error?.message || "Не удалось сохранить смену",
         variant: "destructive",
       })
+    } finally {
+      saveIntervalInFlightRef.current = false
+      setIsSavingInterval(false)
     }
   }
 
@@ -2211,14 +2219,15 @@ export default function ShiftsView({
                         <div className="space-y-2 px-4">
                           <Button
                             className="w-full bg-white text-orange-700 hover:bg-white/90"
-                            disabled={!isFormValid}
+                            disabled={!isFormValid || isSavingInterval}
                             onClick={handleSaveInterval}
                           >
-                            Сохранить
+                            {isSavingInterval ? "Сохранение..." : "Сохранить"}
                           </Button>
                           <Button
                             variant="ghost"
                             className="w-full text-white hover:bg-white/20"
+                            disabled={isSavingInterval}
                             onClick={() => setPanelView(panelReturnView)}
                           >
                             Отмена
