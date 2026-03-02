@@ -59,6 +59,16 @@ type DashboardNotification = {
   createdAt: string
 }
 
+type WorkerBottomTab = "shift" | "planner" | "money" | "profile"
+type WorkerTabResetVersion = Record<WorkerBottomTab, number>
+
+const WORKER_TAB_RESET_VERSION_INITIAL: WorkerTabResetVersion = {
+  shift: 0,
+  planner: 0,
+  money: 0,
+  profile: 0,
+}
+
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, "0")
@@ -82,9 +92,9 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const tabParam = searchParams.get("tab")
-  const resolvedTab: "shift" | "planner" | "money" | "profile" =
+  const resolvedTab: WorkerBottomTab =
     tabParam === "planner" || tabParam === "money" || tabParam === "profile" ? tabParam : "shift"
-  const [activeTab, setActiveTab] = useState<"shift" | "planner" | "money">(
+  const [activeTab, setActiveTab] = useState<Extract<WorkerBottomTab, "shift" | "planner" | "money">>(
     resolvedTab === "planner" || resolvedTab === "money" ? resolvedTab : "shift",
   )
   const [nextShift, setNextShift] = useState<NextShiftData | null>(null)
@@ -96,6 +106,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "settings" | "notifications" | "help">(
     resolvedTab === "profile" ? "profile" : "none",
   )
+  const [tabResetVersion, setTabResetVersion] = useState<WorkerTabResetVersion>(WORKER_TAB_RESET_VERSION_INITIAL)
   const [unreadNotifications, setUnreadNotifications] = useState<number | null>(null)
   const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false)
   const [isJoinVenueOpen, setIsJoinVenueOpen] = useState(false)
@@ -658,7 +669,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     [venues, selectedVenueId],
   )
   const selectedVenueName = selectedVenue?.name ?? organization?.name ?? "Заведение"
-  const navActiveTab: "shift" | "planner" | "money" | "profile" = accountView === "profile" ? "profile" : activeTab
+  const navActiveTab: WorkerBottomTab = accountView === "profile" ? "profile" : activeTab
   const showAppHeader = accountView !== "hub"
   const showHeaderVenueSelector = accountView === "none" || accountView === "notifications"
   const appHeaderTitle =
@@ -694,7 +705,25 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const visibleDashboardEvents = dashboardEvents.slice(0, 3)
   const hasMoreDashboardEvents = dashboardEvents.length > 3
 
-  const handleTabChange = (tab: "shift" | "planner" | "money" | "profile") => {
+  const bumpTabResetVersion = (tab: WorkerBottomTab) => {
+    setTabResetVersion((prev) => ({
+      ...prev,
+      [tab]: prev[tab] + 1,
+    }))
+  }
+
+  const scrollTabToTop = () => {
+    if (typeof window === "undefined") return
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  const handleTabChange = (tab: WorkerBottomTab) => {
+    const isReselect = navActiveTab === tab
+    if (isReselect) {
+      bumpTabResetVersion(tab)
+      scrollTabToTop()
+    }
+
     if (tab === "profile") {
       setAccountView("profile")
       setActiveTab("shift")
@@ -724,6 +753,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     if (accountView === "profile") {
       return (
         <WorkerProfile
+          key={`worker-profile-${tabResetVersion.profile}`}
           onBack={() => {
             setAccountView("none")
             updateRouteForTab("shift")
@@ -754,15 +784,27 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     }
 
     if (activeTab === "money") {
-      return <WorkerMoneyView onBack={() => handleTabChange("shift")} hideHeader />
+      return (
+        <WorkerMoneyView
+          key={`worker-money-${tabResetVersion.money}`}
+          onBack={() => handleTabChange("shift")}
+          hideHeader
+        />
+      )
     }
 
     if (activeTab === "planner") {
-      return <WorkerShiftPlanner onBack={() => handleTabChange("shift")} hideHeader />
+      return (
+        <WorkerShiftPlanner
+          key={`worker-planner-${tabResetVersion.planner}`}
+          onBack={() => handleTabChange("shift")}
+          hideHeader
+        />
+      )
     }
 
     return (
-      <>
+      <div key={`worker-shift-${tabResetVersion.shift}`}>
         <div className="px-3 pt-4">
           <h1 className="text-2xl font-bold">{organization?.name ?? "Заведение"}</h1>
         </div>
@@ -987,7 +1029,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
             )}
           </div>
         </div>
-      </>
+      </div>
     )
   }
 

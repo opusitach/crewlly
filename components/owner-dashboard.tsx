@@ -37,6 +37,16 @@ const ShiftsView = dynamic(() => import("@/components/shifts-view"), { ssr: fals
 
 const OWNER_TABS: OwnerTab[] = ["dashboard", "shifts", "cash", "reports", "settings"]
 const dateInputPattern = /^\d{4}-\d{2}-\d{2}$/
+type OwnerTabContextParams = Partial<Record<"cashTab" | "reportsFrom" | "reportsTo" | "shiftsDate", string | null>>
+type OwnerTabResetVersion = Record<OwnerTab, number>
+
+const OWNER_TAB_RESET_VERSION_INITIAL: OwnerTabResetVersion = {
+  dashboard: 0,
+  shifts: 0,
+  cash: 0,
+  reports: 0,
+  settings: 0,
+}
 
 type DashboardNotification = {
   id: string
@@ -180,6 +190,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const [isEventsLoading, setIsEventsLoading] = useState(false)
   const [settingsInitialScreen, setSettingsInitialScreen] = useState<SettingsScreen>("home")
   const [settingsInitialCashTab, setSettingsInitialCashTab] = useState<CashSettingsTab>("open")
+  const [tabResetVersion, setTabResetVersion] = useState<OwnerTabResetVersion>(OWNER_TAB_RESET_VERSION_INITIAL)
   const [verificationQueueCount, setVerificationQueueCount] = useState(0)
   const [todayRevenueAmount, setTodayRevenueAmount] = useState<number | null>(null)
   const [monthRevenueAmount, setMonthRevenueAmount] = useState<number | null>(null)
@@ -264,10 +275,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     }
   }, [activeTab])
 
-  const updateRouteForTab = (
-    nextTab: OwnerTab,
-    contextParams?: Partial<Record<"cashTab" | "reportsFrom" | "reportsTo" | "shiftsDate", string | null>>,
-  ) => {
+  const updateRouteForTab = (nextTab: OwnerTab, contextParams?: OwnerTabContextParams) => {
     const nextParams = new URLSearchParams(searchParams.toString())
     if (nextTab === "dashboard") {
       nextParams.delete("tab")
@@ -315,6 +323,42 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const setTab = (nextTab: OwnerTab) => {
     setAccountView("none")
     updateRouteForTab(nextTab)
+  }
+
+  const bumpTabResetVersion = (tab: OwnerTab) => {
+    setTabResetVersion((prev) => ({
+      ...prev,
+      [tab]: prev[tab] + 1,
+    }))
+  }
+
+  const scrollTabToTop = () => {
+    if (typeof window === "undefined") return
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  const getRootContextParams = (tab: OwnerTab): OwnerTabContextParams | undefined => {
+    if (tab === "cash") return { cashTab: null }
+    if (tab === "reports") return { reportsFrom: null, reportsTo: null }
+    if (tab === "shifts") return { shiftsDate: null }
+    return undefined
+  }
+
+  const handleBottomTabChange = (nextTab: OwnerTab) => {
+    const isReselect = nextTab === activeTab
+    if (!isReselect) {
+      setTab(nextTab)
+      return
+    }
+
+    setAccountView("none")
+    if (nextTab === "settings") {
+      setSettingsInitialScreen("home")
+      setSettingsInitialCashTab("open")
+    }
+    updateRouteForTab(nextTab, getRootContextParams(nextTab))
+    bumpTabResetVersion(nextTab)
+    scrollTabToTop()
   }
 
   useEffect(() => {
@@ -835,14 +879,34 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   }
 
   const renderContent = () => {
-    if (activeTab === "shifts") return <ShiftsView onBack={() => setTab("dashboard")} initialDate={initialShiftsDate} />
+    if (activeTab === "shifts")
+      return (
+        <ShiftsView
+          key={`owner-shifts-${tabResetVersion.shifts}`}
+          onBack={() => setTab("dashboard")}
+          initialDate={initialShiftsDate}
+        />
+      )
     if (activeTab === "cash")
-      return <CashRegisterVerificationView onBack={() => setTab("dashboard")} initialTab={initialCashTab} />
+      return (
+        <CashRegisterVerificationView
+          key={`owner-cash-${tabResetVersion.cash}`}
+          onBack={() => setTab("dashboard")}
+          initialTab={initialCashTab}
+        />
+      )
     if (activeTab === "reports")
-      return <ReportsView initialFromDate={initialReportsFromDate} initialToDate={initialReportsToDate} />
+      return (
+        <ReportsView
+          key={`owner-reports-${tabResetVersion.reports}`}
+          initialFromDate={initialReportsFromDate}
+          initialToDate={initialReportsToDate}
+        />
+      )
     if (activeTab === "settings") {
       return (
         <GlobalSettingsView
+          key={`owner-settings-${tabResetVersion.settings}`}
           onBack={() => setTab("dashboard")}
           initialScreen={settingsInitialScreen}
           initialCashTab={settingsInitialCashTab}
@@ -851,7 +915,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       )
     }
     return (
-      <div className="p-3 space-y-3">
+      <div key={`owner-dashboard-${tabResetVersion.dashboard}`} className="p-3 space-y-3">
         {showTeamHint && <TeamMovedHint />}
 
         {/* KPI Cards */}
@@ -1174,7 +1238,9 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       {/* Content */}
       <div className="min-h-[70vh]">{renderAccountOverlay() || renderContent()}</div>
 
-      {accountView !== "hub" && !isVenueSelectorOpen && <OwnerBottomNav activeTab={activeTab} onTabChange={setTab} />}
+      {accountView !== "hub" && !isVenueSelectorOpen && (
+        <OwnerBottomNav activeTab={activeTab} onTabChange={handleBottomTabChange} />
+      )}
     </div>
   )
 }
