@@ -183,7 +183,7 @@ export const useShiftStore = create<ShiftStore>()((set, get) => ({
 
   refreshPositions: async () => {
     try {
-      const res = await fetch("/api/positions", { credentials: "include" })
+      const res = await fetch("/api/positions", { credentials: "include", cache: "no-store" })
       if (!res.ok) return
       const json = await res.json()
       set({ positions: json?.data ?? [] })

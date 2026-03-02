@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { Camera, ChevronLeft, GripVertical, ListChecks, Pencil, ReceiptText, Trash2, Type } from "lucide-react"
+import { useShiftStore } from "@/lib/store/shift-store"
+import { Camera, ChevronLeft, GripVertical, ListChecks, Pencil, Plus, ReceiptText, Sparkles, Trash2, Type } from "lucide-react"
 
 type WeekdayValue = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN"
 type ListDayFilterValue = "default" | WeekdayValue
@@ -29,7 +30,9 @@ type RuleTemplate = {
 
 type Position = {
   id: string
+  organizationId: string
   name: string
+  sortOrder: number
   defaultOpenRulesCount?: number
   defaultCloseRulesCount?: number
   needsRulesSetup?: boolean
@@ -99,11 +102,15 @@ const emptyForm = {
 export default function PositionRulesView({ onBack }: { onBack?: () => void } = {}) {
   const router = useRouter()
   const { toast } = useToast()
+  const refreshShiftPositions = useShiftStore((state) => state.refreshPositions)
   const lastTapRef = useRef<{ positionId: string; at: number } | null>(null)
 
   const [positions, setPositions] = useState<Position[]>([])
   const [selectedPositionId, setSelectedPositionId] = useState<string>("")
   const [isEditorOpen, setIsEditorOpen] = useState(false)
+  const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false)
+  const [newRoleName, setNewRoleName] = useState("")
+  const [isCreatingRole, setIsCreatingRole] = useState(false)
 
   const [rules, setRules] = useState<RuleTemplate[]>([])
   const [isRulesLoading, setIsRulesLoading] = useState(false)
@@ -159,7 +166,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
   }, [setTouchDraggingRule, setTouchDropTargetRule])
 
   const loadPositions = useCallback(async () => {
-    const res = await fetch("/api/positions", { credentials: "include" })
+    const res = await fetch("/api/positions", { credentials: "include", cache: "no-store" })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
       toast({ title: "Ошибка", description: json?.error || "Не удалось загрузить позиции", variant: "destructive" })
@@ -186,7 +193,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
     async (positionId: string) => {
       if (!positionId) return
       setIsRulesLoading(true)
-      const res = await fetch(`/api/positions/${positionId}/rules`, { credentials: "include" })
+      const res = await fetch(`/api/positions/${positionId}/rules`, { credentials: "include", cache: "no-store" })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         toast({ title: "Ошибка", description: json?.error || "Не удалось загрузить правила", variant: "destructive" })
@@ -264,6 +271,54 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
     },
     [applyFormScope, resetFormFields],
   )
+
+  const handleCreateRole = async () => {
+    const normalizedName = newRoleName.trim()
+    if (!normalizedName) {
+      toast({ title: "Название обязательно", variant: "destructive" })
+      return
+    }
+
+    const nextSortOrder = positions.length > 0 ? Math.max(...positions.map((position) => position.sortOrder ?? 0)) + 1 : 0
+    const payload: { name: string; sortOrder: number; organizationId?: string } = {
+      name: normalizedName,
+      sortOrder: nextSortOrder,
+    }
+    const organizationId = positions[0]?.organizationId
+    if (organizationId) {
+      payload.organizationId = organizationId
+    }
+
+    setIsCreatingRole(true)
+    try {
+      const res = await fetch("/api/positions", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(json?.error || "Не удалось создать роль")
+      }
+
+      const createdPositionId = typeof json?.data?.id === "string" ? json.data.id : null
+      setIsCreateRoleOpen(false)
+      setNewRoleName("")
+
+      await Promise.all([loadPositions(), refreshShiftPositions()])
+      if (createdPositionId) {
+        setSelectedPositionId(createdPositionId)
+      }
+
+      toast({ title: "Роль создана", description: `Роль «${normalizedName}» добавлена в список` })
+    } catch (err: any) {
+      toast({ title: "Ошибка", description: err?.message || "Не удалось создать роль", variant: "destructive" })
+    } finally {
+      setIsCreatingRole(false)
+    }
+  }
 
   const handleRoleTap = (positionId: string) => {
     setSelectedPositionId(positionId)
@@ -498,7 +553,20 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       <div className="p-4 space-y-4">
         <Card className="p-4 space-y-4">
           <div className="space-y-2">
-            <Label>Роли заведения</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label>Роли заведения</Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 border-primary/30 bg-primary/5 hover:bg-primary/10"
+                onClick={() => setIsCreateRoleOpen(true)}
+                disabled={isCreatingRole}
+              >
+                <Plus className="h-4 w-4" />
+                Создать роль
+              </Button>
+            </div>
             <div className="grid gap-2">
               {positions.map((position) => {
                 const isActive = selectedPositionId === position.id
@@ -556,6 +624,69 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
           </div>
         </Card>
       </div>
+
+      <Dialog
+        open={isCreateRoleOpen}
+        onOpenChange={(open) => {
+          if (isCreatingRole) return
+          setIsCreateRoleOpen(open)
+          if (!open) setNewRoleName("")
+        }}
+      >
+        <DialogContent className="max-w-md p-0 gap-0">
+          <div className="border-b border-border bg-gradient-to-r from-primary/10 via-primary/5 to-background px-5 py-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <DialogHeader className="gap-1 text-left">
+                <DialogTitle className="text-lg">Создать роль</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Укажите название роли, и она сразу появится в настройках и карточках сотрудников.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+          </div>
+
+          <div className="space-y-4 p-5">
+            <div className="space-y-2">
+              <Label htmlFor="create-role-name">Название роли</Label>
+              <Input
+                id="create-role-name"
+                value={newRoleName}
+                onChange={(event) => setNewRoleName(event.target.value)}
+                placeholder="Например: Старший бариста"
+                className="h-11"
+                autoFocus
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !isCreatingRole) {
+                    event.preventDefault()
+                    void handleCreateRole()
+                  }
+                }}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setIsCreateRoleOpen(false)
+                  setNewRoleName("")
+                }}
+                disabled={isCreatingRole}
+              >
+                Отмена
+              </Button>
+              <Button type="button" className="flex-1" onClick={() => void handleCreateRole()} disabled={isCreatingRole || !newRoleName.trim()}>
+                {isCreatingRole ? "Создание..." : "Создать роль"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isEditorOpen}

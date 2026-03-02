@@ -5,10 +5,10 @@ import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
 import { getDefaultRuleSetupByPosition, isDefaultRulesetConfigured } from "@/lib/procedures/config"
 
 const positionCreateSchema = z.object({
-  organizationId: z.string().uuid(),
+  organizationId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional().nullable(),
-  name: z.string().min(1, "Название обязательно"),
-  sortOrder: z.number().int().default(0),
+  name: z.string().trim().min(1, "Название обязательно").max(64, "Название слишком длинное"),
+  sortOrder: z.number().int().optional(),
 })
 
 export async function GET(request: Request) {
@@ -78,20 +78,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { organizationId, locationId, name, sortOrder } = parsed.data
+  const organizationId = parsed.data.organizationId ?? session.organization?.id
+  const { locationId, name, sortOrder } = parsed.data
+
+  if (!organizationId) {
+    return NextResponse.json({ error: "organizationId is required" }, { status: 400 })
+  }
 
   // Verify access
   if (session.organization?.id !== organizationId) {
     return NextResponse.json({ error: "Access denied" }, { status: 403 })
   }
 
-  // Check for duplicate name
+  // Check for duplicate name (case-insensitive to avoid near-duplicate roles)
   const existing = await prisma.position.findFirst({
-    where: { organizationId, name },
+    where: {
+      organizationId,
+      name: {
+        equals: name,
+        mode: "insensitive",
+      },
+    },
   })
 
-  if (existing) {
+  const resolvedSortOrder =
+    sortOrder ??
+    ((await prisma.position.findFirst({
+      where: { organizationId, isActive: true },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true },
+    }))?.sortOrder ?? -1) +
+      1
+
+  if (existing && existing.isActive) {
     return NextResponse.json({ error: "Должность с таким названием уже существует" }, { status: 409 })
+  }
+
+  // Soft-deleted position with the same name can be reactivated.
+  if (existing && !existing.isActive) {
+    const reactivated = await prisma.position.update({
+      where: { id: existing.id },
+      data: {
+        name,
+        locationId: locationId || null,
+        sortOrder: resolvedSortOrder,
+        isActive: true,
+      },
+    })
+    return NextResponse.json({ data: reactivated, meta: { reactivated: true } })
   }
 
   const position = await prisma.position.create({
@@ -99,9 +133,9 @@ export async function POST(request: Request) {
       organizationId,
       locationId: locationId || null,
       name,
-      sortOrder,
+      sortOrder: resolvedSortOrder,
     },
   })
 
-  return NextResponse.json({ data: position })
+  return NextResponse.json({ data: position }, { status: 201 })
 }
