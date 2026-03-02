@@ -24,7 +24,9 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
   const { user, venues, selectedVenueId, selectVenue, updateUser, updateVenue, isHydrated, hydrate } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSwitchingVenue, setIsSwitchingVenue] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [venueSelectError, setVenueSelectError] = useState<string | null>(null)
   const [emailTouched, setEmailTouched] = useState(false)
   const [emailValidationRequested, setEmailValidationRequested] = useState(false)
   const [phoneTouched, setPhoneTouched] = useState(false)
@@ -160,6 +162,31 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
       .slice(0, 2)
   }
 
+  const redirectToVenueHome = () => {
+    onBack()
+    router.replace("/app")
+  }
+
+  const handleVenueClick = async (venueId: string) => {
+    if (isSwitchingVenue) return
+    setVenueSelectError(null)
+    setIsSwitchingVenue(true)
+    try {
+      if (venueId !== selectedVenueId) {
+        await selectVenue(venueId)
+        const nextSelectedVenueId = useAuthStore.getState().selectedVenueId
+        if (nextSelectedVenueId !== venueId) {
+          setVenueSelectError("Не удалось переключить заведение. Попробуйте еще раз.")
+          return
+        }
+      }
+
+      redirectToVenueHome()
+    } finally {
+      setIsSwitchingVenue(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background max-w-md mx-auto pb-6">
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
@@ -292,7 +319,8 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
               <button
                 key={venue.id}
                 className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors text-left"
-                onClick={() => void selectVenue(venue.id)}
+                onClick={() => void handleVenueClick(venue.id)}
+                disabled={isSwitchingVenue}
               >
                 <Building2 className="h-4 w-4 text-primary flex-shrink-0" strokeWidth={1.5} />
                 <div className="flex-1 min-w-0">
@@ -301,6 +329,7 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
                 <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
               </button>
             ))}
+            {venueSelectError && <p className="text-xs text-destructive">{venueSelectError}</p>}
           </div>
         </Card>
 
