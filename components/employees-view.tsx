@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input"
 import { useShiftStore } from "@/lib/store/shift-store"
 import type { PayComponent } from "@/lib/pay-components"
+import { formatPhoneForDisplay } from "@/lib/validation/phone"
 
 type EmployeeView = {
   id: string
@@ -145,7 +146,9 @@ export default function EmployeesView({ onBack }: { onBack: () => void }) {
                     </Badge>
                   )}
                 </div>
-                {employee.phone && <p className="text-[11px] text-muted-foreground truncate">{employee.phone}</p>}
+                {employee.phone && (
+                  <p className="text-[11px] text-muted-foreground truncate">{formatPhoneForDisplay(employee.phone)}</p>
+                )}
                 <div className="flex items-center gap-1 mt-1.5">
                   {employee.status === "active" ? (
                     <>

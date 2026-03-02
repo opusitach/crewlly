@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PhoneInput } from "@/components/ui/phone-input"
 import { useToast } from "@/hooks/use-toast"
+import { getPhoneValidationError } from "@/lib/validation/phone"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
@@ -15,14 +17,21 @@ export default function RegistrationScreen({ onRegistered, redirectTo = "/select
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
+  const [phoneTouched, setPhoneTouched] = useState(false)
   const [password, setPassword] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const phoneError = getPhoneValidationError(phone)
+  const showPhoneError = Boolean(phoneError) && phoneTouched
 
-  const isValid = name.trim().length >= 2 && email.includes("@") && password.length >= 6
+  const isValid = name.trim().length >= 2 && email.includes("@") && password.length >= 6 && !phoneError
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (phoneError) {
+      setPhoneTouched(true)
+      return
+    }
     if (!isValid) return
     try {
       setIsSubmitting(true)
@@ -88,7 +97,26 @@ export default function RegistrationScreen({ onRegistered, redirectTo = "/select
 
           <div className="space-y-2">
             <Label htmlFor="phone">Номер телефона</Label>
-            <Input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <div className="space-y-1.5">
+              <PhoneInput
+                id="phone"
+                value={phone}
+                onChange={(nextValue) => {
+                  setPhone(nextValue)
+                  setFormError(null)
+                }}
+                onBlur={() => setPhoneTouched(true)}
+                ariaInvalid={showPhoneError}
+                ariaDescribedBy={showPhoneError ? "registration-phone-error" : undefined}
+              />
+              {showPhoneError ? (
+                <p id="registration-phone-error" className="text-xs text-destructive">
+                  {phoneError}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Выберите код страны и введите номер без букв</p>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">

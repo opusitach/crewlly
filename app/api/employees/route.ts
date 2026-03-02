@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg } from "@/lib/auth"
 import { PAY_COMPONENT_TYPES, normalizePayComponentsInput, type PayComponentInput } from "@/lib/pay-components"
 import { ensurePercentRevenueCashBasis } from "@/lib/cash/revenue-basis"
+import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
 
 const payComponentSchema = z.object({
   componentType: z.enum(PAY_COMPONENT_TYPES),
@@ -18,7 +19,12 @@ const employeeCreateSchema = z.object({
   locationId: z.string().uuid().optional(),
   fullName: z.string().min(1, "Имя обязательно"),
   email: z.string().email().optional().nullable(),
-  phone: z.string().optional().nullable(),
+  phone: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .refine((value) => value == null || getPhoneValidationError(value) === null, DEFAULT_PHONE_ERROR_MESSAGE),
   positionIds: z.array(z.string().uuid()).optional(),
   payType: z.enum(["hourly", "fixed_shift", "percent_revenue"]).default("hourly"),
   defaultHourlyRateCents: z.number().int().optional(),
@@ -233,7 +239,7 @@ export async function POST(request: Request) {
       data: {
         email: userEmail,
         fullName,
-        phone: phone || null,
+        phone: normalizePhone(phone),
         passwordHash: "",
         status: email ? "invited" : "active",
         primaryMode: "worker",

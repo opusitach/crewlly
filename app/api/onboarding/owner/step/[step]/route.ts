@@ -3,6 +3,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUser } from "@/lib/auth"
 import { timezoneSchema } from "@/lib/validation/timezone"
+import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
 
 const positionSchema = z.object({
   name: z.string().min(1),
@@ -12,7 +13,12 @@ const positionSchema = z.object({
 const employeeSchema = z.object({
   name: z.string().min(1),
   email: z.string().email().optional().nullable(),
-  phone: z.string().optional().nullable(),
+  phone: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .refine((value) => value == null || getPhoneValidationError(value) === null, DEFAULT_PHONE_ERROR_MESSAGE),
   positions: z.array(z.string()).optional(),
 })
 
@@ -177,7 +183,7 @@ export async function PATCH(
             data: {
               email,
               fullName: emp.name,
-              phone: emp.phone || null,
+              phone: normalizePhone(emp.phone),
               passwordHash: "",
               status: "invited",
               primaryMode: "worker",

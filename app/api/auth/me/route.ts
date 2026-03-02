@@ -4,13 +4,19 @@ import { z } from "zod"
 import { getSessionUser, getSessionUserWithOrg } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DEFAULT_EMAIL_REGEX } from "@/lib/validation/email"
+import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
 
 const updateMeSchema = z
   .object({
     fullName: z.string().trim().min(1, "Имя слишком короткое").optional(),
     name: z.string().trim().min(1, "Имя слишком короткое").optional(),
     email: z.string().trim().regex(DEFAULT_EMAIL_REGEX, "Некорректный email").optional(),
-    phone: z.string().trim().optional().nullable(),
+    phone: z
+      .string()
+      .trim()
+      .optional()
+      .nullable()
+      .refine((value) => value == null || getPhoneValidationError(value) === null, DEFAULT_PHONE_ERROR_MESSAGE),
     avatarUrl: z.string().trim().optional().nullable(),
   })
   .refine(
@@ -122,7 +128,7 @@ export async function PATCH(request: Request) {
       data: {
         ...(resolvedFullName !== undefined ? { fullName: resolvedFullName.trim() } : {}),
         ...(email !== undefined ? { email: email.trim() } : {}),
-        ...(phone !== undefined ? { phone: phone?.trim() || null } : {}),
+        ...(phone !== undefined ? { phone: normalizePhone(phone) } : {}),
         ...(avatarUrl !== undefined ? { avatarUrl: avatarUrl?.trim() || null } : {}),
       },
     })

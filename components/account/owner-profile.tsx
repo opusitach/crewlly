@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PhoneInput } from "@/components/ui/phone-input"
 import { ChevronLeft, Mail, Phone, Building2, Edit2, Camera, ChevronRight, LogOut } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { getEmailValidationError } from "@/lib/validation/email"
+import { formatPhoneForDisplay, getPhoneValidationError } from "@/lib/validation/phone"
 
 interface OwnerProfileProps {
   onBack: () => void
@@ -25,10 +27,12 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
   const [saveError, setSaveError] = useState<string | null>(null)
   const [emailTouched, setEmailTouched] = useState(false)
   const [emailValidationRequested, setEmailValidationRequested] = useState(false)
+  const [phoneTouched, setPhoneTouched] = useState(false)
+  const [phoneValidationRequested, setPhoneValidationRequested] = useState(false)
   const [profileData, setProfileData] = useState({
     name: user?.name ?? "",
     email: user?.email ?? "",
-    phone: "+7 (999) 123-45-67",
+    phone: user?.phone ?? null,
     avatarUrl: "",
   })
   const currentVenue = useMemo(
@@ -38,7 +42,9 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
   const [venueName, setVenueName] = useState(currentVenue?.name ?? "")
   const currentVenueId = currentVenue?.id ?? null
   const emailError = getEmailValidationError(profileData.email)
+  const phoneError = getPhoneValidationError(profileData.phone)
   const showEmailError = isEditing && Boolean(emailError) && (emailTouched || emailValidationRequested)
+  const showPhoneError = isEditing && Boolean(phoneError) && (phoneTouched || phoneValidationRequested)
 
   // Ensure hydration
   useEffect(() => {
@@ -52,20 +58,28 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
       ...prev,
       name: user?.name ?? "",
       email: user?.email ?? "",
+      phone: user?.phone ?? null,
     }))
     if (currentVenue) {
       setVenueName(currentVenue.name)
     }
   }, [user, currentVenue])
 
-  const resetEmailValidation = () => {
+  const resetValidationState = () => {
     setEmailTouched(false)
     setEmailValidationRequested(false)
+    setPhoneTouched(false)
+    setPhoneValidationRequested(false)
   }
 
   const requestEmailValidation = () => {
     setEmailTouched(true)
     setEmailValidationRequested(true)
+  }
+
+  const requestPhoneValidation = () => {
+    setPhoneTouched(true)
+    setPhoneValidationRequested(true)
   }
 
   const handleEmailChange = (value: string) => {
@@ -74,11 +88,17 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
     setEmailTouched(true)
   }
 
+  const handlePhoneChange = (value: string) => {
+    setProfileData((prev) => ({ ...prev, phone: value || null }))
+    setSaveError(null)
+    setPhoneTouched(true)
+  }
+
   const handleEditToggle = () => {
     if (isSaving) return
 
     if (!isEditing) {
-      resetEmailValidation()
+      resetValidationState()
       setSaveError(null)
       setIsEditing(true)
       return
@@ -88,9 +108,13 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
       requestEmailValidation()
       return
     }
+    if (phoneError) {
+      requestPhoneValidation()
+      return
+    }
 
-    setProfileData((prev) => ({ ...prev, email: prev.email.trim() }))
-    resetEmailValidation()
+    setProfileData((prev) => ({ ...prev, email: prev.email.trim(), phone: prev.phone?.trim() || null }))
+    resetValidationState()
     setIsEditing(false)
   }
 
@@ -101,19 +125,24 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
       requestEmailValidation()
       return
     }
+    if (phoneError) {
+      requestPhoneValidation()
+      return
+    }
 
     const trimmedEmail = profileData.email.trim()
+    const trimmedPhone = profileData.phone?.trim() || null
     setSaveError(null)
     setIsSaving(true)
 
     try {
-      await updateUser({ name: profileData.name, email: trimmedEmail })
+      await updateUser({ name: profileData.name, email: trimmedEmail, phone: trimmedPhone })
       if (currentVenueId) {
         await updateVenue(currentVenueId, { name: venueName })
         await selectVenue(currentVenueId)
       }
-      setProfileData((prev) => ({ ...prev, email: trimmedEmail }))
-      resetEmailValidation()
+      setProfileData((prev) => ({ ...prev, email: trimmedEmail, phone: trimmedPhone }))
+      resetValidationState()
       setIsEditing(false)
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Не удалось сохранить профиль")
@@ -216,21 +245,29 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone" className="text-xs text-muted-foreground">
+            <Label htmlFor="phone" className={`text-xs ${showPhoneError ? "text-destructive" : "text-muted-foreground"}`}>
               Телефон
             </Label>
             {isEditing ? (
-              <Input
-                id="phone"
-                type="tel"
-                value={profileData.phone}
-                onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                className="h-9"
-              />
+              <div className="space-y-1.5">
+                <PhoneInput
+                  id="phone"
+                  value={profileData.phone}
+                  onChange={handlePhoneChange}
+                  onBlur={() => setPhoneTouched(true)}
+                  ariaInvalid={showPhoneError}
+                  ariaDescribedBy={showPhoneError ? "owner-phone-error" : undefined}
+                />
+                {showPhoneError && (
+                  <p id="owner-phone-error" className="text-xs text-destructive">
+                    {phoneError}
+                  </p>
+                )}
+              </div>
             ) : (
               <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
                 <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                <span className="text-sm truncate">{profileData.phone}</span>
+                <span className="text-sm truncate">{formatPhoneForDisplay(profileData.phone) || "Не указан"}</span>
               </div>
             )}
           </div>
@@ -270,7 +307,7 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
         {isEditing && (
           <div className="space-y-2">
             {saveError && <p className="text-xs text-destructive">{saveError}</p>}
-            <Button className="w-full h-10" onClick={handleSave} disabled={Boolean(emailError) || isSaving}>
+            <Button className="w-full h-10" onClick={handleSave} disabled={Boolean(emailError || phoneError) || isSaving}>
               {isSaving ? "Сохраняем..." : "Сохранить изменения"}
             </Button>
           </div>

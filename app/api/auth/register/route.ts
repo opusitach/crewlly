@@ -3,13 +3,19 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { hashPassword, createSession, deleteUserSessions } from "@/lib/auth"
 import { Prisma } from "@prisma/client"
+import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
 
 const registerSchema = z
   .object({
     fullName: z.string().min(2, "Имя слишком короткое").optional(),
     name: z.string().min(2, "Имя слишком короткое").optional(),
     email: z.string().email("Некорректный email"),
-    phone: z.string().optional().nullable(),
+    phone: z
+      .string()
+      .trim()
+      .optional()
+      .nullable()
+      .refine((value) => value == null || getPhoneValidationError(value) === null, DEFAULT_PHONE_ERROR_MESSAGE),
     password: z.string().min(6, "Пароль должен быть не менее 6 символов"),
   })
   .refine((data) => Boolean(data.fullName || data.name), {
@@ -26,7 +32,7 @@ export async function POST(request: Request) {
     }
     const { fullName, name, email, password, phone } = parsed.data
     const resolvedName = fullName ?? name ?? ""
-    const resolvedPhone = phone?.trim() || null
+    const resolvedPhone = normalizePhone(phone)
 
     const existing = await prisma.user.findUnique({ where: { email } })
     if (existing) {

@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth"
 import { DEFAULT_TIMEZONE, timezoneSchema } from "@/lib/validation/timezone"
 import { ensureInviteCodeForOrganization } from "@/lib/invite-codes"
 import { ensureDefaultRolesAndPermissions } from "@/lib/rbac/default-role-permissions"
+import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
 
 const positionSchema = z.object({
   name: z.string().min(1),
@@ -14,7 +15,12 @@ const positionSchema = z.object({
 const employeeSchema = z.object({
   name: z.string().min(1),
   email: z.string().email().optional().nullable(),
-  phone: z.string().optional().nullable(),
+  phone: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .refine((value) => value == null || getPhoneValidationError(value) === null, DEFAULT_PHONE_ERROR_MESSAGE),
   positions: z.array(z.string()).optional(),
 })
 
@@ -169,7 +175,7 @@ export async function POST(request: Request) {
           data: {
             email: emp.email,
             fullName: emp.name,
-            phone: emp.phone || null,
+            phone: normalizePhone(emp.phone),
             passwordHash: "", // They'll need to set password via invitation
             status: "invited",
             primaryMode: "worker",
@@ -184,7 +190,7 @@ export async function POST(request: Request) {
           data: {
             email: placeholderEmail,
             fullName: emp.name,
-            phone: emp.phone || null,
+            phone: normalizePhone(emp.phone),
             passwordHash: "",
             status: "invited",
             primaryMode: "worker",

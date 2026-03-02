@@ -28,6 +28,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useShiftStore } from "@/lib/store/shift-store"
 import type { PayComponent } from "@/lib/pay-components"
+import { formatPhoneForDisplay } from "@/lib/validation/phone"
 
 type EmployeePosition = { id: string; name: string }
 
@@ -527,7 +528,7 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
             {employee.phone && (
               <div className="flex items-center gap-3 text-sm">
                 <Phone className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
-                <span>{employee.phone}</span>
+                <span>{formatPhoneForDisplay(employee.phone)}</span>
               </div>
             )}
             <div className="flex items-center gap-3 text-sm">

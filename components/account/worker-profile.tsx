@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PhoneInput } from "@/components/ui/phone-input"
 import { Badge } from "@/components/ui/badge"
 import { ChevronLeft, Mail, Phone, Edit2, Camera, LogOut } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { getEmailValidationError } from "@/lib/validation/email"
+import { formatPhoneForDisplay, getPhoneValidationError } from "@/lib/validation/phone"
 
 interface WorkerProfileProps {
   onBack: () => void
@@ -24,6 +26,8 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
   const [saveError, setSaveError] = useState<string | null>(null)
   const [emailTouched, setEmailTouched] = useState(false)
   const [emailValidationRequested, setEmailValidationRequested] = useState(false)
+  const [phoneTouched, setPhoneTouched] = useState(false)
+  const [phoneValidationRequested, setPhoneValidationRequested] = useState(false)
   const [profileData, setProfileData] = useState({
     name: "",
     email: "",
@@ -32,7 +36,9 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
     positions: [] as string[],
   })
   const emailError = getEmailValidationError(profileData.email)
+  const phoneError = getPhoneValidationError(profileData.phone)
   const showEmailError = isEditing && Boolean(emailError) && (emailTouched || emailValidationRequested)
+  const showPhoneError = isEditing && Boolean(phoneError) && (phoneTouched || phoneValidationRequested)
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -76,14 +82,21 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
       .slice(0, 2)
   }
 
-  const resetEmailValidation = () => {
+  const resetValidationState = () => {
     setEmailTouched(false)
     setEmailValidationRequested(false)
+    setPhoneTouched(false)
+    setPhoneValidationRequested(false)
   }
 
   const requestEmailValidation = () => {
     setEmailTouched(true)
     setEmailValidationRequested(true)
+  }
+
+  const requestPhoneValidation = () => {
+    setPhoneTouched(true)
+    setPhoneValidationRequested(true)
   }
 
   const handleEmailChange = (value: string) => {
@@ -92,11 +105,21 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
     setEmailTouched(true)
   }
 
+  const handlePhoneChange = (value: string) => {
+    setProfileData((prev) => ({ ...prev, phone: value || null }))
+    setSaveError(null)
+    setPhoneTouched(true)
+  }
+
   const finishEditing = async () => {
     if (isSaving) return
 
     if (emailError) {
       requestEmailValidation()
+      return
+    }
+    if (phoneError) {
+      requestPhoneValidation()
       return
     }
 
@@ -109,7 +132,7 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
     try {
       await updateUser({ email: trimmedEmail, phone: trimmedPhone })
       setProfileData((prev) => ({ ...prev, email: trimmedEmail, phone: trimmedPhone }))
-      resetEmailValidation()
+      resetValidationState()
       setIsEditing(false)
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Не удалось сохранить профиль")
@@ -122,7 +145,7 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
     if (isSaving) return
 
     if (!isEditing) {
-      resetEmailValidation()
+      resetValidationState()
       setSaveError(null)
       setIsEditing(true)
       return
@@ -236,36 +259,39 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
             )}
           </div>
 
-          {profileData.phone ? (
-            <div className="space-y-2">
-              <Label htmlFor="phone" className="text-xs text-muted-foreground">
-                Телефон
-              </Label>
-              {isEditing ? (
-                <Input
+          <div className="space-y-2">
+            <Label htmlFor="phone" className={`text-xs ${showPhoneError ? "text-destructive" : "text-muted-foreground"}`}>
+              Телефон
+            </Label>
+            {isEditing ? (
+              <div className="space-y-1.5">
+                <PhoneInput
                   id="phone"
-                  type="tel"
                   value={profileData.phone}
-                  onChange={(e) => {
-                    setSaveError(null)
-                    setProfileData({ ...profileData, phone: e.target.value })
-                  }}
-                  className="h-9"
+                  onChange={handlePhoneChange}
+                  onBlur={() => setPhoneTouched(true)}
+                  ariaInvalid={showPhoneError}
+                  ariaDescribedBy={showPhoneError ? "worker-phone-error" : undefined}
                 />
-              ) : (
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
-                  <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                  <span className="text-sm truncate">{profileData.phone}</span>
-                </div>
-              )}
-            </div>
-          ) : null}
+                {showPhoneError && (
+                  <p id="worker-phone-error" className="text-xs text-destructive">
+                    {phoneError}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
+                <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
+                <span className="text-sm truncate">{formatPhoneForDisplay(profileData.phone) || "Не указан"}</span>
+              </div>
+            )}
+          </div>
         </Card>
 
         {isEditing && (
           <div className="space-y-2">
             {saveError && <p className="text-xs text-destructive">{saveError}</p>}
-            <Button className="w-full h-10" onClick={finishEditing} disabled={Boolean(emailError) || isSaving}>
+            <Button className="w-full h-10" onClick={finishEditing} disabled={Boolean(emailError || phoneError) || isSaving}>
               {isSaving ? "Сохраняем..." : "Сохранить изменения"}
             </Button>
           </div>
