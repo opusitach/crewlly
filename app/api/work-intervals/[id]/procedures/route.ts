@@ -15,6 +15,7 @@ import {
 } from "@/lib/cash/formula"
 import { buildProcedureCashValueMap } from "@/lib/cash/tips-sync"
 import { findWorkdayCashSourceAnswers } from "@/lib/cash/workday-cash-source"
+import { getCloseCashSkipEligibility } from "@/lib/cash/close-skip"
 
 const whenValues = ["OPEN", "CLOSE"] as const
 
@@ -369,6 +370,17 @@ export async function GET(request: Request, context: RouteContext) {
       currency: session?.organization?.currency ?? null,
     })
 
+    const shouldResolveCloseCashSkip =
+      interval.status === "in_progress" &&
+      procedures.some((procedure) => procedure.when === "CLOSE" && procedure.rules.some((rule) => rule.type === "CASH"))
+    const closeCashSkipEligibility = shouldResolveCloseCashSkip
+      ? await getCloseCashSkipEligibility(prisma, {
+          intervalId: interval.id,
+          workdayId: interval.workday.id,
+          workDate: interval.workday.workDate,
+        })
+      : null
+
     const formatted = procedures.map((procedure) => {
       const cashSource = cashSourceByWhen[procedure.when]
       const cashLockedByWorkday = Boolean(cashSource && cashSource.workIntervalId !== interval.id)
@@ -378,6 +390,16 @@ export async function GET(request: Request, context: RouteContext) {
         when: procedure.when,
         totalRequired: procedure.totalRequired,
         completedRequired: procedure.completedRequired,
+        cashClosePolicy:
+          procedure.when === "CLOSE" &&
+          !cashLockedByWorkday &&
+          closeCashSkipEligibility?.hasCloseCashRule
+            ? {
+                canSkip: closeCashSkipEligibility.canSkip,
+                reason: closeCashSkipEligibility.reason,
+                remainingCashEmployees: closeCashSkipEligibility.remainingCashEmployees,
+              }
+            : null,
         rules: procedure.rules.map((rule) => {
           const currentAnswer = rule.answers[0] ?? null
 

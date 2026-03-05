@@ -7,12 +7,14 @@ import { isClosedStatus, isOpenedStatus } from "@/lib/procedures/status"
 import { getMissingCashProcedurePhotoFieldKeys, hasRequiredCashProcedureValues } from "@/lib/cash/procedure-values"
 import { listCashRegisterFields } from "@/lib/cash/fields-query"
 import { findWorkdayCashSourceAnswer } from "@/lib/cash/workday-cash-source"
+import { getCloseCashSkipEligibility } from "@/lib/cash/close-skip"
 import { toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
 import { finalizeWorkIntervalClose, isProceduresSchemaMissing } from "@/lib/work-intervals/close"
 
 type RouteContext = { params: Promise<{ id: string }> }
 const forceSchema = z.object({
   force: z.boolean().optional().default(false),
+  skipCash: z.boolean().optional().default(false),
   reason: z.string().trim().min(1).max(500).optional().nullable(),
 })
 
@@ -28,7 +30,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
-  const { force, reason } = parsed.data
+  const { force, skipCash, reason } = parsed.data
   const normalizedReason = typeof reason === "string" ? reason.trim() : undefined
   if (force && !isOwner) {
     return NextResponse.json({ error: "Only owner can force close a shift" }, { status: 403 })
@@ -151,7 +153,28 @@ export async function POST(request: Request, context: RouteContext) {
             })
             .map((rule) => rule.id)
 
-      const missingRequired = Array.from(new Set([...completion.missingRequired, ...missingCashRules]))
+      const shouldValidateSkipCash =
+        skipCash && !force && !cashLockedByWorkday && missingCashRules.length > 0 && procedure.rules.some((rule) => rule.type === "CASH")
+      const closeCashSkipEligibility = shouldValidateSkipCash
+        ? await getCloseCashSkipEligibility(tx, {
+            intervalId: interval.id,
+            workdayId: interval.workday.id,
+            workDate: interval.workday.workDate,
+          })
+        : null
+
+      if (shouldValidateSkipCash && !closeCashSkipEligibility?.canSkip) {
+        return {
+          ok: false,
+          error:
+            closeCashSkipEligibility?.reason ??
+            "Вы последний сотрудник с кассой в этом рабочем дне. Закрытие кассы обязательно.",
+          missing: missingCashRules,
+        }
+      }
+
+      const effectiveMissingCashRules = shouldValidateSkipCash ? [] : missingCashRules
+      const missingRequired = Array.from(new Set([...completion.missingRequired, ...effectiveMissingCashRules]))
 
       const hasMissingRequired = missingRequired.length > 0
       if (hasMissingRequired && !force) {

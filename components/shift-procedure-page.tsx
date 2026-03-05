@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
+import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useToast } from "@/hooks/use-toast"
@@ -64,6 +65,11 @@ type ProcedureData = {
   when: ProcedureWhen
   totalRequired?: number | null
   completedRequired?: number | null
+  cashClosePolicy?: {
+    canSkip: boolean
+    reason?: string | null
+    remainingCashEmployees?: number
+  } | null
   rules: ProcedureRule[]
 }
 
@@ -255,7 +261,8 @@ const isCashFieldPhotoMissing = (rule: ProcedureRule, fieldKey: string, state?: 
   return !hasCashFieldPhoto(state, fieldKey)
 }
 
-const isCashComplete = (rule: ProcedureRule, state?: RuleAnswerState) => {
+const isCashComplete = (rule: ProcedureRule, state?: RuleAnswerState, options?: { skipped?: boolean }) => {
+  if (options?.skipped) return true
   if (rule.cashLocked) return true
   if (rule.cashFields.length === 0) return true
   const values = state?.cashValues ?? {}
@@ -268,11 +275,11 @@ const isCashComplete = (rule: ProcedureRule, state?: RuleAnswerState) => {
   })
 }
 
-const isRuleComplete = (rule: ProcedureRule, state?: RuleAnswerState) => {
+const isRuleComplete = (rule: ProcedureRule, state?: RuleAnswerState, options?: { skipCloseCash?: boolean }) => {
   if (rule.type === "CHECKLIST") return isChecklistComplete(rule, state)
   if (rule.type === "INPUT") return isInputComplete(state)
   if (rule.type === "PHOTO") return isPhotoComplete(state)
-  if (rule.type === "CASH") return isCashComplete(rule, state)
+  if (rule.type === "CASH") return isCashComplete(rule, state, { skipped: options?.skipCloseCash })
   return false
 }
 
@@ -406,6 +413,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [skipCloseCash, setSkipCloseCash] = useState(false)
   const [cameraTarget, setCameraTarget] = useState<{ ruleId: string; cashFieldKey?: string } | null>(null)
   const [uploadingPhotoKey, setUploadingPhotoKey] = useState<string | null>(null)
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now())
@@ -509,6 +517,12 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   }, [draftStorageKey])
 
   useEffect(() => {
+    if (whenParam !== "CLOSE" || !procedure?.cashClosePolicy?.canSkip) {
+      setSkipCloseCash(false)
+    }
+  }, [procedure?.cashClosePolicy?.canSkip, procedure?.id, whenParam])
+
+  useEffect(() => {
     if (!isOpenInProgress) return
     const id = window.setInterval(() => setNowTimestamp(Date.now()), 1000)
     return () => window.clearInterval(id)
@@ -548,13 +562,22 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
     if (!isOpenInProgress) return rules
     return rules.filter((rule) => !rule.required)
   }, [isOpenInProgress, rules])
+  const firstVisibleCashRuleId = useMemo(
+    () => visibleRules.find((rule) => rule.type === "CASH")?.id ?? null,
+    [visibleRules],
+  )
+  const closeCashPolicy = whenParam === "CLOSE" ? procedure?.cashClosePolicy ?? null : null
+  const isCloseCashSkipActive = Boolean(closeCashPolicy?.canSkip && skipCloseCash)
   const requiredRules = rules.filter((rule) => rule.required)
-  const completedRequired = requiredRules.filter((rule) => isRuleComplete(rule, answers[rule.id])).length
+  const completedRequired = requiredRules.filter((rule) =>
+    isRuleComplete(rule, answers[rule.id], { skipCloseCash: rule.type === "CASH" && isCloseCashSkipActive }),
+  ).length
   const requiredTotal = requiredRules.length
   const progressValue = requiredTotal > 0 ? Math.round((completedRequired / requiredTotal) * 100) : 100
   const hasBlockingCashPhotoMissing = rules.some(
     (rule) =>
       rule.type === "CASH" &&
+      !isCloseCashSkipActive &&
       !rule.cashLocked &&
       rule.cashFields.some((field) => isCashFieldPhotoMissing(rule, field.key, answers[rule.id])),
   )
@@ -587,10 +610,11 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
     }))
   }
 
-  const saveAnswers = async (options?: { silentSuccess?: boolean; refreshAfterSave?: boolean }) => {
+  const saveAnswers = async (options?: { silentSuccess?: boolean; refreshAfterSave?: boolean; skipCash?: boolean }) => {
     if (!procedure) return false
     const silentSuccess = options?.silentSuccess === true
     const refreshAfterSave = options?.refreshAfterSave !== false
+    const skipCash = options?.skipCash === true && procedure.when === "CLOSE"
     setIsSaving(true)
     try {
       const cashInputByRuleId = new Map<string, string>()
@@ -617,11 +641,15 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
             rule.type === "INPUT"
               ? (answers[rule.id]?.inputValue ?? "").slice(0, 150)
               : rule.type === "CASH"
-                ? cashInputByRuleId.get(rule.id) ?? ""
+                ? skipCash && !rule.cashLocked
+                  ? ""
+                  : cashInputByRuleId.get(rule.id) ?? ""
                 : null,
           cashPhotos:
             rule.type === "CASH"
-              ? (() => {
+              ? skipCash && !rule.cashLocked
+                ? {}
+                : (() => {
                   const normalized: Record<string, { photoS3Key: string | null; photoUrl: string | null }> = {}
                   const source = answers[rule.id]?.cashPhotos ?? ({} as RuleAnswerState["cashPhotos"])
                   for (const [key, value] of Object.entries(source)) {
@@ -680,12 +708,16 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       if (whenParam === "OPEN" && !canOpen) return
       if (whenParam === "CLOSE" && !canClose) return
     }
+    const shouldSkipCash = whenParam === "CLOSE" && isCloseCashSkipActive
     setIsSubmitting(true)
     try {
-      const saved = await saveAnswers({ silentSuccess: true, refreshAfterSave: false })
+      const saved = await saveAnswers({ silentSuccess: true, refreshAfterSave: false, skipCash: shouldSkipCash })
       if (!saved) return
       const endpoint = whenParam === "OPEN" ? "open" : "close"
-      const payload: { force: boolean; reason?: string } = { force: isForce }
+      const payload: { force: boolean; reason?: string; skipCash?: boolean } = { force: isForce }
+      if (shouldSkipCash) {
+        payload.skipCash = true
+      }
       if (options?.reason?.trim()) {
         payload.reason = options.reason.trim()
       }
@@ -1028,6 +1060,37 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
 
                     {rule.type === "CASH" && (
                       <div className="space-y-2">
+                        {whenParam === "CLOSE" && rule.id === firstVisibleCashRuleId && closeCashPolicy && !rule.cashLocked && (
+                          closeCashPolicy.canSkip ? (
+                            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-1">
+                                  <div className="text-sm font-medium text-amber-950">Кассу закроет следующий сотрудник</div>
+                                  <div className="text-xs text-amber-900/80">
+                                    Используйте это, если касса остаётся в работе и в этом рабочем дне ещё есть сотрудник,
+                                    который сможет закрыть её позже.
+                                  </div>
+                                </div>
+                                <Switch
+                                  checked={skipCloseCash}
+                                  onCheckedChange={(checked) => setSkipCloseCash(checked === true)}
+                                  disabled={!canEdit}
+                                  aria-label="Кассу закроет следующий сотрудник"
+                                />
+                              </div>
+                              {isCloseCashSkipActive && (
+                                <div className="mt-2 text-xs text-amber-900/80">
+                                  Поля кассы для этой смены будут пропущены и не заблокируют закрытие.
+                                </div>
+                              )}
+                            </div>
+                          ) : closeCashPolicy.reason ? (
+                            <div className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                              {closeCashPolicy.reason}
+                            </div>
+                          ) : null
+                        )}
+
                         {rule.cashLocked && (
                           <div className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                             {rule.cashLockMessage ?? "Значения уже установлены для этого рабочего дня"}
@@ -1042,8 +1105,12 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                               const photoState = state?.cashPhotos?.[cashField.key]
                               const hasPhoto = Boolean(photoState?.photoS3Key || photoState?.photoUrl)
                               const requiresPhoto = Boolean(cashField.isPhotoRequired)
-                              const isPhotoMissing = !rule.cashLocked && isCashFieldPhotoMissing(rule, cashField.key, state)
+                              const isPhotoMissing =
+                                !rule.cashLocked &&
+                                !isCloseCashSkipActive &&
+                                isCashFieldPhotoMissing(rule, cashField.key, state)
                               const fieldUploadKey = toPhotoUploadKey(rule.id, cashField.key)
+                              const isCashInputDisabled = !canEdit || rule.cashLocked || isCloseCashSkipActive
 
                               return (
                                 <div key={cashField.key} className="space-y-2 rounded-md border border-border/60 p-2">
@@ -1075,7 +1142,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                                     )}
                                     inputMode="numeric"
                                     placeholder="Введите целое число"
-                                    disabled={!canEdit || rule.cashLocked}
+                                    disabled={isCashInputDisabled}
                                   />
 
                                   {requiresPhoto && (
@@ -1097,7 +1164,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                                         variant="outline"
                                         className="w-full"
                                         onClick={() => setCameraTarget({ ruleId: rule.id, cashFieldKey: cashField.key })}
-                                        disabled={!canEdit || rule.cashLocked || !hasValue || uploadingPhotoKey === fieldUploadKey}
+                                        disabled={isCashInputDisabled || !hasValue || uploadingPhotoKey === fieldUploadKey}
                                       >
                                         {uploadingPhotoKey === fieldUploadKey
                                           ? "Загрузка..."
@@ -1106,7 +1173,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                                             : "Сделать фото"}
                                       </Button>
 
-                                      {!hasValue && (
+                                      {!hasValue && !isCloseCashSkipActive && (
                                         <div className="text-xs text-muted-foreground">
                                           Введите значение, затем загрузите фото.
                                         </div>
