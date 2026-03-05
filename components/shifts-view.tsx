@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, t
 import {
   addDays,
   addMonths,
+  differenceInCalendarDays,
   endOfMonth,
   format,
   isValid,
@@ -13,11 +14,13 @@ import {
   subMonths,
 } from "date-fns"
 import { ru } from "date-fns/locale"
-import { ArrowLeft, Calculator, ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react"
+import { ArrowLeft, Calculator, CalendarDays, ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { TimePicker24h } from "@/components/ui/time-picker-24h"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
@@ -255,6 +258,11 @@ const DEFAULT_FORM_VALUES: WorkIntervalFormValues = {
   },
 }
 
+const FORM_SECTION_CLASS =
+  "rounded-[24px] border border-white/30 bg-gradient-to-br from-white/[0.24] via-white/[0.16] to-white/[0.08] p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.55)] backdrop-blur-md"
+
+const capitalizeLabel = (value: string) => (value.length > 0 ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value)
+
 type ShiftsViewProps = {
   onBack: () => void
   readOnly?: boolean
@@ -336,6 +344,7 @@ export default function ShiftsView({
   const [isBulkMode, setIsBulkMode] = useState(false)
   const [bulkSelectedDates, setBulkSelectedDates] = useState<string[]>([])
   const [bulkCreateDates, setBulkCreateDates] = useState<string[]>([])
+  const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const saveIntervalInFlightRef = useRef(false)
 
@@ -731,6 +740,7 @@ export default function ShiftsView({
 
   const handleOpenCreate = (targetDate?: Date, options?: { bulkDates?: string[] }) => {
     if (readOnly) return
+    setIsFormDatePickerOpen(false)
     if (targetDate) {
       setSelectedDate(targetDate)
       if (!isSameMonth(targetDate, safeDisplayDate)) {
@@ -1039,6 +1049,7 @@ export default function ShiftsView({
   const handleEditInterval = () => {
     if (readOnly) return
     if (!selectedInterval) return
+    setIsFormDatePickerOpen(false)
     const status = getIntervalStatus(selectedInterval)
     if (!canEditIntervalByStatus(status.key)) {
       toast({
@@ -1111,6 +1122,37 @@ export default function ShiftsView({
   const calendarDays = useMemo(() => getMonthCalendarDays(safeDisplayDate), [safeDisplayDate])
   const weekDays = useMemo(() => getWeekDays(safeSelectedDate), [safeSelectedDate])
   const today = new Date()
+  const isBulkCreateMode = bulkCreateDates.length > 0 && !editingInterval
+  const uniqueBulkCreateDates = useMemo(() => Array.from(new Set(bulkCreateDates)).sort(), [bulkCreateDates])
+  const bulkCreateDatePreview = useMemo(
+    () =>
+      uniqueBulkCreateDates.slice(0, 6).map((dateValue) => format(parseDate(dateValue), "d MMM", { locale: ru })),
+    [uniqueBulkCreateDates],
+  )
+  const bulkCreateRangeLabel = useMemo(() => {
+    if (uniqueBulkCreateDates.length === 0) return "Даты не выбраны"
+    const first = format(parseDate(uniqueBulkCreateDates[0]), "d MMMM", { locale: ru })
+    if (uniqueBulkCreateDates.length === 1) return capitalizeLabel(first)
+    const last = format(parseDate(uniqueBulkCreateDates[uniqueBulkCreateDates.length - 1]), "d MMMM", { locale: ru })
+    return `${capitalizeLabel(first)} - ${last}`
+  }, [uniqueBulkCreateDates])
+  const formDateQuickOptions = useMemo(
+    () => Array.from({ length: 5 }, (_, index) => addDays(safeSelectedDate, index - 2)),
+    [safeSelectedDate],
+  )
+  const formDateHeadline = useMemo(
+    () => capitalizeLabel(format(safeSelectedDate, "EEEE, d MMMM", { locale: ru })),
+    [safeSelectedDate],
+  )
+  const formRelativeDateLabel = useMemo(() => {
+    const diff = differenceInCalendarDays(safeSelectedDate, new Date())
+    if (diff === 0) return "Сегодня"
+    if (diff === 1) return "Завтра"
+    if (diff === 2) return "Послезавтра"
+    if (diff === -1) return "Вчера"
+    if (diff > 2) return `Через ${diff} дн.`
+    return `${Math.abs(diff)} дн. назад`
+  }, [safeSelectedDate])
 
   const showCollapseIcon = panelView === "list" && panelExpanded
 
@@ -1134,6 +1176,10 @@ export default function ShiftsView({
       : selectedStatus?.key === "completed"
         ? "—"
         : "После закрытия"
+  const editDateLabel = useMemo(
+    () => capitalizeLabel(format(selectedWorkdayDate, "EEEE, d MMMM yyyy", { locale: ru })),
+    [selectedWorkdayDate],
+  )
 
   const employeeOptions = useMemo(
     () =>
@@ -2036,105 +2082,291 @@ export default function ShiftsView({
                     </div>
                     <div className="w-1/3 pl-2 h-full min-h-0 flex flex-col">
                       <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-1">
-                        <Card className="p-4 bg-transparent gap-4 border-0 shadow-none">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="min-w-0 space-y-2">
-                              <label className="text-xs font-semibold text-white">Сотрудник</label>
-                              <Select
-                                value={formValues.employeeId}
-                                onValueChange={(value) => {
-                                  const employee = employeeOptions.find((emp) => emp.id === value)
-                                  setFormValues((prev) => ({
-                                    ...prev,
-                                    employeeId: value,
-                                    positionId: (() => {
-                                      const availablePositions = employee?.positions ?? []
-                                      const availablePositionIds = new Set(
-                                        availablePositions.map((position) => position.id),
-                                      )
-                                      if (
-                                        prev.employeeId === value &&
-                                        prev.positionId &&
-                                        availablePositionIds.has(prev.positionId)
-                                      ) {
-                                        return prev.positionId
-                                      }
-                                      if (employee?.primaryPositionId && availablePositionIds.has(employee.primaryPositionId)) {
-                                        return employee.primaryPositionId
-                                      }
-                                      return availablePositions[0]?.id
-                                    })(),
-                                  }))
-                                }}
-                              >
-                                <SelectTrigger className="w-full min-w-0 bg-white/90 border-white/70 text-slate-900">
-                                  <SelectValue placeholder="Выберите сотрудника" className="truncate" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {employeeOptions.map((emp) => (
-                                    <SelectItem key={emp.id} value={emp.id}>
-                                      {emp.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            <div className="min-w-0 space-y-2">
-                              <label className="text-xs font-semibold text-white">Позиция</label>
-                              <Select
-                                value={formValues.positionId ?? ""}
-                                onValueChange={(value) =>
-                                  setFormValues((prev) => ({
-                                    ...prev,
-                                    positionId: value || undefined,
-                                  }))
-                                }
-                                disabled={!formValues.employeeId || positionOptions.length === 0}
-                              >
-                                <SelectTrigger className="w-full min-w-0 bg-white/90 border-white/70 text-slate-900">
-                                  <SelectValue placeholder="Выберите позицию" className="truncate" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {positionOptions.map((pos) => (
-                                    <SelectItem key={pos.id} value={pos.id}>
-                                      {pos.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {!formValues.positionId && formValues.employeeId && (
-                                <div className="text-[10px] text-white/80">
-                                  {positionOptions.length === 0 ? "У сотрудника нет доступных позиций" : "Нужно выбрать позицию"}
+                        <div className="space-y-4 px-1">
+                          <div className={FORM_SECTION_CLASS}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                  {editingInterval ? "Дата смены" : isBulkCreateMode ? "Даты назначения" : "Дата смены"}
                                 </div>
-                              )}
+                                <div className="mt-1 text-sm font-semibold text-white">
+                                  {editingInterval
+                                    ? "Дата уже привязана к рабочему дню"
+                                    : isBulkCreateMode
+                                      ? "Смена сохранится сразу на несколько дней"
+                                      : "Выберите день прямо в форме"}
+                                </div>
+                              </div>
+                              <Badge className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-[11px] font-semibold text-white shadow-none">
+                                {editingInterval ? "Фиксировано" : isBulkCreateMode ? `${uniqueBulkCreateDates.length} дат` : formRelativeDateLabel}
+                              </Badge>
+                            </div>
+
+                            {editingInterval ? (
+                              <div className="mt-4 rounded-[22px] border border-white/50 bg-white/90 p-4 shadow-[0_14px_35px_-24px_rgba(15,23,42,0.6)]">
+                                <div className="flex items-center gap-3">
+                                  <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-100 via-amber-50 to-white text-orange-600 shadow-inner">
+                                    <CalendarDays className="h-5 w-5" />
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="truncate text-base font-semibold text-slate-900">{editDateLabel}</div>
+                                    <div className="mt-1 text-xs text-slate-500">
+                                      Чтобы перенести смену на другой день, создайте новую запись на нужную дату.
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : isBulkCreateMode ? (
+                              <>
+                                <div className="mt-4 rounded-[22px] border border-white/50 bg-white/90 p-4 shadow-[0_14px_35px_-24px_rgba(15,23,42,0.6)]">
+                                  <div className="flex items-center gap-3">
+                                    <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-100 via-amber-50 to-white text-orange-600 shadow-inner">
+                                      <CalendarDays className="h-5 w-5" />
+                                    </span>
+                                    <div className="min-w-0">
+                                      <div className="truncate text-base font-semibold text-slate-900">{bulkCreateRangeLabel}</div>
+                                      <div className="mt-1 text-xs text-slate-500">
+                                        Одинаковые время, сотрудник и позиция применятся ко всем выбранным датам.
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {bulkCreateDatePreview.map((label) => (
+                                    <span
+                                      key={label}
+                                      className="rounded-full border border-white/45 bg-white/18 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm"
+                                    >
+                                      {label}
+                                    </span>
+                                  ))}
+                                  {uniqueBulkCreateDates.length > bulkCreateDatePreview.length && (
+                                    <span className="rounded-full border border-white/45 bg-white/18 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
+                                      +{uniqueBulkCreateDates.length - bulkCreateDatePreview.length}
+                                    </span>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen}>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="mt-4 flex w-full items-center justify-between gap-3 rounded-[22px] border border-white/50 bg-white/90 px-4 py-4 text-left shadow-[0_14px_35px_-24px_rgba(15,23,42,0.6)] transition-all hover:bg-white"
+                                    >
+                                      <span className="flex min-w-0 items-center gap-3">
+                                        <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-100 via-amber-50 to-white text-orange-600 shadow-inner">
+                                          <CalendarDays className="h-5 w-5" />
+                                        </span>
+                                        <span className="min-w-0">
+                                          <span className="block truncate text-base font-semibold text-slate-900">{formDateHeadline}</span>
+                                          <span className="mt-1 block text-xs text-slate-500">
+                                            Можно выбрать здесь или в календаре над формой
+                                          </span>
+                                        </span>
+                                      </span>
+                                      <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-[11px] font-semibold text-orange-700">
+                                        Изменить
+                                      </span>
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent
+                                    align="start"
+                                    sideOffset={10}
+                                    className="w-auto rounded-[1.5rem] border-white/80 bg-white/95 p-2 shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
+                                  >
+                                    <Calendar
+                                      mode="single"
+                                      selected={safeSelectedDate}
+                                      month={safeDisplayDate}
+                                      onMonthChange={setDisplayDate}
+                                      onSelect={(date) => {
+                                        if (!date) return
+                                        handleSelectDate(date)
+                                        setIsFormDatePickerOpen(false)
+                                      }}
+                                      locale={ru}
+                                      className="rounded-[1.25rem] bg-transparent p-1"
+                                      classNames={{
+                                        month_caption: "flex h-10 w-full items-center justify-center px-10",
+                                        caption_label: "text-sm font-semibold text-slate-900",
+                                        nav: "absolute inset-x-0 top-1 flex w-full items-center justify-between",
+                                        button_previous:
+                                          "size-9 rounded-full border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100",
+                                        button_next:
+                                          "size-9 rounded-full border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100",
+                                        weekday: "text-[11px] font-medium uppercase text-slate-400",
+                                      }}
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+
+                                <div className="mt-3 grid grid-cols-5 gap-2">
+                                  {formDateQuickOptions.map((dateOption) => {
+                                    const isSelected = isSameDay(dateOption, safeSelectedDate)
+                                    const isTodayOption = isSameDay(dateOption, today)
+                                    const weekdayLabel = capitalizeLabel(format(dateOption, "EEE", { locale: ru }).replace(".", ""))
+                                    const monthLabel = format(dateOption, "MMM", { locale: ru }).replace(".", "")
+
+                                    return (
+                                      <button
+                                        key={format(dateOption, "yyyy-MM-dd")}
+                                        type="button"
+                                        onClick={() => handleSelectDate(dateOption)}
+                                        className={cn(
+                                          "rounded-[20px] border px-2 py-2.5 text-center shadow-[0_12px_30px_-24px_rgba(15,23,42,0.5)] transition-all",
+                                          isSelected
+                                            ? "border-slate-900 bg-slate-900 text-white"
+                                            : "border-white/50 bg-white/72 text-slate-700 hover:bg-white",
+                                        )}
+                                      >
+                                        <span
+                                          className={cn(
+                                            "block text-[10px] font-semibold uppercase tracking-[0.18em]",
+                                            isSelected ? "text-white/70" : "text-slate-400",
+                                          )}
+                                        >
+                                          {weekdayLabel}
+                                        </span>
+                                        <span className="mt-1 block text-lg font-semibold tabular-nums">{format(dateOption, "d")}</span>
+                                        <span
+                                          className={cn(
+                                            "mt-1 block text-[10px] font-semibold uppercase tracking-[0.18em]",
+                                            isSelected ? "text-white/65" : "text-slate-400",
+                                          )}
+                                        >
+                                          {monthLabel}
+                                        </span>
+                                        <span
+                                          className={cn(
+                                            "mt-1 block text-[9px] font-semibold",
+                                            isSelected ? "text-white/80" : isTodayOption ? "text-orange-700" : "text-slate-400",
+                                          )}
+                                        >
+                                          {isTodayOption ? "Сегодня" : "\u00A0"}
+                                        </span>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          <div className={FORM_SECTION_CLASS}>
+                            <div className="mb-4">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Назначение</div>
+                              <div className="mt-1 text-sm font-semibold text-white">Кому и на какую позицию назначить смену</div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="min-w-0 space-y-2">
+                                <label className="text-xs font-semibold text-white/90">Сотрудник</label>
+                                <Select
+                                  value={formValues.employeeId}
+                                  onValueChange={(value) => {
+                                    const employee = employeeOptions.find((emp) => emp.id === value)
+                                    setFormValues((prev) => ({
+                                      ...prev,
+                                      employeeId: value,
+                                      positionId: (() => {
+                                        const availablePositions = employee?.positions ?? []
+                                        const availablePositionIds = new Set(
+                                          availablePositions.map((position) => position.id),
+                                        )
+                                        if (
+                                          prev.employeeId === value &&
+                                          prev.positionId &&
+                                          availablePositionIds.has(prev.positionId)
+                                        ) {
+                                          return prev.positionId
+                                        }
+                                        if (employee?.primaryPositionId && availablePositionIds.has(employee.primaryPositionId)) {
+                                          return employee.primaryPositionId
+                                        }
+                                        return availablePositions[0]?.id
+                                      })(),
+                                    }))
+                                  }}
+                                >
+                                  <SelectTrigger className="w-full min-w-0 border-white/70 bg-white/92 text-slate-900 shadow-sm">
+                                    <SelectValue placeholder="Выберите сотрудника" className="truncate" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {employeeOptions.map((emp) => (
+                                      <SelectItem key={emp.id} value={emp.id}>
+                                        {emp.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="min-w-0 space-y-2">
+                                <label className="text-xs font-semibold text-white/90">Позиция</label>
+                                <Select
+                                  value={formValues.positionId ?? ""}
+                                  onValueChange={(value) =>
+                                    setFormValues((prev) => ({
+                                      ...prev,
+                                      positionId: value || undefined,
+                                    }))
+                                  }
+                                  disabled={!formValues.employeeId || positionOptions.length === 0}
+                                >
+                                  <SelectTrigger className="w-full min-w-0 border-white/70 bg-white/92 text-slate-900 shadow-sm">
+                                    <SelectValue placeholder="Выберите позицию" className="truncate" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {positionOptions.map((pos) => (
+                                      <SelectItem key={pos.id} value={pos.id}>
+                                        {pos.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {!formValues.positionId && formValues.employeeId && (
+                                  <div className="text-[10px] text-white/80">
+                                    {positionOptions.length === 0 ? "У сотрудника нет доступных позиций" : "Нужно выбрать позицию"}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                              <label className="text-xs font-semibold text-white">Начало</label>
-                              <TimePicker24h
-                                value={formValues.startTime}
-                                label="Начало смены"
-                                presets={["06:00", "09:00", "12:00", "15:00"]}
-                                onChange={(value) => setFormValues((prev) => ({ ...prev, startTime: value }))}
-                              />
+                          <div className={FORM_SECTION_CLASS}>
+                            <div className="mb-4">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Время</div>
+                              <div className="mt-1 text-sm font-semibold text-white">Когда начинается и заканчивается смена</div>
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-xs font-semibold text-white">Окончание</label>
-                              <TimePicker24h
-                                value={formValues.endTime}
-                                label="Окончание смены"
-                                presets={["14:00", "18:00", "20:00", "23:00"]}
-                                onChange={(value) => setFormValues((prev) => ({ ...prev, endTime: value }))}
-                              />
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-2">
+                                <label className="text-xs font-semibold text-white/90">Начало</label>
+                                <TimePicker24h
+                                  value={formValues.startTime}
+                                  label="Начало смены"
+                                  presets={["06:00", "09:00", "12:00", "15:00"]}
+                                  onChange={(value) => setFormValues((prev) => ({ ...prev, startTime: value }))}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-semibold text-white/90">Окончание</label>
+                                <TimePicker24h
+                                  value={formValues.endTime}
+                                  label="Окончание смены"
+                                  presets={["14:00", "18:00", "20:00", "23:00"]}
+                                  onChange={(value) => setFormValues((prev) => ({ ...prev, endTime: value }))}
+                                />
+                              </div>
                             </div>
                           </div>
 
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between gap-3">
-                              <label className="text-xs font-semibold text-white">Стандартная зарплата</label>
+                          <div className={FORM_SECTION_CLASS}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Оплата</div>
+                                <div className="mt-1 text-sm font-semibold text-white">Стандартная или индивидуальная ставка</div>
+                              </div>
                               <Switch
                                 checked={formValues.useStandardPay}
                                 onCheckedChange={(checked) =>
@@ -2143,7 +2375,7 @@ export default function ShiftsView({
                               />
                             </div>
                             {!formValues.useStandardPay && (
-                              <div className="space-y-3">
+                              <div className="mt-4 space-y-3">
                                 <ToggleGroup
                                   type="multiple"
                                   value={formValues.customPayTypes}
@@ -2161,7 +2393,7 @@ export default function ShiftsView({
                                     <ToggleGroupItem
                                       key={option.key}
                                       value={option.key}
-                                      className="bg-white/90 text-slate-900 data-[state=on]:bg-white data-[state=on]:text-orange-700 rounded-full first:rounded-full last:rounded-full"
+                                      className="rounded-full bg-white/90 text-slate-900 first:rounded-full last:rounded-full data-[state=on]:bg-white data-[state=on]:text-orange-700"
                                     >
                                       {option.label}
                                     </ToggleGroupItem>
@@ -2171,12 +2403,12 @@ export default function ShiftsView({
                                   <div className="space-y-2">
                                     {selectedCustomPayOptions.map((option) => (
                                       <div key={option.key} className="space-y-1">
-                                        <label className="text-xs font-semibold text-white">{option.label}</label>
+                                        <label className="text-xs font-semibold text-white/90">{option.label}</label>
                                         <Input
                                           type="number"
                                           inputMode="decimal"
                                           step="0.01"
-                                          className="bg-white/90 border-white/70 text-slate-900"
+                                          className="border-white/70 bg-white/92 text-slate-900"
                                           placeholder={option.placeholder}
                                           value={formValues.customPayValues[option.key]}
                                           onChange={(event) => {
@@ -2198,11 +2430,14 @@ export default function ShiftsView({
                             )}
                           </div>
 
-                          <div className="space-y-2">
-                            <label className="text-xs font-semibold text-white">Заметки</label>
+                          <div className={FORM_SECTION_CLASS}>
+                            <div className="mb-4">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Заметки</div>
+                              <div className="mt-1 text-sm font-semibold text-white">Комментарий для менеджера или команды</div>
+                            </div>
                             <Textarea
                               rows={3}
-                              className="bg-white/90 border-white/70 text-slate-900"
+                              className="border-white/70 bg-white/92 text-slate-900"
                               value={formValues.notes || ""}
                               onChange={(event) =>
                                 setFormValues((prev) => ({ ...prev, notes: event.target.value }))
@@ -2210,7 +2445,7 @@ export default function ShiftsView({
                               placeholder="Комментарий к смене"
                             />
                           </div>
-                        </Card>
+                        </div>
 
                         <div className="space-y-2 px-4">
                           <Button
