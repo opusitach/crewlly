@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { TimePicker24h } from "@/components/ui/time-picker-24h"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { ImagePreview } from "@/components/ui/image-preview"
@@ -48,6 +49,7 @@ import {
 import { MonthPicker } from "@/components/shifts/month-picker"
 import { useToast } from "@/hooks/use-toast"
 import { useShiftStore } from "@/lib/store/shift-store"
+import { TIME_VALUE_PATTERN } from "@/lib/utils/time-utils"
 import { cn } from "@/lib/utils"
 import { formatDate, getMonthCalendarDays, getWeekDays, parseDate } from "@/lib/utils/date-utils"
 import type { IntervalConflict, WorkInterval } from "@/lib/types/shift"
@@ -272,13 +274,11 @@ const resolvePlannerDate = (value?: string) => {
   return new Date()
 }
 
-const timeInputPattern = /^([01]\d|2[0-3]):([0-5]\d)$/
-
 const resolveIntervalStartForDate = (dateValue: string, timeValue: string) => {
   const parsedDate = parseDate(dateValue)
   if (!isValid(parsedDate)) return null
 
-  const match = timeInputPattern.exec(timeValue)
+  const match = TIME_VALUE_PATTERN.exec(timeValue)
   if (!match) return null
 
   const hours = Number(match[1])
@@ -2114,24 +2114,20 @@ export default function ShiftsView({
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-2">
                               <label className="text-xs font-semibold text-white">Начало</label>
-                              <Input
-                                type="time"
-                                className="bg-white/90 border-white/70 text-slate-900"
+                              <TimePicker24h
                                 value={formValues.startTime}
-                                onChange={(event) =>
-                                  setFormValues((prev) => ({ ...prev, startTime: event.target.value }))
-                                }
+                                label="Начало смены"
+                                presets={["06:00", "09:00", "12:00", "15:00"]}
+                                onChange={(value) => setFormValues((prev) => ({ ...prev, startTime: value }))}
                               />
                             </div>
                             <div className="space-y-2">
                               <label className="text-xs font-semibold text-white">Окончание</label>
-                              <Input
-                                type="time"
-                                className="bg-white/90 border-white/70 text-slate-900"
+                              <TimePicker24h
                                 value={formValues.endTime}
-                                onChange={(event) =>
-                                  setFormValues((prev) => ({ ...prev, endTime: event.target.value }))
-                                }
+                                label="Окончание смены"
+                                presets={["14:00", "18:00", "20:00", "23:00"]}
+                                onChange={(value) => setFormValues((prev) => ({ ...prev, endTime: value }))}
                               />
                             </div>
                           </div>
