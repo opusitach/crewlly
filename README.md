@@ -269,6 +269,12 @@ docker compose -f docker-compose.dev.yml up -d pgadmin
 └─ .github/workflows/
 ```
 
+### Фоновые задачи
+
+- `shift_auto_close` в `compose.app.yml` каждые `STALE_SHIFT_AUTO_CLOSE_INTERVAL_SECONDS` секунд вызывает internal endpoint `/api/internal/work-intervals/auto-complete`.
+- Задача автоматически переводит зависшие смены из `in_progress` в `completed`, когда с `openedAt`/`clockInAt` (или `startAt` как fallback) прошло 24 часа.
+- Для защиты endpoint требуется `STALE_SHIFT_AUTO_CLOSE_CRON_SECRET`.
+
 ### 1) Первый запуск: создать общую сеть
 
 ```bash

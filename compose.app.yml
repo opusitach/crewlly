@@ -76,6 +76,61 @@ services:
         aliases:
           - backend
 
+  shift_auto_close:
+    image: node:22-alpine
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -z "$${STALE_SHIFT_AUTO_CLOSE_CRON_SECRET:-}" ]; then
+          echo "STALE_SHIFT_AUTO_CLOSE_CRON_SECRET is required"
+          exit 1
+        fi
+
+        interval_seconds="$${STALE_SHIFT_AUTO_CLOSE_INTERVAL_SECONDS:-900}"
+
+        while true; do
+          ts="$$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo "[$$ts] Running stale shift auto-close"
+
+          if ! node <<'NODE'
+          const url = process.env.STALE_SHIFT_AUTO_CLOSE_URL || "http://back:3001/api/internal/work-intervals/auto-complete"
+          const headers = {
+            "Content-Type": "application/json",
+            "x-cron-secret": process.env.STALE_SHIFT_AUTO_CLOSE_CRON_SECRET || "",
+          }
+
+          ;(async () => {
+            const response = await fetch(url, { method: "POST", headers })
+            const body = await response.text()
+            if (!response.ok) {
+              throw new Error("Auto-close request failed with " + response.status + ": " + body)
+            }
+            console.log(body)
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : String(error))
+            process.exit(1)
+          })
+          NODE
+          then
+            echo "Stale shift auto-close run failed"
+          fi
+
+          sleep "$$interval_seconds"
+        done
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      STALE_SHIFT_AUTO_CLOSE_URL: ${STALE_SHIFT_AUTO_CLOSE_URL:-http://back:3001/api/internal/work-intervals/auto-complete}
+      STALE_SHIFT_AUTO_CLOSE_INTERVAL_SECONDS: ${STALE_SHIFT_AUTO_CLOSE_INTERVAL_SECONDS:-900}
+      STALE_SHIFT_AUTO_CLOSE_CRON_SECRET: ${STALE_SHIFT_AUTO_CLOSE_CRON_SECRET:?Set STALE_SHIFT_AUTO_CLOSE_CRON_SECRET in .env.production}
+    depends_on:
+      back:
+        condition: service_healthy
+    networks:
+      - app_net
+
   front:
     build:
       context: .

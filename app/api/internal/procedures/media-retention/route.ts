@@ -1,27 +1,13 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { deleteObjectByKey } from "@/lib/s3"
+import { isAuthorizedInternalCronRequest } from "@/lib/internal-cron"
 
 const RETENTION_DAYS = 14
 const BATCH_LIMIT = 200
 
-const isAuthorized = (request: Request) => {
-  const secret = process.env.MEDIA_RETENTION_CRON_SECRET
-  if (!secret) {
-    return process.env.NODE_ENV !== "production"
-  }
-
-  const cronHeader = request.headers.get("x-cron-secret")
-  if (cronHeader && cronHeader === secret) return true
-
-  const authHeader = request.headers.get("authorization")
-  if (authHeader === `Bearer ${secret}`) return true
-
-  return false
-}
-
 export async function POST(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isAuthorizedInternalCronRequest(request, "MEDIA_RETENTION_CRON_SECRET")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
