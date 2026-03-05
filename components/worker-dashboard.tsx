@@ -15,6 +15,7 @@ import WorkerSettings from "@/components/account/worker-settings"
 import NotificationsPage from "@/components/account/notifications-page"
 import HelpPage from "@/components/account/help-page"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
+import { formatShiftDateLine, formatShiftTimeRange, getShiftDateBadge } from "@/lib/utils/shift-display"
 import {
   Dialog,
   DialogContent,
@@ -363,13 +364,6 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     }
   }, [activeTab, accountView, isAuthenticated, isAuthLoading])
 
-  const formatTimeRange = (startAt: string, endAt: string) => {
-    const start = new Date(startAt)
-    const end = new Date(endAt)
-    const pad = (value: number) => value.toString().padStart(2, "0")
-    return `${pad(start.getHours())}:${pad(start.getMinutes())} - ${pad(end.getHours())}:${pad(end.getMinutes())}`
-  }
-
   const formatShiftDuration = (startAt: string, endAt: string) => {
     const start = new Date(startAt)
     const end = new Date(endAt)
@@ -421,34 +415,6 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
       hour: "2-digit",
       minute: "2-digit",
     })
-  }
-
-  const formatShiftDateLine = (startAt: string) => {
-    const date = new Date(startAt)
-    if (Number.isNaN(date.getTime())) return "Дата не указана"
-
-    const weekdayRaw = date.toLocaleDateString("ru-RU", { weekday: "short" }).replace(".", "")
-    const weekday = weekdayRaw.length > 0 ? `${weekdayRaw.charAt(0).toUpperCase()}${weekdayRaw.slice(1)}` : ""
-    const dayMonth = date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
-    return weekday ? `${weekday}, ${dayMonth}` : dayMonth
-  }
-
-  const getShiftDateBadge = (startAt: string) => {
-    const date = new Date(startAt)
-    if (Number.isNaN(date.getTime())) {
-      return {
-        day: "--",
-        month: "—",
-        weekday: "—",
-      }
-    }
-
-    const weekdayRaw = date.toLocaleDateString("ru-RU", { weekday: "short" }).replace(".", "")
-    return {
-      day: date.toLocaleDateString("ru-RU", { day: "2-digit" }),
-      month: date.toLocaleDateString("ru-RU", { month: "short" }).replace(".", ""),
-      weekday: weekdayRaw.length > 0 ? `${weekdayRaw.charAt(0).toUpperCase()}${weekdayRaw.slice(1)}` : "—",
-    }
   }
 
   const getShiftStatusMeta = (status?: string) => {
@@ -672,6 +638,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const navActiveTab: WorkerBottomTab = accountView === "profile" ? "profile" : activeTab
   const showAppHeader = accountView !== "hub"
   const showHeaderVenueSelector = accountView === "none" || accountView === "notifications"
+  const shiftDisplayTimeZone = organization?.timezone
   const appHeaderTitle =
     accountView === "notifications"
       ? "Crewlly"
@@ -687,8 +654,8 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
             ? "Деньги"
             : "Моя смена"
   const nextShiftStatusMeta = nextShift ? getShiftStatusMeta(nextShift.status) : null
-  const nextShiftDateLine = nextShift ? formatShiftDateLine(nextShift.startAt) : ""
-  const nextShiftDateBadge = nextShift ? getShiftDateBadge(nextShift.startAt) : null
+  const nextShiftDateLine = nextShift ? formatShiftDateLine(nextShift.startAt, shiftDisplayTimeZone) : ""
+  const nextShiftDateBadge = nextShift ? getShiftDateBadge(nextShift.startAt, shiftDisplayTimeZone) : null
   const nextShiftSalaryText =
     nextShift == null
       ? "—"
@@ -852,7 +819,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
                   <div className="flex flex-wrap gap-1.5">
                     <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/70 px-2 py-1 text-[11px] text-muted-foreground">
                       <Clock className="h-3.5 w-3.5" strokeWidth={1.6} />
-                      {formatTimeRange(nextShift.startAt, nextShift.endAt)}
+                      {formatShiftTimeRange(nextShift.startAt, nextShift.endAt, shiftDisplayTimeZone)}
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/70 px-2 py-1 text-[11px] text-muted-foreground">
                       <Calendar className="h-3.5 w-3.5" strokeWidth={1.6} />
