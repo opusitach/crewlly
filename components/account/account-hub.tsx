@@ -73,19 +73,19 @@ export default function AccountHub({
             </div>
 
             <div className="space-y-1">
-              {userRole === "owner" && (
-                <button
-                  onClick={() => onNavigate("profile")}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left"
-                >
-                  <User className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">Профиль</p>
-                    <p className="text-[10px] text-muted-foreground truncate">Личная информация</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                </button>
-              )}
+              <button
+                onClick={() => onNavigate("profile")}
+                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left"
+              >
+                <User className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">Профиль</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {userRole === "owner" ? "Личная информация" : "Личные данные и контакты"}
+                  </p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
+              </button>
 
               {userRole === "owner" && (
                 <button

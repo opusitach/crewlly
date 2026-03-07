@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { AlertCircle, Building2, Calendar, Check, Clock, DollarSign, Plus, User } from "lucide-react"
+import { AlertCircle, Building2, Calendar, Check, Clock, DollarSign, Plus } from "lucide-react"
 import WorkerMoneyView from "@/components/worker-money-view"
 import WorkerShiftPlanner from "@/components/worker-shift-planner"
 import AppHeader from "@/components/shared/app-header"
@@ -60,14 +60,13 @@ type DashboardNotification = {
   createdAt: string
 }
 
-type WorkerBottomTab = "shift" | "planner" | "money" | "profile"
+type WorkerBottomTab = "shift" | "planner" | "money"
 type WorkerTabResetVersion = Record<WorkerBottomTab, number>
 
 const WORKER_TAB_RESET_VERSION_INITIAL: WorkerTabResetVersion = {
   shift: 0,
   planner: 0,
   money: 0,
-  profile: 0,
 }
 
 const toDateInputValue = (date: Date) => {
@@ -93,11 +92,9 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const tabParam = searchParams.get("tab")
-  const resolvedTab: WorkerBottomTab =
-    tabParam === "planner" || tabParam === "money" || tabParam === "profile" ? tabParam : "shift"
-  const [activeTab, setActiveTab] = useState<Extract<WorkerBottomTab, "shift" | "planner" | "money">>(
-    resolvedTab === "planner" || resolvedTab === "money" ? resolvedTab : "shift",
-  )
+  const legacyProfileTabRequested = tabParam === "profile"
+  const resolvedTab: WorkerBottomTab = tabParam === "planner" || tabParam === "money" ? tabParam : "shift"
+  const [activeTab, setActiveTab] = useState<WorkerBottomTab>(resolvedTab)
   const [nextShift, setNextShift] = useState<NextShiftData | null>(null)
   const [isNextShiftLoading, setIsNextShiftLoading] = useState(false)
   const [monthSummary, setMonthSummary] = useState<WorkerMonthSummary>(EMPTY_MONTH_SUMMARY)
@@ -105,7 +102,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const [dashboardEvents, setDashboardEvents] = useState<DashboardNotification[]>([])
   const [isEventsLoading, setIsEventsLoading] = useState(false)
   const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "settings" | "notifications" | "help">(
-    resolvedTab === "profile" ? "profile" : "none",
+    legacyProfileTabRequested ? "profile" : "none",
   )
   const [tabResetVersion, setTabResetVersion] = useState<WorkerTabResetVersion>(WORKER_TAB_RESET_VERSION_INITIAL)
   const [unreadNotifications, setUnreadNotifications] = useState<number | null>(null)
@@ -138,14 +135,11 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   }, [isHydrated, hydrate])
 
   useEffect(() => {
-    if (resolvedTab === "profile") {
-      setActiveTab("shift")
-      setAccountView("profile")
-      return
-    }
     setActiveTab(resolvedTab)
-    setAccountView((current) => (current === "profile" ? "none" : current))
-  }, [resolvedTab])
+    if (legacyProfileTabRequested) {
+      setAccountView("profile")
+    }
+  }, [legacyProfileTabRequested, resolvedTab])
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
@@ -459,7 +453,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     setJoinVenueError(null)
   }, [])
 
-  const updateRouteForTab = (nextTab: "shift" | "planner" | "money" | "profile") => {
+  const updateRouteForTab = useCallback((nextTab: WorkerBottomTab) => {
     const nextParams = new URLSearchParams(searchParams.toString())
     if (nextTab === "shift") {
       nextParams.delete("tab")
@@ -480,7 +474,14 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
       return
     }
     router.replace(nextHref)
-  }
+  }, [searchParams, resolvedTab, router])
+
+  const closeProfileModal = useCallback(() => {
+    setAccountView("none")
+    if (legacyProfileTabRequested) {
+      updateRouteForTab(activeTab)
+    }
+  }, [activeTab, legacyProfileTabRequested, updateRouteForTab])
 
   const handleAccountNavigation = (screen: "profile" | "settings" | "language" | "help" | "team") => {
     closeVenueSelector()
@@ -488,17 +489,20 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     if (screen === "profile") {
       setTimeout(() => {
         setAccountView("profile")
-        updateRouteForTab("profile")
       }, 100)
     } else if (screen === "settings") {
       setTimeout(() => {
         setAccountView("settings")
-        updateRouteForTab("shift")
+        if (legacyProfileTabRequested) {
+          updateRouteForTab(activeTab)
+        }
       }, 100)
     } else if (screen === "help") {
       setTimeout(() => {
         setAccountView("help")
-        updateRouteForTab("shift")
+        if (legacyProfileTabRequested) {
+          updateRouteForTab(activeTab)
+        }
       }, 100)
     }
   }
@@ -635,7 +639,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     [venues, selectedVenueId],
   )
   const selectedVenueName = selectedVenue?.name ?? organization?.name ?? "Заведение"
-  const navActiveTab: WorkerBottomTab = accountView === "profile" ? "profile" : activeTab
+  const navActiveTab: WorkerBottomTab | null = accountView === "profile" ? null : activeTab
   const showAppHeader = accountView !== "hub"
   const showHeaderVenueSelector = accountView === "none" || accountView === "notifications"
   const shiftDisplayTimeZone = organization?.timezone
@@ -643,7 +647,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     accountView === "notifications"
       ? "Crewlly"
       : accountView === "profile"
-      ? "Профиль"
+        ? "Профиль"
       : accountView === "settings"
         ? "Настройки"
         : accountView === "help"
@@ -685,33 +689,27 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   }
 
   const handleTabChange = (tab: WorkerBottomTab) => {
-    const isReselect = navActiveTab === tab
+    const isReselect = activeTab === tab
     if (isReselect) {
       bumpTabResetVersion(tab)
       scrollTabToTop()
     }
 
-    if (tab === "profile") {
-      setAccountView("profile")
-      setActiveTab("shift")
-      updateRouteForTab("profile")
-      return
-    }
     setAccountView("none")
     setActiveTab(tab)
     updateRouteForTab(tab)
   }
 
   const openAccountHub = () => {
-    if (resolvedTab === "profile") {
-      updateRouteForTab("shift")
+    if (legacyProfileTabRequested) {
+      updateRouteForTab(activeTab)
     }
     setAccountView("hub")
   }
 
   const openNotifications = () => {
-    if (resolvedTab === "profile") {
-      updateRouteForTab("shift")
+    if (legacyProfileTabRequested) {
+      updateRouteForTab(activeTab)
     }
     setAccountView("notifications")
   }
@@ -720,11 +718,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     if (accountView === "profile") {
       return (
         <WorkerProfile
-          key={`worker-profile-${tabResetVersion.profile}`}
-          onBack={() => {
-            setAccountView("none")
-            updateRouteForTab("shift")
-          }}
+          onBack={closeProfileModal}
           onLogout={handleLogout}
           hideHeader
         />
@@ -1182,23 +1176,6 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
               >
                 <DollarSign className="h-6 w-6" strokeWidth={1.5} />
                 <span className="text-[10px] font-medium leading-none">Деньги</span>
-              </button>
-
-              {/* Profile Tab */}
-              <button
-                onClick={() => handleTabChange("profile")}
-                className={`
-                  flex flex-col items-center justify-center gap-0.5 
-                  min-w-[44px] min-h-[44px] flex-1 rounded-lg transition-all
-                  ${
-                    navActiveTab === "profile"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground active:scale-95"
-                  }
-                `}
-              >
-                <User className="h-6 w-6" strokeWidth={1.5} />
-                <span className="text-[10px] font-medium leading-none">Профиль</span>
               </button>
             </div>
           </div>

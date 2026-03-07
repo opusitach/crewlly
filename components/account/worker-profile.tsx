@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { ChevronLeft, Mail, Phone, Edit2, Camera, LogOut } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useAuthStore } from "@/lib/store/auth-store"
+import { cn } from "@/lib/utils"
 import { getEmailValidationError } from "@/lib/validation/email"
 import { formatPhoneForDisplay, getPhoneValidationError } from "@/lib/validation/phone"
 
@@ -17,9 +18,15 @@ interface WorkerProfileProps {
   onBack: () => void
   onLogout: () => void
   hideHeader?: boolean
+  variant?: "page" | "sheet"
 }
 
-export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: WorkerProfileProps) {
+export default function WorkerProfile({
+  onBack,
+  onLogout,
+  hideHeader = false,
+  variant = "page",
+}: WorkerProfileProps) {
   const { updateUser } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -155,7 +162,11 @@ export default function WorkerProfile({ onBack, onLogout, hideHeader = false }: 
   }
 
   return (
-    <div className="min-h-screen bg-background max-w-md mx-auto pb-6">
+    <div
+      className={cn(
+        variant === "page" ? "min-h-screen bg-background max-w-md mx-auto pb-6" : "pb-2",
+      )}
+    >
       {!hideHeader && (
         <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
           <div className="p-3">
