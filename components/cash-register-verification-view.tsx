@@ -745,29 +745,29 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
             <div className="w-10" />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 items-stretch gap-1.5 sm:gap-2">
             <Button
               variant={activeTab === "work_shifts" ? "default" : "outline"}
-              className="h-10"
+              className="h-auto min-h-12 rounded-2xl px-2 py-2 text-center text-[11px] leading-[1.15] whitespace-normal sm:h-10 sm:min-h-10 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm sm:whitespace-nowrap"
               onClick={() => setActiveTab("work_shifts")}
             >
               Рабочие смены
             </Button>
             <Button
               variant={activeTab === "cash_sessions" ? "default" : "outline"}
-              className="h-10"
+              className="h-auto min-h-12 rounded-2xl px-2 py-2 text-center text-[11px] leading-[1.15] whitespace-normal sm:h-10 sm:min-h-10 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm sm:whitespace-nowrap"
               onClick={() => setActiveTab("cash_sessions")}
             >
               Кассовые смены
             </Button>
             <Button
               variant={activeTab === "review_queue" ? "default" : "outline"}
-              className="h-10 gap-1.5"
+              className="h-auto min-h-12 flex-col gap-1 rounded-2xl px-2 py-2 text-center text-[11px] leading-[1.15] whitespace-normal sm:h-10 sm:min-h-10 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm sm:whitespace-nowrap"
               onClick={() => setActiveTab("review_queue")}
             >
               <span>На проверке</span>
               {reviewQueueCount > 0 && (
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-destructive-foreground">
+                <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-semibold leading-none text-destructive-foreground sm:h-5 sm:min-w-5 sm:px-1.5 sm:text-[10px]">
                   {reviewQueueBadgeLabel}
                 </span>
               )}

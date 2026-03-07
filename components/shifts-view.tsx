@@ -4,7 +4,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, t
 import {
   addDays,
   addMonths,
-  differenceInCalendarDays,
   endOfMonth,
   format,
   isValid,
@@ -14,13 +13,11 @@ import {
   subMonths,
 } from "date-fns"
 import { ru } from "date-fns/locale"
-import { ArrowLeft, Calculator, CalendarDays, ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react"
+import { ArrowLeft, Calculator, ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { TimePicker24h } from "@/components/ui/time-picker-24h"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
@@ -260,8 +257,8 @@ const DEFAULT_FORM_VALUES: WorkIntervalFormValues = {
 
 const FORM_SECTION_CLASS =
   "rounded-[24px] border border-white/30 bg-gradient-to-br from-white/[0.24] via-white/[0.16] to-white/[0.08] p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.55)] backdrop-blur-md"
-
-const capitalizeLabel = (value: string) => (value.length > 0 ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value)
+const READONLY_FIELD_CLASS =
+  "rounded-[1.1rem] border border-white/70 bg-white/92 px-4 py-3 shadow-sm"
 
 type ShiftsViewProps = {
   onBack: () => void
@@ -344,7 +341,6 @@ export default function ShiftsView({
   const [isBulkMode, setIsBulkMode] = useState(false)
   const [bulkSelectedDates, setBulkSelectedDates] = useState<string[]>([])
   const [bulkCreateDates, setBulkCreateDates] = useState<string[]>([])
-  const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const saveIntervalInFlightRef = useRef(false)
 
@@ -740,7 +736,6 @@ export default function ShiftsView({
 
   const handleOpenCreate = (targetDate?: Date, options?: { bulkDates?: string[] }) => {
     if (readOnly) return
-    setIsFormDatePickerOpen(false)
     if (targetDate) {
       setSelectedDate(targetDate)
       if (!isSameMonth(targetDate, safeDisplayDate)) {
@@ -1049,7 +1044,6 @@ export default function ShiftsView({
   const handleEditInterval = () => {
     if (readOnly) return
     if (!selectedInterval) return
-    setIsFormDatePickerOpen(false)
     const status = getIntervalStatus(selectedInterval)
     if (!canEditIntervalByStatus(status.key)) {
       toast({
@@ -1122,37 +1116,6 @@ export default function ShiftsView({
   const calendarDays = useMemo(() => getMonthCalendarDays(safeDisplayDate), [safeDisplayDate])
   const weekDays = useMemo(() => getWeekDays(safeSelectedDate), [safeSelectedDate])
   const today = new Date()
-  const isBulkCreateMode = bulkCreateDates.length > 0 && !editingInterval
-  const uniqueBulkCreateDates = useMemo(() => Array.from(new Set(bulkCreateDates)).sort(), [bulkCreateDates])
-  const bulkCreateDatePreview = useMemo(
-    () =>
-      uniqueBulkCreateDates.slice(0, 6).map((dateValue) => format(parseDate(dateValue), "d MMM", { locale: ru })),
-    [uniqueBulkCreateDates],
-  )
-  const bulkCreateRangeLabel = useMemo(() => {
-    if (uniqueBulkCreateDates.length === 0) return "Даты не выбраны"
-    const first = format(parseDate(uniqueBulkCreateDates[0]), "d MMMM", { locale: ru })
-    if (uniqueBulkCreateDates.length === 1) return capitalizeLabel(first)
-    const last = format(parseDate(uniqueBulkCreateDates[uniqueBulkCreateDates.length - 1]), "d MMMM", { locale: ru })
-    return `${capitalizeLabel(first)} - ${last}`
-  }, [uniqueBulkCreateDates])
-  const formDateQuickOptions = useMemo(
-    () => Array.from({ length: 5 }, (_, index) => addDays(safeSelectedDate, index - 2)),
-    [safeSelectedDate],
-  )
-  const formDateHeadline = useMemo(
-    () => capitalizeLabel(format(safeSelectedDate, "EEEE, d MMMM", { locale: ru })),
-    [safeSelectedDate],
-  )
-  const formRelativeDateLabel = useMemo(() => {
-    const diff = differenceInCalendarDays(safeSelectedDate, new Date())
-    if (diff === 0) return "Сегодня"
-    if (diff === 1) return "Завтра"
-    if (diff === 2) return "Послезавтра"
-    if (diff === -1) return "Вчера"
-    if (diff > 2) return `Через ${diff} дн.`
-    return `${Math.abs(diff)} дн. назад`
-  }, [safeSelectedDate])
 
   const showCollapseIcon = panelView === "list" && panelExpanded
 
@@ -1176,10 +1139,21 @@ export default function ShiftsView({
       : selectedStatus?.key === "completed"
         ? "—"
         : "После закрытия"
-  const editDateLabel = useMemo(
-    () => capitalizeLabel(format(selectedWorkdayDate, "EEEE, d MMMM yyyy", { locale: ru })),
-    [selectedWorkdayDate],
-  )
+  const detailDateText = format(selectedWorkdayDate, "d MMMM yyyy", { locale: ru })
+  const detailPlannedMinutes =
+    selectedInterval != null
+      ? Math.max(
+          0,
+          Math.round((new Date(selectedInterval.endAt).getTime() - new Date(selectedInterval.startAt).getTime()) / 60000)
+            - (selectedInterval.breakMinutes ?? 0),
+        )
+      : null
+  const detailPlannedDurationText =
+    detailPlannedMinutes != null
+      ? `${Math.floor(detailPlannedMinutes / 60)} ч ${detailPlannedMinutes % 60} мин`
+      : "—"
+  const detailWorkedText =
+    detailMinutesWorked != null ? `${Math.floor(detailMinutesWorked / 60)} ч ${detailMinutesWorked % 60} мин` : "Нет данных"
 
   const employeeOptions = useMemo(
     () =>
@@ -1263,9 +1237,9 @@ export default function ShiftsView({
 
   const renderProcedureSection = (title: string, procedure?: ProcedureView) => (
     <div className="space-y-2">
-      <div className="text-xs uppercase tracking-widest text-muted-foreground">{title}</div>
+      <div className="text-xs uppercase tracking-widest text-white/70">{title}</div>
       {!procedure || procedure.rules.length === 0 ? (
-        <div className="text-xs text-muted-foreground">Нет правил</div>
+        <div className="text-xs text-white/80">Нет правил</div>
       ) : (
         <div className="space-y-2">
           {procedure.rules.map((rule) => {
@@ -1368,11 +1342,11 @@ export default function ShiftsView({
 
   const renderFormulaCalculationsWidget = (formulaCalculations?: CashFormulaCalculations | null) => {
     if (isProcedureLoading) {
-      return <div className="text-xs text-muted-foreground">Загрузка расчетов...</div>
+      return <div className="text-xs text-white/80">Загрузка расчетов...</div>
     }
 
     if (!formulaCalculations || formulaCalculations.items.length === 0) {
-      return <div className="text-xs text-muted-foreground">Формулы кассы не настроены.</div>
+      return <div className="text-xs text-white/80">Формулы кассы не настроены.</div>
     }
 
     if (formulaCalculations.error) {
@@ -1380,7 +1354,7 @@ export default function ShiftsView({
     }
 
     if (!formulaCalculations.hasCashInput) {
-      return <div className="text-xs text-muted-foreground">Нет заполненных данных кассы для расчета формул.</div>
+      return <div className="text-xs text-white/80">Нет заполненных данных кассы для расчета формул.</div>
     }
 
     return (
@@ -1406,6 +1380,26 @@ export default function ShiftsView({
       </div>
     )
   }
+
+  const renderReadonlyField = ({
+    label,
+    value,
+    hint,
+    className,
+    valueClassName,
+  }: {
+    label: string
+    value: string
+    hint?: string
+    className?: string
+    valueClassName?: string
+  }) => (
+    <div className={cn(READONLY_FIELD_CLASS, className)}>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
+      <div className={cn("mt-1 text-base font-semibold text-slate-900", valueClassName)}>{value}</div>
+      {hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
+    </div>
+  )
 
   const renderWeekDay = (day: Date) => {
     const dateStr = formatDate(day)
@@ -1469,14 +1463,23 @@ export default function ShiftsView({
             </div>
           )}
           {!filtersHidden && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
               <DropdownMenu
                 open={activeFilter === "employee"}
                 onOpenChange={handleFilterOpenChange("employee")}
               >
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="rounded-full bg-transparent text-xs">
-                    Сотрудники: {selectedEmployeeIds.length > 0 ? selectedEmployeeIds.length : "Все"}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full min-w-0 justify-start rounded-full bg-transparent px-2 text-[11px] sm:w-auto sm:px-3 sm:text-xs"
+                  >
+                    <span className="truncate sm:hidden">
+                      Сотр.: {selectedEmployeeIds.length > 0 ? selectedEmployeeIds.length : "Все"}
+                    </span>
+                    <span className="hidden sm:inline">
+                      Сотрудники: {selectedEmployeeIds.length > 0 ? selectedEmployeeIds.length : "Все"}
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
@@ -1508,8 +1511,17 @@ export default function ShiftsView({
                 onOpenChange={handleFilterOpenChange("position")}
               >
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="rounded-full bg-transparent text-xs">
-                    Должности: {selectedPositionIds.length > 0 ? selectedPositionIds.length : "Все"}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full min-w-0 justify-start rounded-full bg-transparent px-2 text-[11px] sm:w-auto sm:px-3 sm:text-xs"
+                  >
+                    <span className="truncate sm:hidden">
+                      Должн.: {selectedPositionIds.length > 0 ? selectedPositionIds.length : "Все"}
+                    </span>
+                    <span className="hidden sm:inline">
+                      Должности: {selectedPositionIds.length > 0 ? selectedPositionIds.length : "Все"}
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
@@ -1541,8 +1553,14 @@ export default function ShiftsView({
                 onOpenChange={handleFilterOpenChange("status")}
               >
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="rounded-full bg-transparent text-xs">
-                    Статус: {selectedStatusKeys.length > 0 ? selectedStatusKeys.length : "Все"}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full min-w-0 justify-start rounded-full bg-transparent px-2 text-[11px] sm:w-auto sm:px-3 sm:text-xs"
+                  >
+                    <span className="truncate">
+                      Статус: {selectedStatusKeys.length > 0 ? selectedStatusKeys.length : "Все"}
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
@@ -1566,11 +1584,11 @@ export default function ShiftsView({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-full"
+                className="size-7 rounded-full self-center sm:size-8"
                 onClick={handleResetFilters}
                 aria-label="Сбросить фильтры"
               >
-                <RotateCcw className="h-4 w-4" />
+                <RotateCcw className="size-3.5 sm:size-4" />
               </Button>
             </div>
           )}
@@ -1965,295 +1983,189 @@ export default function ShiftsView({
                     </div>
                     <div className="w-1/3 px-2 h-full min-h-0">
                       {selectedInterval && (
-                        <div className="h-full min-h-0 space-y-3 overflow-y-auto scrollbar-hidden pr-1">
-                          <Card className="p-4 bg-white/95">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <div className="text-lg font-semibold">{detailEmployeeName}</div>
-                                {detailPositionName && (
-                                  <div className="text-xs text-muted-foreground">{detailPositionName}</div>
+                        <div className="h-full min-h-0 space-y-4 overflow-y-auto scrollbar-hidden pr-1">
+                          <div className="space-y-4 px-1">
+                            <div className={FORM_SECTION_CLASS}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                    Назначение
+                                  </div>
+                                  <div className="mt-1 text-sm font-semibold text-white">
+                                    Кому и на какую позицию назначена смена
+                                  </div>
+                                </div>
+                                {selectedStatus ? (
+                                  <Badge className={cn("rounded-full px-3 py-1 text-[11px] shadow-none", selectedStatus.className)}>
+                                    {selectedStatus.label}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <div className="mt-4 grid grid-cols-2 gap-3">
+                                {renderReadonlyField({
+                                  label: "Сотрудник",
+                                  value: detailEmployeeName,
+                                  hint: "Назначенный сотрудник",
+                                })}
+                                {renderReadonlyField({
+                                  label: "Позиция",
+                                  value: detailPositionName || "Без позиции",
+                                  hint: detailPositionName ? "Роль в смене" : "Позиция не была указана",
+                                })}
+                              </div>
+                            </div>
+
+                            <div className={FORM_SECTION_CLASS}>
+                              <div className="mb-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Время</div>
+                                <div className="mt-1 text-sm font-semibold text-white">Когда смена проходит по расписанию</div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                {renderReadonlyField({
+                                  label: "Начало",
+                                  value: detailStartTime,
+                                  hint: detailDateText,
+                                })}
+                                {renderReadonlyField({
+                                  label: "Окончание",
+                                  value: detailEndTime,
+                                  hint: `План: ${detailPlannedDurationText}`,
+                                })}
+                              </div>
+                            </div>
+
+                            <div className={FORM_SECTION_CLASS}>
+                              <div className="mb-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Оплата</div>
+                                <div className="mt-1 text-sm font-semibold text-white">Фактические цифры по этой смене</div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                {renderReadonlyField({
+                                  label: "Начислено",
+                                  value: detailSalaryText,
+                                  hint: detailGrossPayCents != null ? "Расчет сохранен" : "Появится после закрытия",
+                                })}
+                                {renderReadonlyField({
+                                  label: "Отработано",
+                                  value: detailWorkedText,
+                                  hint: detailMinutesWorked != null ? "Фактическое время" : `План: ${detailPlannedDurationText}`,
+                                })}
+                              </div>
+                            </div>
+
+                            <div className={FORM_SECTION_CLASS}>
+                              <div className="mb-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Заметки</div>
+                                <div className="mt-1 text-sm font-semibold text-white">Комментарий к смене</div>
+                              </div>
+                              <div className={cn(READONLY_FIELD_CLASS, "min-h-[108px]")}>
+                                <div className="text-sm leading-6 text-slate-700">
+                                  {selectedInterval.notes?.trim() || "Комментарий к смене не добавлен"}
+                                </div>
+                              </div>
+                            </div>
+
+                            {selectedStatus?.key === "canceled" && (
+                              <div className={FORM_SECTION_CLASS}>
+                                <div className="mb-4">
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Отмена</div>
+                                  <div className="mt-1 text-sm font-semibold text-white">Причина отмены смены</div>
+                                </div>
+                                <div className={cn(READONLY_FIELD_CLASS, "min-h-[96px]")}>
+                                  <div className="text-sm leading-6 text-slate-700">
+                                    {detailCancelReason || "Причина не указана"}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {selectedStatus?.key === "conflict" && (
+                              <div className={FORM_SECTION_CLASS}>
+                                <div className="mb-4 flex items-start justify-between gap-3">
+                                  <div>
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Конфликт</div>
+                                    <div className="mt-1 text-sm font-semibold text-white">Смена пересекается с другим интервалом</div>
+                                  </div>
+                                  <Badge className="rounded-full border-0 bg-rose-500 px-3 py-1 text-[11px] text-white shadow-none">
+                                    Проверить
+                                  </Badge>
+                                </div>
+                                {(selectedInterval.conflicts ?? []).length === 0 ? (
+                                  <div className={READONLY_FIELD_CLASS}>
+                                    <div className="text-sm leading-6 text-slate-700">
+                                      Конфликт не детализирован. Проверьте расписание сотрудника.
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {(selectedInterval.conflicts ?? []).map((conflict) => (
+                                      <div
+                                        key={conflict.id}
+                                        className="rounded-[1.1rem] border border-rose-200 bg-rose-50/95 px-4 py-3 shadow-sm"
+                                      >
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-500">
+                                          {conflict.workDate}
+                                        </div>
+                                        <div className="mt-1 text-sm font-semibold text-slate-900">
+                                          {conflict.startTime} — {conflict.endTime}
+                                        </div>
+                                        {conflict.positionName ? (
+                                          <div className="mt-1 text-xs text-slate-600">{conflict.positionName}</div>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
                               </div>
-                              {selectedStatus && (
-                                <Badge className={cn("text-[10px]", selectedStatus.className)}>
-                                  {selectedStatus.label}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-2">
-                              {format(selectedWorkdayDate, "d MMMM yyyy", { locale: ru })}
-                            </div>
-                            <div className="text-base font-semibold mt-1">
-                              {detailStartTime} — {detailEndTime}
-                            </div>
-                            <div className="mt-2 space-y-1 text-sm">
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-muted-foreground">Начислено</span>
-                                <span className="font-semibold">{detailSalaryText}</span>
-                              </div>
-                              {detailMinutesWorked != null && (
-                                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                                  <span>Отработано</span>
-                                  <span>{Math.floor(detailMinutesWorked / 60)} ч {detailMinutesWorked % 60} мин</span>
-                                </div>
-                              )}
-                            </div>
-                            {selectedInterval.notes && (
-                              <div className="text-xs text-muted-foreground mt-2">{selectedInterval.notes}</div>
                             )}
-                          </Card>
 
-                          {selectedStatus && canEditIntervalByStatus(selectedStatus.key) ? (
-                            readOnly ? (
-                              <div className="text-xs text-white/80 text-center">
-                                Редактирование недоступно в режиме просмотра.
+                            <div className={FORM_SECTION_CLASS}>
+                              <div className="mb-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Процедуры</div>
+                                <div className="mt-1 text-sm font-semibold text-white">Правила открытия и закрытия смены</div>
                               </div>
-                            ) : (
-                              <div className="space-y-2">
-                                <Button onClick={handleEditInterval} className="w-full">
-                                  Редактировать смену
-                                </Button>
-                                <Button variant="destructive" onClick={handleDeleteInterval} className="w-full">
-                                  Удалить смену
-                                </Button>
-                              </div>
-                            )
-                          ) : (
-                            readOnly ? (
-                              <div className="text-xs text-white/80 text-center">
-                                Редактирование недоступно в режиме просмотра.
-                              </div>
-                            ) : null
-                          )}
-
-                          {selectedStatus?.key === "conflict" && (
-                            <Card className="p-4 bg-white/95">
-                              <div className="text-xs uppercase tracking-widest text-red-600">Конфликт смен</div>
-                              {(selectedInterval.conflicts ?? []).length === 0 ? (
-                                <div className="text-xs text-muted-foreground mt-2">
-                                  Конфликт не детализирован. Проверьте расписание сотрудника.
+                              {isProcedureLoading ? (
+                                <div className={READONLY_FIELD_CLASS}>
+                                  <div className="text-xs text-slate-500">Загрузка правил...</div>
                                 </div>
                               ) : (
-                                <div className="space-y-2 mt-3">
-                                  {(selectedInterval.conflicts ?? []).map((conflict) => (
-                                    <div key={conflict.id} className="text-xs text-slate-700">
-                                      {conflict.workDate}: {conflict.startTime} — {conflict.endTime}
-                                      {conflict.positionName ? ` • ${conflict.positionName}` : ""}
-                                    </div>
-                                  ))}
+                                <div className="space-y-4">
+                                  {renderProcedureSection("OPEN правила", procedureDetails?.open)}
+                                  {renderProcedureSection("CLOSE правила", procedureDetails?.close)}
                                 </div>
                               )}
-                            </Card>
-                          )}
-
-                          {selectedStatus?.key === "canceled" && (
-                            <Card className="p-4 bg-white/95">
-                              <div className="text-xs uppercase tracking-widest text-slate-500">
-                                Причина отмены
-                              </div>
-                              <div className="text-sm text-slate-700 mt-2">
-                                {detailCancelReason || "Причина не указана"}
-                              </div>
-                            </Card>
-                          )}
-
-                          <Card className="p-4 bg-white/95">
-                            {isProcedureLoading ? (
-                              <div className="text-xs text-muted-foreground">Загрузка правил...</div>
-                            ) : (
-                              <div className="space-y-4">
-                                {renderProcedureSection("OPEN правила", procedureDetails?.open)}
-                                {renderProcedureSection("CLOSE правила", procedureDetails?.close)}
-                              </div>
-                            )}
-                          </Card>
-
-                          <Card className="p-4 bg-white/95 space-y-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-xs uppercase tracking-widest text-muted-foreground">
-                                Расчеты по формулам
-                              </div>
-                              <Calculator className="h-4 w-4 text-muted-foreground" />
                             </div>
-                            {renderFormulaCalculationsWidget(procedureDetails?.formulaCalculations)}
-                          </Card>
+
+                            <div className={FORM_SECTION_CLASS}>
+                              <div className="mb-4 flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                    Расчеты
+                                  </div>
+                                  <div className="mt-1 text-sm font-semibold text-white">Формулы и итоговые значения смены</div>
+                                </div>
+                                <Calculator className="mt-0.5 h-4 w-4 text-white/80" />
+                              </div>
+                              {renderFormulaCalculationsWidget(procedureDetails?.formulaCalculations)}
+                            </div>
+                          </div>
+
+                          {selectedStatus && canEditIntervalByStatus(selectedStatus.key) && !readOnly ? (
+                            <div className="space-y-2 px-1">
+                              <Button className="w-full bg-white text-orange-700 hover:bg-white/90" onClick={handleEditInterval}>
+                                Редактировать смену
+                              </Button>
+                              <Button variant="destructive" className="w-full" onClick={handleDeleteInterval}>
+                                Удалить смену
+                              </Button>
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </div>
                     <div className="w-1/3 pl-2 h-full min-h-0 flex flex-col">
                       <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-1">
                         <div className="space-y-4 px-1">
-                          <div className={FORM_SECTION_CLASS}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                  {editingInterval ? "Дата смены" : isBulkCreateMode ? "Даты назначения" : "Дата смены"}
-                                </div>
-                                <div className="mt-1 text-sm font-semibold text-white">
-                                  {editingInterval
-                                    ? "Дата уже привязана к рабочему дню"
-                                    : isBulkCreateMode
-                                      ? "Смена сохранится сразу на несколько дней"
-                                      : "Выберите день прямо в форме"}
-                                </div>
-                              </div>
-                              <Badge className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-[11px] font-semibold text-white shadow-none">
-                                {editingInterval ? "Фиксировано" : isBulkCreateMode ? `${uniqueBulkCreateDates.length} дат` : formRelativeDateLabel}
-                              </Badge>
-                            </div>
-
-                            {editingInterval ? (
-                              <div className="mt-4 rounded-[22px] border border-white/50 bg-white/90 p-4 shadow-[0_14px_35px_-24px_rgba(15,23,42,0.6)]">
-                                <div className="flex items-center gap-3">
-                                  <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-100 via-amber-50 to-white text-orange-600 shadow-inner">
-                                    <CalendarDays className="h-5 w-5" />
-                                  </span>
-                                  <div className="min-w-0">
-                                    <div className="truncate text-base font-semibold text-slate-900">{editDateLabel}</div>
-                                    <div className="mt-1 text-xs text-slate-500">
-                                      Чтобы перенести смену на другой день, создайте новую запись на нужную дату.
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : isBulkCreateMode ? (
-                              <>
-                                <div className="mt-4 rounded-[22px] border border-white/50 bg-white/90 p-4 shadow-[0_14px_35px_-24px_rgba(15,23,42,0.6)]">
-                                  <div className="flex items-center gap-3">
-                                    <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-100 via-amber-50 to-white text-orange-600 shadow-inner">
-                                      <CalendarDays className="h-5 w-5" />
-                                    </span>
-                                    <div className="min-w-0">
-                                      <div className="truncate text-base font-semibold text-slate-900">{bulkCreateRangeLabel}</div>
-                                      <div className="mt-1 text-xs text-slate-500">
-                                        Одинаковые время, сотрудник и позиция применятся ко всем выбранным датам.
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {bulkCreateDatePreview.map((label) => (
-                                    <span
-                                      key={label}
-                                      className="rounded-full border border-white/45 bg-white/18 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm"
-                                    >
-                                      {label}
-                                    </span>
-                                  ))}
-                                  {uniqueBulkCreateDates.length > bulkCreateDatePreview.length && (
-                                    <span className="rounded-full border border-white/45 bg-white/18 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
-                                      +{uniqueBulkCreateDates.length - bulkCreateDatePreview.length}
-                                    </span>
-                                  )}
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen}>
-                                  <PopoverTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="mt-4 flex w-full items-center justify-between gap-3 rounded-[22px] border border-white/50 bg-white/90 px-4 py-4 text-left shadow-[0_14px_35px_-24px_rgba(15,23,42,0.6)] transition-all hover:bg-white"
-                                    >
-                                      <span className="flex min-w-0 items-center gap-3">
-                                        <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-100 via-amber-50 to-white text-orange-600 shadow-inner">
-                                          <CalendarDays className="h-5 w-5" />
-                                        </span>
-                                        <span className="min-w-0">
-                                          <span className="block truncate text-base font-semibold text-slate-900">{formDateHeadline}</span>
-                                          <span className="mt-1 block text-xs text-slate-500">
-                                            Можно выбрать здесь или в календаре над формой
-                                          </span>
-                                        </span>
-                                      </span>
-                                      <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-[11px] font-semibold text-orange-700">
-                                        Изменить
-                                      </span>
-                                    </button>
-                                  </PopoverTrigger>
-                                  <PopoverContent
-                                    align="start"
-                                    sideOffset={10}
-                                    className="w-auto rounded-[1.5rem] border-white/80 bg-white/95 p-2 shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
-                                  >
-                                    <Calendar
-                                      mode="single"
-                                      selected={safeSelectedDate}
-                                      month={safeDisplayDate}
-                                      onMonthChange={setDisplayDate}
-                                      onSelect={(date) => {
-                                        if (!date) return
-                                        handleSelectDate(date)
-                                        setIsFormDatePickerOpen(false)
-                                      }}
-                                      locale={ru}
-                                      className="rounded-[1.25rem] bg-transparent p-1"
-                                      classNames={{
-                                        month_caption: "flex h-10 w-full items-center justify-center px-10",
-                                        caption_label: "text-sm font-semibold text-slate-900",
-                                        nav: "absolute inset-x-0 top-1 flex w-full items-center justify-between",
-                                        button_previous:
-                                          "size-9 rounded-full border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100",
-                                        button_next:
-                                          "size-9 rounded-full border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100",
-                                        weekday: "text-[11px] font-medium uppercase text-slate-400",
-                                      }}
-                                    />
-                                  </PopoverContent>
-                                </Popover>
-
-                                <div className="mt-3 grid grid-cols-5 gap-2">
-                                  {formDateQuickOptions.map((dateOption) => {
-                                    const isSelected = isSameDay(dateOption, safeSelectedDate)
-                                    const isTodayOption = isSameDay(dateOption, today)
-                                    const weekdayLabel = capitalizeLabel(format(dateOption, "EEE", { locale: ru }).replace(".", ""))
-                                    const monthLabel = format(dateOption, "MMM", { locale: ru }).replace(".", "")
-
-                                    return (
-                                      <button
-                                        key={format(dateOption, "yyyy-MM-dd")}
-                                        type="button"
-                                        onClick={() => handleSelectDate(dateOption)}
-                                        className={cn(
-                                          "rounded-[20px] border px-2 py-2.5 text-center shadow-[0_12px_30px_-24px_rgba(15,23,42,0.5)] transition-all",
-                                          isSelected
-                                            ? "border-slate-900 bg-slate-900 text-white"
-                                            : "border-white/50 bg-white/72 text-slate-700 hover:bg-white",
-                                        )}
-                                      >
-                                        <span
-                                          className={cn(
-                                            "block text-[10px] font-semibold uppercase tracking-[0.18em]",
-                                            isSelected ? "text-white/70" : "text-slate-400",
-                                          )}
-                                        >
-                                          {weekdayLabel}
-                                        </span>
-                                        <span className="mt-1 block text-lg font-semibold tabular-nums">{format(dateOption, "d")}</span>
-                                        <span
-                                          className={cn(
-                                            "mt-1 block text-[10px] font-semibold uppercase tracking-[0.18em]",
-                                            isSelected ? "text-white/65" : "text-slate-400",
-                                          )}
-                                        >
-                                          {monthLabel}
-                                        </span>
-                                        <span
-                                          className={cn(
-                                            "mt-1 block text-[9px] font-semibold",
-                                            isSelected ? "text-white/80" : isTodayOption ? "text-orange-700" : "text-slate-400",
-                                          )}
-                                        >
-                                          {isTodayOption ? "Сегодня" : "\u00A0"}
-                                        </span>
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              </>
-                            )}
-                          </div>
-
                           <div className={FORM_SECTION_CLASS}>
                             <div className="mb-4">
                               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Назначение</div>
@@ -2345,7 +2257,7 @@ export default function ShiftsView({
                                 <TimePicker24h
                                   value={formValues.startTime}
                                   label="Начало смены"
-                                  presets={["06:00", "09:00", "12:00", "15:00"]}
+                                  className="h-12"
                                   onChange={(value) => setFormValues((prev) => ({ ...prev, startTime: value }))}
                                 />
                               </div>
@@ -2354,7 +2266,7 @@ export default function ShiftsView({
                                 <TimePicker24h
                                   value={formValues.endTime}
                                   label="Окончание смены"
-                                  presets={["14:00", "18:00", "20:00", "23:00"]}
+                                  className="h-12"
                                   onChange={(value) => setFormValues((prev) => ({ ...prev, endTime: value }))}
                                 />
                               </div>
