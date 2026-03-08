@@ -6,6 +6,10 @@ import { ru } from "date-fns/locale"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ChevronLeft, CheckCircle2, AlertCircle, Clock, DollarSign, Check, Trash2 } from "lucide-react"
+import {
+  resolveNotificationNavigationTarget,
+  type NotificationNavigationTarget,
+} from "@/lib/notifications/navigation"
 
 type NotificationType = "shift" | "cash" | "receipt" | "system"
 type NotificationStatus = "read" | "unread"
@@ -15,12 +19,25 @@ type Notification = {
   type: NotificationType
   title: string
   message: string
+  payload?: unknown
   status: NotificationStatus
   createdAt: string
   readAt?: string | null
 }
 
-export default function NotificationsPage({ onBack, hideHeader = false }: { onBack: () => void; hideHeader?: boolean }) {
+type NotificationsPageProps = {
+  onBack: () => void
+  hideHeader?: boolean
+  onNotificationNavigate?: (target: NotificationNavigationTarget, notification: Notification) => void | Promise<void>
+  onUnreadCountChange?: (count: number) => void
+}
+
+export default function NotificationsPage({
+  onBack,
+  hideHeader = false,
+  onNotificationNavigate,
+  onUnreadCountChange,
+}: NotificationsPageProps) {
   const [filter, setFilter] = useState<"all" | "unread">("unread")
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -126,8 +143,25 @@ export default function NotificationsPage({ onBack, hideHeader = false }: { onBa
 
   const unreadCount = notifications.filter((n) => n.status === "unread").length
 
+  useEffect(() => {
+    if (isLoading) return
+    onUnreadCountChange?.(unreadCount)
+  }, [isLoading, onUnreadCountChange, unreadCount])
+
   const formatTimestamp = (value: string) =>
     formatDistanceToNow(new Date(value), { addSuffix: true, locale: ru })
+
+  const handleNotificationClick = async (notification: Notification) => {
+    if (isUpdating || !onNotificationNavigate) return
+    const target = resolveNotificationNavigationTarget(notification)
+    if (!target) return
+
+    if (notification.status === "unread") {
+      await markAsRead(notification.id)
+    }
+
+    await onNotificationNavigate(target, notification)
+  }
 
   return (
     <div className="min-h-screen bg-background pb-4 max-w-md mx-auto">
@@ -196,9 +230,26 @@ export default function NotificationsPage({ onBack, hideHeader = false }: { onBa
         {!isLoading && filteredNotifications.map((notification) => {
           const Icon = getIcon(notification.type)
           const iconColor = getIconColor(notification.type)
+          const navigationTarget = resolveNotificationNavigationTarget(notification)
+          const isNavigable = Boolean(onNotificationNavigate && navigationTarget)
 
           return (
-            <Card key={notification.id} className="p-4 overflow-hidden">
+            <Card
+              key={notification.id}
+              className={`p-4 overflow-hidden ${isNavigable ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
+              role={isNavigable ? "button" : undefined}
+              tabIndex={isNavigable ? 0 : undefined}
+              onClick={isNavigable ? () => void handleNotificationClick(notification) : undefined}
+              onKeyDown={
+                isNavigable
+                  ? (event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return
+                      event.preventDefault()
+                      void handleNotificationClick(notification)
+                    }
+                  : undefined
+              }
+            >
               <div className="space-y-3">
                 {/* Main content */}
                 <div className="flex items-start gap-3">
@@ -231,7 +282,10 @@ export default function NotificationsPage({ onBack, hideHeader = false }: { onBa
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 rounded-full bg-primary/10 hover:bg-primary/20"
-                        onClick={() => markAsRead(notification.id)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void markAsRead(notification.id)
+                        }}
                       >
                         <Check className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} />
                       </Button>
@@ -240,7 +294,10 @@ export default function NotificationsPage({ onBack, hideHeader = false }: { onBa
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 rounded-full bg-destructive/10 hover:bg-destructive/20"
-                      onClick={() => deleteNotification(notification.id)}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void deleteNotification(notification.id)
+                      }}
                     >
                       <Trash2 className="h-3.5 w-3.5 text-destructive" strokeWidth={1.5} />
                     </Button>

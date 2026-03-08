@@ -23,6 +23,7 @@ type IntervalCloseNotificationInput = {
   organizationId: string
   title: string
   message: string
+  payload?: unknown
   excludeUserId?: string | null
 }
 

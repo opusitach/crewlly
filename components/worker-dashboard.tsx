@@ -15,6 +15,7 @@ import WorkerSettings from "@/components/account/worker-settings"
 import NotificationsPage from "@/components/account/notifications-page"
 import HelpPage from "@/components/account/help-page"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
+import type { NotificationNavigationTarget } from "@/lib/notifications/navigation"
 import { formatShiftDateLine, formatShiftTimeRange, getShiftDateBadge } from "@/lib/utils/shift-display"
 import {
   Dialog,
@@ -63,6 +64,11 @@ type DashboardNotification = {
 type WorkerBottomTab = "shift" | "planner" | "money"
 type WorkerTabResetVersion = Record<WorkerBottomTab, number>
 
+type PendingWorkerPlannerNavigation = {
+  workDate: string
+  openWeekView?: boolean
+}
+
 const WORKER_TAB_RESET_VERSION_INITIAL: WorkerTabResetVersion = {
   shift: 0,
   planner: 0,
@@ -106,6 +112,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   )
   const [tabResetVersion, setTabResetVersion] = useState<WorkerTabResetVersion>(WORKER_TAB_RESET_VERSION_INITIAL)
   const [unreadNotifications, setUnreadNotifications] = useState<number | null>(null)
+  const [pendingPlannerNavigation, setPendingPlannerNavigation] = useState<PendingWorkerPlannerNavigation | null>(null)
   const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false)
   const [isJoinVenueOpen, setIsJoinVenueOpen] = useState(false)
   const [joinInviteCode, setJoinInviteCode] = useState("")
@@ -715,6 +722,24 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     setAccountView("notifications")
   }
 
+  const handleNotificationNavigation = (target: NotificationNavigationTarget) => {
+    if (target.view === "worker_planner") {
+      setAccountView("none")
+      setPendingPlannerNavigation({
+        workDate: target.workDate,
+        openWeekView: target.openWeekView ?? true,
+      })
+      setActiveTab("planner")
+      updateRouteForTab("planner")
+      return
+    }
+
+    if (target.view === "worker_profile") {
+      setPendingPlannerNavigation(null)
+      setAccountView("profile")
+    }
+  }
+
   const renderContent = () => {
     if (accountView === "profile") {
       return (
@@ -739,8 +764,9 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
         <NotificationsPage
           onBack={() => {
             setAccountView("none")
-            setUnreadNotifications(0)
           }}
+          onNotificationNavigate={handleNotificationNavigation}
+          onUnreadCountChange={setUnreadNotifications}
         />
       )
     }
@@ -760,6 +786,9 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
         <WorkerShiftPlanner
           key={`worker-planner-${tabResetVersion.planner}`}
           onBack={() => handleTabChange("shift")}
+          initialDate={pendingPlannerNavigation?.workDate}
+          initialOpenWeekView={pendingPlannerNavigation?.openWeekView ?? false}
+          onInitialNavigationHandled={() => setPendingPlannerNavigation(null)}
           hideHeader
         />
       )

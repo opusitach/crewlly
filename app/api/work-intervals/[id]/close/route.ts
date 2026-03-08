@@ -9,6 +9,7 @@ import { listCashRegisterFields } from "@/lib/cash/fields-query"
 import { findWorkdayCashSourceAnswer } from "@/lib/cash/workday-cash-source"
 import { getCloseCashSkipEligibility } from "@/lib/cash/close-skip"
 import { toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
+import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import { finalizeWorkIntervalClose, isProceduresSchemaMissing } from "@/lib/work-intervals/close"
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -51,6 +52,7 @@ export async function POST(request: Request, context: RouteContext) {
     "Сотрудник",
   )
   const workDateLabel = toEventDateLabel(interval.workday.workDate)
+  const notificationWorkDate = toNotificationDateOnly(interval.workday.workDate)
   const notificationMessage = workDateLabel
     ? `${actorName} закрыл(а) рабочую смену (${workDateLabel}).`
     : `${actorName} закрыл(а) рабочую смену.`
@@ -58,6 +60,12 @@ export async function POST(request: Request, context: RouteContext) {
     organizationId: interval.workday.organizationId,
     title: "Закрыта рабочая смена",
     message: notificationMessage,
+    payload: {
+      view: "owner_cash",
+      cashTab: "work_shifts",
+      intervalId: interval.id,
+      ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
+    },
     excludeUserId: session?.user.id ?? null,
   }
 

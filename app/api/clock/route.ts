@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg, getUserEmployee } from "@/lib/auth"
 import { computeIntervalPayrollSnapshot } from "@/lib/payroll/interval-compensation"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
+import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 
 const clockSchema = z.object({
   intervalId: z.string().uuid(),
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
   if (!session || !session.organization) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const organizationId = session.organization.id
 
   const json = await request.json().catch(() => null)
   const parsed = clockSchema.safeParse(json)
@@ -61,6 +63,7 @@ export async function POST(request: Request) {
   const now = new Date()
   const actorName = toEventActorName({ fullName: session.user.fullName, email: session.user.email }, "Сотрудник")
   const workDateLabel = toEventDateLabel(interval.workday.workDate)
+  const notificationWorkDate = toNotificationDateOnly(interval.workday.workDate)
   const openNotificationMessage = workDateLabel
     ? `${actorName} открыл(а) рабочую смену (${workDateLabel}).`
     : `${actorName} открыл(а) рабочую смену.`
@@ -94,10 +97,15 @@ export async function POST(request: Request) {
       })
 
       await notifyOrganizationOwners(tx, {
-        organizationId: session.organization.id,
+        organizationId,
         type: "shift",
         title: "Открыта рабочая смена",
         message: openNotificationMessage,
+        payload: {
+          view: "owner_shifts",
+          intervalId,
+          ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
+        },
         excludeUserId: session.user.id,
       })
 
@@ -186,10 +194,16 @@ export async function POST(request: Request) {
       })
 
       await notifyOrganizationOwners(tx, {
-        organizationId: session.organization.id,
+        organizationId,
         type: "shift",
         title: "Закрыта рабочая смена",
         message: closeNotificationMessage,
+        payload: {
+          view: "owner_cash",
+          cashTab: "work_shifts",
+          intervalId,
+          ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
+        },
         excludeUserId: session.user.id,
       })
 

@@ -9,7 +9,21 @@ import { useShiftStore } from "@/lib/store/shift-store"
 
 const ShiftsView = dynamic(() => import("@/components/shifts-view"), { ssr: false })
 
-export default function WorkerShiftPlanner({ onBack, hideHeader = false }: { onBack: () => void; hideHeader?: boolean }) {
+type WorkerShiftPlannerProps = {
+  onBack: () => void
+  hideHeader?: boolean
+  initialDate?: string
+  initialOpenWeekView?: boolean
+  onInitialNavigationHandled?: () => void
+}
+
+export default function WorkerShiftPlanner({
+  onBack,
+  hideHeader = false,
+  initialDate,
+  initialOpenWeekView = false,
+  onInitialNavigationHandled,
+}: WorkerShiftPlannerProps) {
   const { user, isHydrated: isAuthHydrated, hydrate: hydrateAuth, isAuthenticated } = useAuthStore()
   const {
     employees,
@@ -61,6 +75,15 @@ export default function WorkerShiftPlanner({ onBack, hideHeader = false }: { onB
   }
 
   return (
-    <ShiftsView onBack={onBack} readOnly hideFilters lockedEmployeeId={employeeId} externalHeader={hideHeader} />
+    <ShiftsView
+      onBack={onBack}
+      readOnly
+      hideFilters
+      lockedEmployeeId={employeeId}
+      initialDate={initialDate}
+      initialOpenWeekView={initialOpenWeekView}
+      onInitialNavigationHandled={onInitialNavigationHandled}
+      externalHeader={hideHeader}
+    />
   )
 }

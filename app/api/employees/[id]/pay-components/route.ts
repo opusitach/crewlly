@@ -324,6 +324,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
           type: "system",
           title: "Изменение зарплаты",
           message: `Ваша зарплата была изменена с ${beforeLabel} на ${afterLabel}.`,
+          payload: {
+            view: "worker_profile",
+          },
           status: "unread",
         },
       })

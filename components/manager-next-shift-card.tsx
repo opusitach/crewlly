@@ -4,7 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 import { Calendar, Clock } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 import { formatShiftDateLine, formatShiftTimeRange, getShiftDateBadge } from "@/lib/utils/shift-display"
 
 type NextShiftData = {
@@ -87,8 +97,12 @@ const getShiftStatusMeta = (status?: string) => {
 
 export default function ManagerNextShiftCard({ organizationId, timeZone }: ManagerNextShiftCardProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const [nextShift, setNextShift] = useState<NextShiftData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState("")
+  const [isCancelSubmitting, setIsCancelSubmitting] = useState(false)
   const nextShiftInFlightRef = useRef(false)
 
   const loadNextShift = useCallback(async (options?: { silent?: boolean }) => {
@@ -127,6 +141,37 @@ export default function ManagerNextShiftCard({ organizationId, timeZone }: Manag
     }
     void loadNextShift()
   }, [organizationId, loadNextShift])
+
+  const cancelShift = useCallback(async (reason: string) => {
+    if (!nextShift?.id) return
+
+    try {
+      setIsCancelSubmitting(true)
+      const res = await fetch(`/api/work-intervals/${nextShift.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ reason }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(json?.error || "Не удалось отменить смену")
+      }
+
+      toast({ title: "Смена отменена" })
+      setIsCancelDialogOpen(false)
+      setCancelReason("")
+      await loadNextShift()
+    } catch (error: any) {
+      toast({
+        title: "Ошибка",
+        description: error?.message || "Не удалось отменить смену",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCancelSubmitting(false)
+    }
+  }, [loadNextShift, nextShift?.id, toast])
 
   useEffect(() => {
     if (!organizationId) return
@@ -251,9 +296,18 @@ export default function ManagerNextShiftCard({ organizationId, timeZone }: Manag
                   </Button>
                 </>
               ) : nextShift.status === "scheduled" ? (
-                <Button className="col-span-2 h-9 text-sm" onClick={() => router.push(`/shift-procedures/${nextShift.id}?when=OPEN`)}>
-                  Открыть смену
-                </Button>
+                <>
+                  <Button className="h-9 text-sm" onClick={() => router.push(`/shift-procedures/${nextShift.id}?when=OPEN`)}>
+                    Открыть смену
+                  </Button>
+                  <Button
+                    className="h-9 border-destructive/40 text-destructive hover:bg-destructive/10"
+                    variant="outline"
+                    onClick={() => setIsCancelDialogOpen(true)}
+                  >
+                    Отменить смену
+                  </Button>
+                </>
               ) : nextShift.status === "completed" ? (
                 <div className="col-span-2 rounded-md border border-border/60 bg-background/70 px-2.5 py-2 text-center text-xs text-muted-foreground">
                   Смена завершена
@@ -275,6 +329,48 @@ export default function ManagerNextShiftCard({ organizationId, timeZone }: Manag
           </div>
         )}
       </Card>
+
+      <Dialog
+        open={isCancelDialogOpen}
+        onOpenChange={(open) => {
+          setIsCancelDialogOpen(open)
+          if (!open && !isCancelSubmitting) {
+            setCancelReason("")
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Отмена смены</DialogTitle>
+            <DialogDescription>
+              Укажите причину отмены. Владелец увидит ее в деталях смены.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Textarea
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              rows={4}
+              maxLength={500}
+              placeholder="Например: заболел, не могу выйти на смену"
+              disabled={isCancelSubmitting}
+            />
+            <div className="text-xs text-right text-muted-foreground">{cancelReason.length}/500</div>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button variant="outline" onClick={() => setIsCancelDialogOpen(false)} disabled={isCancelSubmitting}>
+              Назад
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void cancelShift(cancelReason.trim())}
+              disabled={isCancelSubmitting || cancelReason.trim().length < 3}
+            >
+              {isCancelSubmitting ? "Отменяем..." : "Отменить смену"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

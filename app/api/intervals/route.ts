@@ -15,6 +15,7 @@ import {
   recomputeEmployeeConflictStatuses,
 } from "@/lib/work-interval-conflicts"
 import { getDefaultRuleCountsForPosition, isDefaultRulesetConfigured } from "@/lib/procedures/config"
+import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 
 const customPayTypeValues = ["hourly", "fixed_shift", "percent_revenue"] as const
 type CustomPayTypeValue = (typeof customPayTypeValues)[number]
@@ -612,6 +613,7 @@ export async function POST(request: Request) {
 
       if (employee.userId !== session.user.id) {
         const positionLabel = position.name?.trim() ? ` (${position.name.trim()})` : ""
+        const notificationWorkDate = toNotificationDateOnly(workday.workDate) ?? new Date(workday.workDate).toISOString().slice(0, 10)
         await tx.notification.create({
           data: {
             organizationId,
@@ -619,6 +621,12 @@ export async function POST(request: Request) {
             type: "shift",
             title: "Создана смена",
             message: `Вам назначили смену${positionLabel} на ${formatWorkdayDateLabel(workday.workDate)}, ${formatTimeLabel(startAt)}–${formatTimeLabel(endAt)}.`,
+            payload: {
+              view: "worker_planner",
+              intervalId: created.id,
+              workDate: notificationWorkDate,
+              openWeekView: true,
+            },
             status: "unread",
           },
         })

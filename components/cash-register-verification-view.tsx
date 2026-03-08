@@ -97,6 +97,10 @@ type CashFormulaSummaryItem = {
 type Props = {
   onBack: () => void
   initialTab?: "work_shifts" | "cash_sessions" | "review_queue"
+  initialDate?: string
+  initialSelectedShiftId?: string | null
+  initialSelectedCashSessionId?: string | null
+  onInitialNavigationHandled?: () => void
 }
 
 type VerificationTab = "work_shifts" | "cash_sessions" | "review_queue"
@@ -324,9 +328,18 @@ const calculateSessionFormulaSummary = (
   }
 }
 
-export default function CashRegisterVerificationView({ onBack, initialTab }: Props) {
+export default function CashRegisterVerificationView({
+  onBack,
+  initialTab,
+  initialDate,
+  initialSelectedShiftId,
+  initialSelectedCashSessionId,
+  onInitialNavigationHandled,
+}: Props) {
   const [activeTab, setActiveTab] = useState<VerificationTab>(() => initialTab ?? "work_shifts")
-  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateInputValue())
+  const [selectedDate, setSelectedDate] = useState<string>(() =>
+    initialDate && dateOnlyPattern.test(initialDate) ? initialDate : getTodayDateInputValue(),
+  )
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null)
   const [selectedCashSessionId, setSelectedCashSessionId] = useState<string | null>(null)
 
@@ -353,6 +366,37 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
       setActiveTab(initialTab)
     }
   }, [initialTab])
+
+  useEffect(() => {
+    if (!initialDate || !dateOnlyPattern.test(initialDate)) return
+    setSelectedDate(initialDate)
+  }, [initialDate])
+
+  useEffect(() => {
+    if (initialSelectedShiftId) {
+      setSelectedShiftId((current) => (current === initialSelectedShiftId ? current : initialSelectedShiftId))
+      onInitialNavigationHandled?.()
+      return
+    }
+
+    if (initialSelectedCashSessionId) {
+      setSelectedCashSessionId((current) =>
+        current === initialSelectedCashSessionId ? current : initialSelectedCashSessionId,
+      )
+      onInitialNavigationHandled?.()
+      return
+    }
+
+    if (initialTab || initialDate) {
+      onInitialNavigationHandled?.()
+    }
+  }, [
+    initialDate,
+    initialSelectedCashSessionId,
+    initialSelectedShiftId,
+    initialTab,
+    onInitialNavigationHandled,
+  ])
 
   const loadFormulasForSessions = async (sessions: CashSessionDetails[], signal?: AbortSignal) => {
     const locationIds = Array.from(new Set(sessions.map((session) => session.cashRegister.locationId)))

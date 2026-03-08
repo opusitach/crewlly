@@ -31,6 +31,7 @@ import HelpPage from "@/components/account/help-page"
 import TeamMovedHint from "@/components/notifications/team-moved-hint"
 import ManagerNextShiftCard from "@/components/manager-next-shift-card"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
+import type { NotificationNavigationTarget } from "@/lib/notifications/navigation"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { useShiftStore } from "@/lib/store/shift-store"
 
@@ -72,6 +73,20 @@ type VerificationSummaryResponse = {
   data?: {
     totalOnReview?: number
   }
+}
+
+type PendingOwnerShiftsNavigation = {
+  workDate?: string
+  intervalId?: string | null
+  preferCanceledInterval?: boolean
+  cancelReason?: string
+}
+
+type PendingOwnerCashNavigation = {
+  tab: "work_shifts" | "cash_sessions" | "review_queue"
+  workDate?: string
+  selectedShiftId?: string | null
+  selectedCashSessionId?: string | null
 }
 
 type CashSummaryFormulaItem = {
@@ -193,6 +208,8 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const [settingsInitialCashTab, setSettingsInitialCashTab] = useState<CashSettingsTab>("open")
   const [tabResetVersion, setTabResetVersion] = useState<OwnerTabResetVersion>(OWNER_TAB_RESET_VERSION_INITIAL)
   const [verificationQueueCount, setVerificationQueueCount] = useState(0)
+  const [pendingShiftsNavigation, setPendingShiftsNavigation] = useState<PendingOwnerShiftsNavigation | null>(null)
+  const [pendingCashNavigation, setPendingCashNavigation] = useState<PendingOwnerCashNavigation | null>(null)
   const [todayRevenueAmount, setTodayRevenueAmount] = useState<number | null>(null)
   const [monthRevenueAmount, setMonthRevenueAmount] = useState<number | null>(null)
   const [revenueCurrency, setRevenueCurrency] = useState<string>("CZK")
@@ -871,6 +888,33 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     onBack?.()
   }
 
+  const handleNotificationNavigation = (target: NotificationNavigationTarget) => {
+    setAccountView("none")
+
+    if (target.view === "owner_shifts") {
+      setPendingCashNavigation(null)
+      setPendingShiftsNavigation({
+        workDate: target.workDate,
+        intervalId: target.intervalId ?? null,
+        preferCanceledInterval: target.preferCanceledInterval,
+        cancelReason: target.cancelReason,
+      })
+      updateRouteForTab("shifts", { shiftsDate: target.workDate ?? null })
+      return
+    }
+
+    if (target.view === "owner_cash") {
+      setPendingShiftsNavigation(null)
+      setPendingCashNavigation({
+        tab: target.cashTab,
+        workDate: target.workDate,
+        selectedShiftId: target.intervalId ?? null,
+        selectedCashSessionId: target.cashSessionId ?? null,
+      })
+      updateRouteForTab("cash", { cashTab: target.cashTab === "review_queue" ? "review_queue" : null })
+    }
+  }
+
   const renderAccountOverlay = () => {
     if (accountView === "profile") {
       return (
@@ -890,8 +934,9 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         <NotificationsPage
           onBack={() => {
             setAccountView("none")
-            setUnreadNotifications(0)
           }}
+          onNotificationNavigate={handleNotificationNavigation}
+          onUnreadCountChange={setUnreadNotifications}
         />
       )
     }
@@ -904,7 +949,11 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         <ShiftsView
           key={`owner-shifts-${tabResetVersion.shifts}`}
           onBack={() => setTab("dashboard")}
-          initialDate={initialShiftsDate}
+          initialDate={pendingShiftsNavigation?.workDate ?? initialShiftsDate}
+          initialSelectedIntervalId={pendingShiftsNavigation?.intervalId ?? null}
+          initialPreferCanceledInterval={pendingShiftsNavigation?.preferCanceledInterval ?? false}
+          initialCancelReason={pendingShiftsNavigation?.cancelReason}
+          onInitialNavigationHandled={() => setPendingShiftsNavigation(null)}
         />
       )
     if (activeTab === "cash")
@@ -912,7 +961,11 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         <CashRegisterVerificationView
           key={`owner-cash-${tabResetVersion.cash}`}
           onBack={() => setTab("dashboard")}
-          initialTab={initialCashTab}
+          initialTab={pendingCashNavigation?.tab ?? initialCashTab}
+          initialDate={pendingCashNavigation?.workDate}
+          initialSelectedShiftId={pendingCashNavigation?.selectedShiftId ?? null}
+          initialSelectedCashSessionId={pendingCashNavigation?.selectedCashSessionId ?? null}
+          onInitialNavigationHandled={() => setPendingCashNavigation(null)}
         />
       )
     if (activeTab === "reports")

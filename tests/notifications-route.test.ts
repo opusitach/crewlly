@@ -41,6 +41,11 @@ describe("GET /api/notifications", () => {
         type: "shift",
         title: "Открыта рабочая смена",
         message: "Сотрудник открыл смену",
+        payload: {
+          view: "owner_shifts",
+          intervalId: "interval_1",
+          workDate: "2026-02-18",
+        },
         status: "unread",
         createdAt: new Date("2026-02-18T10:00:00Z"),
         readAt: null,
@@ -72,6 +77,11 @@ describe("GET /api/notifications", () => {
         type: "shift",
         title: "Открыта рабочая смена",
         message: "Сотрудник открыл смену",
+        payload: {
+          view: "owner_shifts",
+          intervalId: "interval_1",
+          workDate: "2026-02-18",
+        },
         status: "unread",
         createdAt: "2026-02-18T10:00:00.000Z",
         readAt: null,

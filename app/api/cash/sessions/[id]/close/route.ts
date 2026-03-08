@@ -18,6 +18,7 @@ import {
 import { syncWorkdayRevenueFromCashSessions } from "@/lib/cash/revenue-allocation"
 import { syncWorkdayTipsFromCashSessions } from "@/lib/cash/tips-sync"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
+import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -201,6 +202,7 @@ export async function POST(request: Request, context: RouteContext) {
         select: { name: true },
       })
       const workDateLabel = toEventDateLabel(session.workday.workDate)
+      const notificationWorkDate = toNotificationDateOnly(session.workday.workDate)
       const notificationMessage = workDateLabel
         ? `${actorName} закрыл(а) кассовую смену «${cashRegister?.name || "Касса"}» (${workDateLabel}).`
         : `${actorName} закрыл(а) кассовую смену «${cashRegister?.name || "Касса"}».`
@@ -210,6 +212,12 @@ export async function POST(request: Request, context: RouteContext) {
         type: "cash",
         title: "Закрыта кассовая смена",
         message: notificationMessage,
+        payload: {
+          view: "owner_cash",
+          cashTab: "review_queue",
+          cashSessionId: session.id,
+          ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
+        },
         excludeUserId: auth.userId,
       })
 

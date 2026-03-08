@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { isAuthorizedInternalCronRequest } from "@/lib/internal-cron"
 import { toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
+import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import {
   AUTO_CLOSE_AFTER_HOURS,
   AUTO_CLOSE_REASON,
@@ -132,6 +133,7 @@ export async function POST(request: Request) {
   for (const interval of staleCandidates) {
     const employeeName = toEventActorName(interval.employee.user, "Сотрудник")
     const closedAt = interval.timeEntry?.clockOutAt ?? interval.autoClosedAt
+    const notificationWorkDate = toNotificationDateOnly(interval.workday.workDate)
     const notification = {
       organizationId: interval.workday.organizationId,
       title: "Смена автоматически завершена",
@@ -140,6 +142,12 @@ export async function POST(request: Request) {
         workDate: interval.workday.workDate,
         closedAt,
       }),
+      payload: {
+        view: "owner_cash",
+        cashTab: "review_queue",
+        intervalId: interval.id,
+        ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
+      },
       excludeUserId: null,
     }
 

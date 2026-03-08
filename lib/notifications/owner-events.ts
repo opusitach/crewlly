@@ -7,6 +7,7 @@ type NotifyOrganizationOwnersInput = {
   type: OwnerNotificationType
   title: string
   message: string
+  payload?: unknown
   excludeUserId?: string | null
 }
 
@@ -38,6 +39,7 @@ export async function notifyOrganizationOwners(
       type: input.type,
       title: input.title,
       message: input.message,
+      payload: (input.payload ?? undefined) as Prisma.InputJsonValue | undefined,
       status: "unread",
     })),
   })

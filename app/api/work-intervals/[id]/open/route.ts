@@ -11,6 +11,7 @@ import { getMissingCashProcedurePhotoFieldKeys, hasRequiredCashProcedureValues }
 import { listCashRegisterFields } from "@/lib/cash/fields-query"
 import { findWorkdayCashSourceAnswer } from "@/lib/cash/workday-cash-source"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
+import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 
 type RouteContext = { params: Promise<{ id: string }> }
 const forceSchema = z.object({
@@ -58,9 +59,15 @@ export async function POST(request: Request, context: RouteContext) {
     "Сотрудник",
   )
   const workDateLabel = toEventDateLabel(interval.workday.workDate)
+  const notificationWorkDate = toNotificationDateOnly(interval.workday.workDate)
   const notificationMessage = workDateLabel
     ? `${actorName} открыл(а) рабочую смену (${workDateLabel}).`
     : `${actorName} открыл(а) рабочую смену.`
+  const notificationPayload = {
+    view: "owner_shifts",
+    intervalId: interval.id,
+    ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
+  }
 
   const openWithoutProcedures = async () => {
     if (!isPlannedStatus(interval.status)) {
@@ -82,6 +89,7 @@ export async function POST(request: Request, context: RouteContext) {
         type: "shift",
         title: "Открыта рабочая смена",
         message: notificationMessage,
+        payload: notificationPayload,
         excludeUserId: session?.user.id ?? null,
       })
 
@@ -190,6 +198,7 @@ export async function POST(request: Request, context: RouteContext) {
         type: "shift",
         title: "Открыта рабочая смена",
         message: notificationMessage,
+        payload: notificationPayload,
         excludeUserId: session?.user.id ?? null,
       })
 

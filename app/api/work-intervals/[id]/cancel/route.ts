@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { getAuthorizedInterval } from "@/lib/procedures/access"
 import { recomputeEmployeeConflictStatuses } from "@/lib/work-interval-conflicts"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
+import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 
 type RouteContext = { params: Promise<{ id: string }> }
 const cancelSchema = z.object({
@@ -98,6 +99,7 @@ export async function POST(request: Request, context: RouteContext) {
     "Сотрудник",
   )
   const workDateLabel = toEventDateLabel(interval.workday.workDate)
+  const notificationWorkDate = toNotificationDateOnly(interval.workday.workDate)
   const notificationMessage = workDateLabel
     ? `${actorName} отменил(а) рабочую смену (${workDateLabel}). Причина: ${parsed.data.reason}`
     : `${actorName} отменил(а) рабочую смену. Причина: ${parsed.data.reason}`
@@ -123,6 +125,11 @@ export async function POST(request: Request, context: RouteContext) {
         type: "shift",
         title: "Отменена рабочая смена",
         message: notificationMessage,
+        payload: {
+          view: "owner_shifts",
+          intervalId: interval.id,
+          ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
+        },
       })
 
       return canceled

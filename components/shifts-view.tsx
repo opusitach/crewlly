@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
+import { flushSync } from "react-dom"
 import {
   addDays,
   addMonths,
@@ -17,6 +18,7 @@ import { ArrowLeft, Calculator, ChevronLeft, ChevronRight, Plus, RotateCcw, X } 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Input } from "@/components/ui/input"
 import { TimePicker24h } from "@/components/ui/time-picker-24h"
 import { Switch } from "@/components/ui/switch"
@@ -257,8 +259,10 @@ const DEFAULT_FORM_VALUES: WorkIntervalFormValues = {
 
 const FORM_SECTION_CLASS =
   "rounded-[24px] border border-white/30 bg-gradient-to-br from-white/[0.24] via-white/[0.16] to-white/[0.08] p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.55)] backdrop-blur-md"
+const DETAIL_SECTION_CLASS =
+  "rounded-[20px] border border-white/24 bg-gradient-to-br from-white/[0.22] via-white/[0.14] to-white/[0.08] p-3.5 shadow-[0_14px_34px_-26px_rgba(15,23,42,0.6)] backdrop-blur-md"
 const READONLY_FIELD_CLASS =
-  "rounded-[1.1rem] border border-white/70 bg-white/92 px-4 py-3 shadow-sm"
+  "rounded-[16px] border border-white/70 bg-white/94 px-3 py-2.5 shadow-sm"
 
 type ShiftsViewProps = {
   onBack: () => void
@@ -266,6 +270,11 @@ type ShiftsViewProps = {
   hideFilters?: boolean
   lockedEmployeeId?: string
   initialDate?: string
+  initialSelectedIntervalId?: string | null
+  initialPreferCanceledInterval?: boolean
+  initialCancelReason?: string
+  initialOpenWeekView?: boolean
+  onInitialNavigationHandled?: () => void
   externalHeader?: boolean
 }
 
@@ -304,12 +313,19 @@ const formatShiftDateForToast = (dateValue: string) => {
   return format(parsedDate, "d MMMM yyyy", { locale: ru })
 }
 
+const normalizeCancelReason = (value?: string | null) => value?.trim().replace(/\s+/gu, " ") ?? ""
+
 export default function ShiftsView({
   onBack,
   readOnly = false,
   hideFilters = false,
   lockedEmployeeId,
   initialDate,
+  initialSelectedIntervalId,
+  initialPreferCanceledInterval = false,
+  initialCancelReason,
+  initialOpenWeekView = false,
+  onInitialNavigationHandled,
   externalHeader = false,
 }: ShiftsViewProps) {
   const { toast } = useToast()
@@ -356,6 +372,7 @@ export default function ShiftsView({
     conflicts: [],
   })
   const [formValues, setFormValues] = useState<WorkIntervalFormValues>(DEFAULT_FORM_VALUES)
+  const [formViewKey, setFormViewKey] = useState(0)
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>(
     lockedEmployeeId ? [lockedEmployeeId] : [],
   )
@@ -610,6 +627,74 @@ export default function ShiftsView({
     [workdays],
   )
 
+  useEffect(() => {
+    if (initialSelectedIntervalId) {
+      const interval = intervals.find((item) => item.id === initialSelectedIntervalId)
+      if (!interval) return
+
+      const workday = workdayById.get(interval.workdayId)
+      if (workday?.workDate && dateInputPattern.test(workday.workDate)) {
+        const targetDate = resolvePlannerDate(workday.workDate)
+        setDisplayDate(targetDate)
+        setSelectedDate(targetDate)
+      }
+
+      setSelectedInterval(interval)
+      setPanelExpanded(true)
+      setPanelView("details")
+      onInitialNavigationHandled?.()
+      return
+    }
+
+    if (initialPreferCanceledInterval && initialDate && dateInputPattern.test(initialDate)) {
+      const canceledIntervals = intervals.filter((interval) => {
+        if (interval.status !== "canceled") return false
+        const workday = workdayById.get(interval.workdayId)
+        return workday?.workDate === initialDate
+      })
+      const normalizedCancelReason = normalizeCancelReason(initialCancelReason)
+      const matchedCanceledInterval =
+        normalizedCancelReason.length > 0
+          ? canceledIntervals.find(
+              (interval) => normalizeCancelReason(interval.cancelReason) === normalizedCancelReason,
+            ) ?? null
+          : null
+      const targetInterval =
+        matchedCanceledInterval ?? (canceledIntervals.length === 1 ? canceledIntervals[0] : null)
+
+      if (targetInterval) {
+        const targetDate = resolvePlannerDate(initialDate)
+        setDisplayDate(targetDate)
+        setSelectedDate(targetDate)
+        setSelectedInterval(targetInterval)
+        setPanelExpanded(true)
+        setPanelView("details")
+        onInitialNavigationHandled?.()
+        return
+      }
+    }
+
+    if (initialOpenWeekView) {
+      setPanelExpanded(true)
+      setPanelView("list")
+      onInitialNavigationHandled?.()
+      return
+    }
+
+    if (initialDate && dateInputPattern.test(initialDate)) {
+      onInitialNavigationHandled?.()
+    }
+  }, [
+    initialCancelReason,
+    initialDate,
+    initialOpenWeekView,
+    initialPreferCanceledInterval,
+    initialSelectedIntervalId,
+    intervals,
+    onInitialNavigationHandled,
+    workdayById,
+  ])
+
   const getIntervalStatus = (interval: WorkInterval): IntervalUiStatus => {
     if (interval.status === "conflict") {
       return { key: "conflict", label: "Конфликт", className: STATUS_STYLES.conflict as string }
@@ -734,23 +819,39 @@ export default function ShiftsView({
     setSelectedDate(today)
   }
 
+  const prepareFormPanel = (options: {
+    targetDate?: Date
+    bulkDates?: string[]
+    editingInterval: WorkInterval | null
+    formValues: WorkIntervalFormValues
+    returnView: "list" | "details"
+  }) => {
+    // Commit the next form state before the slide animation starts so the old form never flashes into view.
+    flushSync(() => {
+      if (options.targetDate) {
+        setSelectedDate(options.targetDate)
+        if (!isSameMonth(options.targetDate, safeDisplayDate)) {
+          setDisplayDate(options.targetDate)
+        }
+      }
+      setBulkCreateDates(options.bulkDates ?? [])
+      setEditingInterval(options.editingInterval)
+      setFormValues(options.formValues)
+      setPanelReturnView(options.returnView)
+      setPanelExpanded(true)
+      setFormViewKey((prev) => prev + 1)
+    })
+  }
+
   const handleOpenCreate = (targetDate?: Date, options?: { bulkDates?: string[] }) => {
     if (readOnly) return
-    if (targetDate) {
-      setSelectedDate(targetDate)
-      if (!isSameMonth(targetDate, safeDisplayDate)) {
-        setDisplayDate(targetDate)
-      }
-    }
-    if (options?.bulkDates) {
-      setBulkCreateDates(options.bulkDates)
-    } else {
-      setBulkCreateDates([])
-    }
-    setEditingInterval(null)
-    setFormValues({ ...DEFAULT_FORM_VALUES, positionId: undefined })
-    setPanelReturnView("list")
-    setPanelExpanded(true)
+    prepareFormPanel({
+      targetDate,
+      bulkDates: options?.bulkDates,
+      editingInterval: null,
+      formValues: { ...DEFAULT_FORM_VALUES, positionId: undefined },
+      returnView: "list",
+    })
     setPanelView("form")
   }
 
@@ -1052,7 +1153,6 @@ export default function ShiftsView({
       })
       return
     }
-    setEditingInterval(selectedInterval)
     const componentMap = new Map(
       (selectedInterval.payComponents ?? []).map((component) => [component.componentType, component]),
     )
@@ -1071,19 +1171,21 @@ export default function ShiftsView({
           ? String((componentMap.get("percent_revenue")?.rateBp ?? 0) / 100)
           : "",
     }
-    setFormValues({
-      employeeId: selectedInterval.employeeId,
-      positionId: selectedInterval.positionId,
-      startTime: resolveTime(selectedInterval.startTime || selectedInterval.startAt),
-      endTime: resolveTime(selectedInterval.endTime || selectedInterval.endAt),
-      breakMinutes: selectedInterval.breakMinutes ?? 0,
-      notes: selectedInterval.notes ?? "",
-      useStandardPay: !selectedInterval.useCustomPay,
-      customPayTypes: mergedCustomPayTypes,
-      customPayValues,
+    prepareFormPanel({
+      editingInterval: selectedInterval,
+      formValues: {
+        employeeId: selectedInterval.employeeId,
+        positionId: selectedInterval.positionId,
+        startTime: resolveTime(selectedInterval.startTime || selectedInterval.startAt),
+        endTime: resolveTime(selectedInterval.endTime || selectedInterval.endAt),
+        breakMinutes: selectedInterval.breakMinutes ?? 0,
+        notes: selectedInterval.notes ?? "",
+        useStandardPay: !selectedInterval.useCustomPay,
+        customPayTypes: mergedCustomPayTypes,
+        customPayValues,
+      },
+      returnView: "details",
     })
-    setPanelReturnView("details")
-    setPanelExpanded(true)
     setPanelView("form")
   }
 
@@ -1130,7 +1232,9 @@ export default function ShiftsView({
     selectedInterval?.employee?.fullName || selectedInterval?.employee?.name || "Сотрудник"
   const detailPositionName =
     selectedInterval?.position?.name || selectedInterval?.employee?.primaryPosition?.name
+  const detailAssignmentText = `${detailEmployeeName} — ${detailPositionName || "Без позиции"}`
   const detailCancelReason = selectedInterval?.cancelReason?.trim() || ""
+  const detailNotesText = selectedInterval?.notes?.trim() || ""
   const detailGrossPayCents = selectedInterval?.calculatedGrossPayCents ?? null
   const detailMinutesWorked = selectedInterval?.calculatedMinutesWorked ?? null
   const detailSalaryText =
@@ -1140,6 +1244,9 @@ export default function ShiftsView({
         ? "—"
         : "После закрытия"
   const detailDateText = format(selectedWorkdayDate, "d MMMM yyyy", { locale: ru })
+  const detailScheduleText = selectedInterval ? `${detailStartTime} — ${detailEndTime}` : "—"
+  const detailOpenedTimeText = selectedInterval?.openedAt ? resolveTime(selectedInterval.openedAt) : "—"
+  const detailClosedTimeText = selectedInterval?.closedAt ? resolveTime(selectedInterval.closedAt) : "—"
   const detailPlannedMinutes =
     selectedInterval != null
       ? Math.max(
@@ -1154,6 +1261,19 @@ export default function ShiftsView({
       : "—"
   const detailWorkedText =
     detailMinutesWorked != null ? `${Math.floor(detailMinutesWorked / 60)} ч ${detailMinutesWorked % 60} мин` : "Нет данных"
+  const detailOpenedHintText = selectedInterval?.openedAt ? "Фактический старт" : "Открытие не зафиксировано"
+  const detailClosedHintText = selectedInterval?.closedAt ? "Фактическое завершение" : "Закрытие не зафиксировано"
+  const detailSalaryHintText = detailGrossPayCents != null ? "Расчет сохранен" : "Появится после закрытия"
+  const detailProcedureSummary = isProcedureLoading
+    ? "Загрузка правил..."
+    : `Открытие: ${procedureDetails?.open?.rules.length ?? 0} • Закрытие: ${procedureDetails?.close?.rules.length ?? 0}`
+  const detailCalculationsSummary = isProcedureLoading
+    ? "Загрузка расчетов..."
+    : procedureDetails?.formulaCalculations?.error
+      ? "Есть ошибка расчета"
+      : (procedureDetails?.formulaCalculations?.items.length ?? 0) > 0
+        ? `Формул: ${procedureDetails?.formulaCalculations?.items.length ?? 0}`
+        : "Данных пока нет"
 
   const employeeOptions = useMemo(
     () =>
@@ -1399,6 +1519,31 @@ export default function ShiftsView({
       <div className={cn("mt-1 text-base font-semibold text-slate-900", valueClassName)}>{value}</div>
       {hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
     </div>
+  )
+
+  const renderDetailAccordionItem = ({
+    value,
+    eyebrow,
+    title,
+    summary,
+    children,
+  }: {
+    value: string
+    eyebrow: string
+    title: string
+    summary: string
+    children: ReactNode
+  }) => (
+    <AccordionItem value={value} className={cn(DETAIL_SECTION_CLASS, "border-b-0 px-3.5 py-0")}>
+      <AccordionTrigger className="py-3 text-white hover:no-underline [&>svg]:text-white/60">
+        <div className="min-w-0 text-left">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/65">{eyebrow}</div>
+          <div className="mt-1 text-sm font-semibold text-white">{title}</div>
+          <div className="mt-1 truncate text-xs text-white/70">{summary}</div>
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="pt-0 pb-3">{children}</AccordionContent>
+    </AccordionItem>
   )
 
   const renderWeekDay = (day: Date) => {
@@ -1984,15 +2129,16 @@ export default function ShiftsView({
                     <div className="w-1/3 px-2 h-full min-h-0">
                       {selectedInterval && (
                         <div className="h-full min-h-0 space-y-4 overflow-y-auto scrollbar-hidden pr-1">
-                          <div className="space-y-4 px-1">
-                            <div className={FORM_SECTION_CLASS}>
+                          <div className="space-y-3 px-1">
+                            <div className={DETAIL_SECTION_CLASS}>
                               <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/65">
                                     Назначение
                                   </div>
-                                  <div className="mt-1 text-sm font-semibold text-white">
-                                    Кому и на какую позицию назначена смена
+                                  <div className="mt-1 truncate text-sm font-semibold text-white" title={detailAssignmentText}>
+                                    {detailEmployeeName}
+                                    <span className="font-medium text-white/72"> — {detailPositionName || "Без позиции"}</span>
                                   </div>
                                 </div>
                                 {selectedStatus ? (
@@ -2001,90 +2147,85 @@ export default function ShiftsView({
                                   </Badge>
                                 ) : null}
                               </div>
-                              <div className="mt-4 grid grid-cols-2 gap-3">
-                                {renderReadonlyField({
-                                  label: "Сотрудник",
-                                  value: detailEmployeeName,
-                                  hint: "Назначенный сотрудник",
-                                })}
-                                {renderReadonlyField({
-                                  label: "Позиция",
-                                  value: detailPositionName || "Без позиции",
-                                  hint: detailPositionName ? "Роль в смене" : "Позиция не была указана",
-                                })}
-                              </div>
-                            </div>
-
-                            <div className={FORM_SECTION_CLASS}>
-                              <div className="mb-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Время</div>
-                                <div className="mt-1 text-sm font-semibold text-white">Когда смена проходит по расписанию</div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                {renderReadonlyField({
-                                  label: "Начало",
-                                  value: detailStartTime,
-                                  hint: detailDateText,
-                                })}
-                                {renderReadonlyField({
-                                  label: "Окончание",
-                                  value: detailEndTime,
-                                  hint: `План: ${detailPlannedDurationText}`,
-                                })}
-                              </div>
-                            </div>
-
-                            <div className={FORM_SECTION_CLASS}>
-                              <div className="mb-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Оплата</div>
-                                <div className="mt-1 text-sm font-semibold text-white">Фактические цифры по этой смене</div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                {renderReadonlyField({
-                                  label: "Начислено",
-                                  value: detailSalaryText,
-                                  hint: detailGrossPayCents != null ? "Расчет сохранен" : "Появится после закрытия",
-                                })}
-                                {renderReadonlyField({
-                                  label: "Отработано",
-                                  value: detailWorkedText,
-                                  hint: detailMinutesWorked != null ? "Фактическое время" : `План: ${detailPlannedDurationText}`,
-                                })}
-                              </div>
-                            </div>
-
-                            <div className={FORM_SECTION_CLASS}>
-                              <div className="mb-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Заметки</div>
-                                <div className="mt-1 text-sm font-semibold text-white">Комментарий к смене</div>
-                              </div>
-                              <div className={cn(READONLY_FIELD_CLASS, "min-h-[108px]")}>
-                                <div className="text-sm leading-6 text-slate-700">
-                                  {selectedInterval.notes?.trim() || "Комментарий к смене не добавлен"}
-                                </div>
-                              </div>
                             </div>
 
                             {selectedStatus?.key === "canceled" && (
-                              <div className={FORM_SECTION_CLASS}>
-                                <div className="mb-4">
-                                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Отмена</div>
-                                  <div className="mt-1 text-sm font-semibold text-white">Причина отмены смены</div>
+                              <div className="rounded-[20px] border border-rose-200/80 bg-rose-50/95 px-3.5 py-3 shadow-sm shadow-rose-950/10">
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-500">
+                                  Причина отмены
                                 </div>
-                                <div className={cn(READONLY_FIELD_CLASS, "min-h-[96px]")}>
-                                  <div className="text-sm leading-6 text-slate-700">
-                                    {detailCancelReason || "Причина не указана"}
-                                  </div>
+                                <div className="mt-2 text-sm leading-6 text-rose-950">
+                                  {detailCancelReason || "Причина не указана"}
                                 </div>
                               </div>
                             )}
 
+                            <div className={DETAIL_SECTION_CLASS}>
+                              <div className="mb-3">
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/65">Сводка</div>
+                                <div className="mt-1 text-sm font-semibold text-white">Время и итог по смене</div>
+                              </div>
+                              <div className="overflow-hidden rounded-[18px] border border-white/70 bg-white/95 shadow-sm">
+                                <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+                                  <div className="min-w-0">
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                      Рабочий день
+                                    </div>
+                                    <div className="mt-1 text-base font-semibold text-slate-900">{detailDateText}</div>
+                                    <div className="mt-1 text-sm text-slate-600">{detailScheduleText}</div>
+                                  </div>
+                                  <div className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-right shadow-sm">
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-600">
+                                      План
+                                    </div>
+                                    <div className="mt-0.5 text-sm font-semibold text-amber-950">{detailPlannedDurationText}</div>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-px border-y border-slate-200/80 bg-slate-200/80">
+                                  <div className="bg-white px-4 py-3">
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                      Факт
+                                    </div>
+                                    <div className="mt-1 text-sm font-semibold text-slate-900">{detailWorkedText}</div>
+                                    <div className="mt-1 text-xs text-slate-500">
+                                      {detailMinutesWorked != null ? "Фактическое время" : "Нет фактических данных"}
+                                    </div>
+                                  </div>
+                                  <div className="bg-white px-4 py-3">
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                      Начислено
+                                    </div>
+                                    <div className="mt-1 text-sm font-semibold text-slate-900">{detailSalaryText}</div>
+                                    <div className="mt-1 text-xs text-slate-500">{detailSalaryHintText}</div>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-px bg-slate-200/80">
+                                  <div className="bg-slate-50/90 px-4 py-2.5">
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                      Открыта
+                                    </div>
+                                    <div className="mt-1 text-sm font-semibold text-slate-900">{detailOpenedTimeText}</div>
+                                    <div className="mt-1 text-xs text-slate-500">{detailOpenedHintText}</div>
+                                  </div>
+                                  <div className="bg-slate-50/90 px-4 py-2.5">
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                      Закрыта
+                                    </div>
+                                    <div className="mt-1 text-sm font-semibold text-slate-900">{detailClosedTimeText}</div>
+                                    <div className="mt-1 text-xs text-slate-500">{detailClosedHintText}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
                             {selectedStatus?.key === "conflict" && (
-                              <div className={FORM_SECTION_CLASS}>
-                                <div className="mb-4 flex items-start justify-between gap-3">
+                              <div className={cn(DETAIL_SECTION_CLASS, "border-rose-200/80 bg-gradient-to-br from-rose-50/95 via-white/95 to-rose-100/80")}>
+                                <div className="mb-3 flex items-start justify-between gap-3">
                                   <div>
-                                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Конфликт</div>
-                                    <div className="mt-1 text-sm font-semibold text-white">Смена пересекается с другим интервалом</div>
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-500">Конфликт</div>
+                                    <div className="mt-1 text-sm font-semibold text-slate-900">Смена пересекается с другим интервалом</div>
                                   </div>
                                   <Badge className="rounded-full border-0 bg-rose-500 px-3 py-1 text-[11px] text-white shadow-none">
                                     Проверить
@@ -2119,35 +2260,54 @@ export default function ShiftsView({
                               </div>
                             )}
 
-                            <div className={FORM_SECTION_CLASS}>
-                              <div className="mb-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Процедуры</div>
-                                <div className="mt-1 text-sm font-semibold text-white">Правила открытия и закрытия смены</div>
-                              </div>
-                              {isProcedureLoading ? (
-                                <div className={READONLY_FIELD_CLASS}>
-                                  <div className="text-xs text-slate-500">Загрузка правил...</div>
-                                </div>
-                              ) : (
-                                <div className="space-y-4">
-                                  {renderProcedureSection("OPEN правила", procedureDetails?.open)}
-                                  {renderProcedureSection("CLOSE правила", procedureDetails?.close)}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className={FORM_SECTION_CLASS}>
-                              <div className="mb-4 flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                    Расчеты
+                            <Accordion key={`detail-sections-${selectedInterval.id}`} type="multiple" className="space-y-3">
+                              {renderDetailAccordionItem({
+                                value: "notes",
+                                eyebrow: "Заметки",
+                                title: "Комментарий к смене",
+                                summary: detailNotesText || "Комментарий к смене не добавлен",
+                                children: (
+                                  <div className={cn(READONLY_FIELD_CLASS, "min-h-[88px]")}>
+                                    <div className="text-sm leading-6 text-slate-700">
+                                      {detailNotesText || "Комментарий к смене не добавлен"}
+                                    </div>
                                   </div>
-                                  <div className="mt-1 text-sm font-semibold text-white">Формулы и итоговые значения смены</div>
-                                </div>
-                                <Calculator className="mt-0.5 h-4 w-4 text-white/80" />
-                              </div>
-                              {renderFormulaCalculationsWidget(procedureDetails?.formulaCalculations)}
-                            </div>
+                                ),
+                              })}
+
+                              {renderDetailAccordionItem({
+                                value: "procedures",
+                                eyebrow: "Процедуры",
+                                title: "Правила открытия и закрытия",
+                                summary: detailProcedureSummary,
+                                children: isProcedureLoading ? (
+                                  <div className={READONLY_FIELD_CLASS}>
+                                    <div className="text-xs text-slate-500">Загрузка правил...</div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-4">
+                                    {renderProcedureSection("OPEN правила", procedureDetails?.open)}
+                                    {renderProcedureSection("CLOSE правила", procedureDetails?.close)}
+                                  </div>
+                                ),
+                              })}
+
+                              {renderDetailAccordionItem({
+                                value: "calculations",
+                                eyebrow: "Расчеты",
+                                title: "Формулы и итоговые значения",
+                                summary: detailCalculationsSummary,
+                                children: (
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2 text-xs text-white/70">
+                                      <Calculator className="h-3.5 w-3.5" />
+                                      <span>Итоги по данным смены и кассовых формул</span>
+                                    </div>
+                                    {renderFormulaCalculationsWidget(procedureDetails?.formulaCalculations)}
+                                  </div>
+                                ),
+                              })}
+                            </Accordion>
                           </div>
 
                           {selectedStatus && canEditIntervalByStatus(selectedStatus.key) && !readOnly ? (
@@ -2163,7 +2323,7 @@ export default function ShiftsView({
                         </div>
                       )}
                     </div>
-                    <div className="w-1/3 pl-2 h-full min-h-0 flex flex-col">
+                    <div key={formViewKey} className="w-1/3 pl-2 h-full min-h-0 flex flex-col">
                       <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-1">
                         <div className="space-y-4 px-1">
                           <div className={FORM_SECTION_CLASS}>

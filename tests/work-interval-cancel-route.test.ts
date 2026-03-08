@@ -113,4 +113,73 @@ describe("POST /api/work-intervals/[id]/cancel", () => {
       }),
     )
   })
+
+  it("allows manager to cancel a scheduled shift", async () => {
+    mocked.toEventActorName.mockReturnValue("Мария Смирнова")
+    mocked.toEventDateLabel.mockReturnValue("08.03.2026")
+
+    mocked.getAuthorizedInterval.mockResolvedValue({
+      session: {
+        user: { id: "manager_1", fullName: "Мария Смирнова", email: "manager@example.com" },
+        organization: { id: "org_1" },
+      },
+      interval: {
+        id: "22222222-2222-4222-8222-222222222222",
+        status: "scheduled",
+        employeeId: "employee_2",
+        closedAt: null,
+        workday: {
+          organizationId: "org_1",
+          workDate: new Date("2026-03-08T00:00:00.000Z"),
+        },
+      },
+      hasManagementAccess: true,
+      error: null,
+      status: 200,
+    })
+
+    const tx = {
+      workInterval: {
+        update: vi.fn().mockResolvedValue({
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "canceled",
+          cancelReason: "Нужна замена по семейным обстоятельствам",
+        }),
+      },
+    }
+
+    mocked.prisma.$transaction.mockImplementation(async (callback: (trx: unknown) => Promise<unknown>) => callback(tx))
+
+    const response = await POST(
+      new Request("http://localhost/api/work-intervals/22222222-2222-4222-8222-222222222222/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Нужна замена по семейным обстоятельствам" }),
+      }),
+      { params: Promise.resolve({ id: "22222222-2222-4222-8222-222222222222" }) },
+    )
+
+    const body = (await response.json()) as { data?: { status: string; cancelReason: string } }
+
+    expect(response.status).toBe(200)
+    expect(tx.workInterval.update).toHaveBeenCalledWith({
+      where: { id: "22222222-2222-4222-8222-222222222222" },
+      data: expect.objectContaining({
+        status: "canceled",
+        cancelReason: "Нужна замена по семейным обстоятельствам",
+      }),
+    })
+    expect(mocked.notifyOrganizationOwners).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        message: "Мария Смирнова отменил(а) рабочую смену (08.03.2026). Причина: Нужна замена по семейным обстоятельствам",
+      }),
+    )
+    expect(body.data).toEqual(
+      expect.objectContaining({
+        status: "canceled",
+        cancelReason: "Нужна замена по семейным обстоятельствам",
+      }),
+    )
+  })
 })

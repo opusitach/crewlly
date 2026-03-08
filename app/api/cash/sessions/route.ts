@@ -8,6 +8,7 @@ import { listWorkdayCashFieldPhotos } from "@/lib/cash/session-field-photos"
 import { syncWorkdayRevenueFromCashSessions } from "@/lib/cash/revenue-allocation"
 import { syncWorkdayTipsFromCashSessions } from "@/lib/cash/tips-sync"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
+import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import {
   buildSessionFieldSnapshots,
   computeCashSessionSnapshotTotals,
@@ -29,6 +30,47 @@ const openPayloadSchema = z.object({
   values: z.record(z.union([z.number(), z.string()])).default({}),
   notes: z.string().trim().max(500).optional().nullable(),
 })
+
+const pickRelatedShiftId = async (employeeId: string | null, workdayId: string) => {
+  if (!employeeId) return null
+
+  const intervals = await prisma.workInterval.findMany({
+    where: {
+      employeeId,
+      workdayId,
+      status: { not: "canceled" },
+    },
+    select: {
+      id: true,
+      status: true,
+      openedAt: true,
+      startAt: true,
+    },
+  })
+
+  if (intervals.length === 0) return null
+
+  const statusPriority: Record<string, number> = {
+    in_progress: 0,
+    completed: 1,
+    scheduled: 2,
+    conflict: 3,
+  }
+
+  intervals.sort((left, right) => {
+    const leftPriority = statusPriority[left.status] ?? 99
+    const rightPriority = statusPriority[right.status] ?? 99
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority
+
+    const leftOpenedAt = left.openedAt ? new Date(left.openedAt).getTime() : Number.NEGATIVE_INFINITY
+    const rightOpenedAt = right.openedAt ? new Date(right.openedAt).getTime() : Number.NEGATIVE_INFINITY
+    if (leftOpenedAt !== rightOpenedAt) return rightOpenedAt - leftOpenedAt
+
+    return new Date(right.startAt).getTime() - new Date(left.startAt).getTime()
+  })
+
+  return intervals[0]?.id ?? null
+}
 
 export async function GET(request: Request) {
   const auth = await getCashAuthContext({ requireManage: true })
@@ -351,6 +393,8 @@ export async function POST(request: Request) {
   })
   const actorName = toEventActorName(actor ?? {}, "Сотрудник")
   const workDateLabel = toEventDateLabel(workday.workDate)
+  const notificationWorkDate = toNotificationDateOnly(workday.workDate)
+  const relatedShiftId = await pickRelatedShiftId(auth.employeeId, workday.id)
   const notificationMessage = workDateLabel
     ? `${actorName} открыл(а) кассовую смену «${cashRegister.name}» (${workDateLabel}).`
     : `${actorName} открыл(а) кассовую смену «${cashRegister.name}».`
@@ -405,6 +449,11 @@ export async function POST(request: Request) {
         type: "cash",
         title: "Открыта кассовая смена",
         message: notificationMessage,
+        payload: {
+          view: "owner_shifts",
+          ...(relatedShiftId ? { intervalId: relatedShiftId } : {}),
+          ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
+        },
         excludeUserId: auth.userId,
       })
 
