@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import ShiftDetailsView from "@/components/shift-details-view"
 import CashSessionDetailsView, { type CashSessionDetails } from "@/components/cash-session-details-view"
+import { cn } from "@/lib/utils"
 import {
   evaluateCashFormulaExpression,
   extractCashFormulaKeys,
@@ -48,6 +49,7 @@ type VerificationShift = {
   closedAt: string | null
   status: string
   calculatedGrossPayCents: number | null
+  currency?: string | null
   revenueCents: number | null
 }
 
@@ -165,6 +167,19 @@ const formatInteger = (value: number | null | undefined) => {
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value)
 }
 
+const formatMoney = (valueCents: number, currency: string | null | undefined) => {
+  const safeCurrency = currency || "CZK"
+  try {
+    return new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency: safeCurrency,
+      maximumFractionDigits: 0,
+    }).format(valueCents / 100)
+  } catch {
+    return `${Math.round(valueCents / 100)} ${safeCurrency}`
+  }
+}
+
 const toShiftSortTime = (shift: VerificationShift) => {
   const closedAtTs = shift.closedAt ? new Date(shift.closedAt).getTime() : Number.NaN
   if (Number.isFinite(closedAtTs)) return closedAtTs
@@ -190,6 +205,26 @@ const isShiftNeedsReview = (shift: VerificationShift) => shift.status === "compl
 const isCashSessionReviewed = (session: CashSessionDetails) => session.status === "reviewed"
 
 const isCashSessionNeedsReview = (session: CashSessionDetails) => session.status === "closed"
+
+function ShiftSalaryInline({ shift }: { shift: VerificationShift }) {
+  const grossPayCents = shift.calculatedGrossPayCents
+  const hasCalculatedSalary =
+    typeof grossPayCents === "number" && Number.isFinite(grossPayCents)
+  const salaryValue = hasCalculatedSalary ? formatMoney(grossPayCents, shift.currency) : "—"
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs",
+        hasCalculatedSalary
+          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700"
+          : "border-border bg-muted/40 text-muted-foreground",
+      )}
+    >
+      Зарплата - <span className="ml-1 font-semibold">{salaryValue}</span>
+    </span>
+  )
+}
 
 const normalizeFormulaRows = (raw: unknown): CashFormulaRow[] => {
   if (!Array.isArray(raw)) return []
@@ -860,6 +895,7 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
                         Требует проверки
                       </Badge>
                     )}
+                    <ShiftSalaryInline shift={shift} />
                   </div>
 
                   <Button
@@ -1058,6 +1094,7 @@ export default function CashRegisterVerificationView({ onBack, initialTab }: Pro
                         <AlertCircle className="h-3 w-3 mr-1" strokeWidth={1.5} />
                         Требует проверки
                       </Badge>
+                      <ShiftSalaryInline shift={shift} />
                     </div>
 
                     <Button

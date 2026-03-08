@@ -93,6 +93,7 @@ export interface WorkInterval {
   revenueCents?: number | null
   calculatedMinutesWorked?: number | null
   calculatedGrossPayCents?: number | null
+  currency?: string | null
   payCalculatedAt?: string | null
   notes?: string
   

@@ -304,6 +304,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const organizationId = session.organization.id
+  const organizationCurrency = session.organization.currency ?? null
 
   const url = new URL(request.url)
   const workdayId = url.searchParams.get("workdayId")
@@ -409,6 +410,7 @@ export async function GET(request: Request) {
     revenueCents: wi.revenueCents,
     calculatedMinutesWorked: wi.calculatedMinutesWorked,
     calculatedGrossPayCents: wi.calculatedGrossPayCents,
+    currency: organizationCurrency,
     payCalculatedAt: wi.payCalculatedAt?.toISOString() ?? null,
     notes: wi.notes,
     timeEntry: wi.timeEntry
