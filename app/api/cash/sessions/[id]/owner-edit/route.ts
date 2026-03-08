@@ -206,7 +206,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         error: "Не удалось выполнить owner-правку кассы",
-        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
     )

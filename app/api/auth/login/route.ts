@@ -60,7 +60,6 @@ export async function POST(request: Request) {
     return res
   } catch (error: unknown) {
     console.error("[auth/login] error", error)
-    const message = error instanceof Error ? error.message : "Ошибка входа"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: "Ошибка входа" }, { status: 500 })
   }
 }

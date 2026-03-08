@@ -47,8 +47,7 @@ export async function POST(request: Request) {
     })
   } catch (error: unknown) {
     console.error("[user/role] error", error)
-    const message = error instanceof Error ? error.message : "Ошибка"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: "Не удалось сохранить роль" }, { status: 500 })
   }
 }
 
@@ -64,7 +63,6 @@ export async function GET() {
     })
   } catch (error: unknown) {
     console.error("[user/role] error", error)
-    const message = error instanceof Error ? error.message : "Ошибка"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: "Не удалось получить роль" }, { status: 500 })
   }
 }

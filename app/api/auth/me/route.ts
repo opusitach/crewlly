@@ -102,8 +102,7 @@ export async function GET() {
     })
   } catch (error: unknown) {
     console.error("[auth/me] error", error)
-    const message = error instanceof Error ? error.message : "Ошибка"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: "Не удалось загрузить профиль" }, { status: 500 })
   }
 }
 
@@ -141,7 +140,6 @@ export async function PATCH(request: Request) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ error: "Email уже используется" }, { status: 409 })
     }
-    const message = error instanceof Error ? error.message : "Ошибка"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: "Не удалось обновить профиль" }, { status: 500 })
   }
 }

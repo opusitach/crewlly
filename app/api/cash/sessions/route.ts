@@ -482,7 +482,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Не удалось открыть кассу",
-        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
     )

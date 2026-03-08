@@ -522,7 +522,6 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         error: "Не удалось загрузить процедуры смены.",
-        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
     )

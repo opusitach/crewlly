@@ -70,7 +70,6 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         error: "Не удалось отметить рабочий день как проверенный",
-        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
     )

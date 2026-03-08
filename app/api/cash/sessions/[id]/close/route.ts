@@ -242,7 +242,6 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         error: "Не удалось закрыть кассу",
-        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
     )

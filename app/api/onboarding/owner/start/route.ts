@@ -116,16 +116,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ organization_id: organization.id, step: 1 })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error"
     const code =
       error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined
-    const hint =
-      code === "P2021" || code === "P2022"
-        ? "Похоже, миграции не применены. Запустите prisma migrate dev/deploy."
-        : code === "P2003"
-          ? "Проблема с FK таймзоны. Проверьте таблицу timezones."
-          : undefined
-    console.error("[onboarding][owner][start] error", { message, code, error })
-    return NextResponse.json({ error: message, code, hint }, { status: 500 })
+    console.error("[onboarding][owner][start] error", { code, error })
+    return NextResponse.json({ error: "Не удалось начать онбординг владельца" }, { status: 500 })
   }
 }

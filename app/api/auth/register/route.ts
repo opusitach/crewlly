@@ -72,15 +72,11 @@ export async function POST(request: Request) {
       if (error.code === "P2002") {
         return NextResponse.json({ error: "Email уже используется" }, { status: 409 })
       }
-      return NextResponse.json({ error: `Ошибка БД (${error.code})` }, { status: 500 })
+      return NextResponse.json({ error: "Не удалось завершить регистрацию" }, { status: 500 })
     }
     if (error instanceof Prisma.PrismaClientInitializationError) {
       return NextResponse.json({ error: "База данных недоступна" }, { status: 500 })
     }
-    const message = error instanceof Error ? error.message : "Внутренняя ошибка при регистрации"
-    return NextResponse.json(
-      { error: message, details: String(error) },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Внутренняя ошибка при регистрации" }, { status: 500 })
   }
 }

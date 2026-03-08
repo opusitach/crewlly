@@ -225,7 +225,6 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         error: "Не удалось открыть смену.",
-        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
     )

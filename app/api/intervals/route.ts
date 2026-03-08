@@ -183,13 +183,6 @@ const formatTimeLabel = (date: Date) => {
 const formatWorkdayDateLabel = (date: Date) =>
   date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })
 
-const stringifyPrismaMeta = (meta: Prisma.PrismaClientKnownRequestError["meta"]) => {
-  if (!meta) return undefined
-  if (typeof meta === "string") return meta
-  if (typeof meta === "object") return JSON.stringify(meta)
-  return undefined
-}
-
 const buildApiErrorResponse = (
   error: unknown,
   fallbackMessage: string,
@@ -198,13 +191,10 @@ const buildApiErrorResponse = (
   console.error(`[api/intervals][${context}]`, error)
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    const meta = stringifyPrismaMeta(error.meta)
     if (error.code === "P2002") {
       return NextResponse.json(
         {
           error: "Конфликт данных при сохранении интервала.",
-          code: error.code,
-          details: meta ?? error.message,
         },
         { status: 409 },
       )
@@ -213,9 +203,6 @@ const buildApiErrorResponse = (
       return NextResponse.json(
         {
           error: "Некорректная ссылка на связанную сущность (workday, employee или position).",
-          code: error.code,
-          hint: "Проверьте актуальность выбранных сотрудника, позиции и рабочего дня.",
-          details: meta ?? error.message,
         },
         { status: 400 },
       )
@@ -224,8 +211,6 @@ const buildApiErrorResponse = (
       return NextResponse.json(
         {
           error: "Связанная запись не найдена при сохранении интервала.",
-          code: error.code,
-          details: meta ?? error.message,
         },
         { status: 404 },
       )
@@ -233,29 +218,18 @@ const buildApiErrorResponse = (
     if (error.code === "P2021" || error.code === "P2022") {
       return NextResponse.json(
         {
-          error: "Схема базы данных не соответствует текущему коду.",
-          code: error.code,
-          hint: "Запустите prisma migrate deploy (или prisma db push для dev).",
-          details: meta ?? error.message,
+          error: "Временная ошибка сервиса. Попробуйте позже.",
         },
         { status: 500 },
       )
     }
-    return NextResponse.json(
-      {
-        error: `Ошибка базы данных (${error.code}).`,
-        code: error.code,
-        details: meta ?? error.message,
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: fallbackMessage }, { status: 500 })
   }
 
   if (error instanceof Prisma.PrismaClientValidationError) {
     return NextResponse.json(
       {
         error: "Некорректные данные для сохранения интервала.",
-        details: error.message,
       },
       { status: 400 },
     )
@@ -265,14 +239,12 @@ const buildApiErrorResponse = (
     return NextResponse.json(
       {
         error: "База данных недоступна.",
-        details: error.message,
       },
       { status: 500 },
     )
   }
 
-  const message = error instanceof Error ? error.message : fallbackMessage
-  return NextResponse.json({ error: message, details: String(error) }, { status: 500 })
+  return NextResponse.json({ error: fallbackMessage }, { status: 500 })
 }
 
 const buildOverlapError = (

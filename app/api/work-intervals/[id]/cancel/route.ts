@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { Prisma } from "@prisma/client"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getAuthorizedInterval } from "@/lib/procedures/access"
@@ -16,47 +15,9 @@ const cancelSchema = z.object({
     .max(500, "Причина отмены слишком длинная (максимум 500 символов)."),
 })
 
-const stringifyPrismaMeta = (meta: Prisma.PrismaClientKnownRequestError["meta"]) => {
-  if (!meta) return undefined
-  if (typeof meta === "string") return meta
-  if (typeof meta === "object") return JSON.stringify(meta)
-  return undefined
-}
-
 const buildCancelErrorResponse = (error: unknown) => {
   console.error("[api/work-intervals/cancel]", error)
-
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    const meta = stringifyPrismaMeta(error.meta)
-    if (error.code === "P2021" || error.code === "P2022") {
-      return NextResponse.json(
-        {
-          error: "Схема базы данных не соответствует текущему коду.",
-          code: error.code,
-          hint: "Запустите prisma migrate deploy (или prisma db push для dev).",
-          details: meta ?? error.message,
-        },
-        { status: 500 },
-      )
-    }
-
-    return NextResponse.json(
-      {
-        error: `Ошибка базы данных (${error.code}).`,
-        code: error.code,
-        details: meta ?? error.message,
-      },
-      { status: 500 },
-    )
-  }
-
-  return NextResponse.json(
-    {
-      error: "Не удалось отменить смену.",
-      details: error instanceof Error ? error.message : String(error),
-    },
-    { status: 500 },
-  )
+  return NextResponse.json({ error: "Не удалось отменить смену." }, { status: 500 })
 }
 
 export async function POST(request: Request, context: RouteContext) {
