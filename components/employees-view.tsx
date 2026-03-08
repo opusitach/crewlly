@@ -19,6 +19,8 @@ type EmployeeView = {
   positions: string[]
   status: "active" | "needs_setup"
   phone?: string
+  accessRoleKey?: string
+  accessRoleName?: string
 }
 
 const hasConfiguredPay = (payComponents: PayComponent[] | undefined) =>
@@ -38,6 +40,8 @@ export default function EmployeesView({ onBack }: { onBack: () => void }) {
       positions: employee.positions?.map((position) => position.name) ?? [],
       status: hasConfiguredPay(employee.payComponents) ? "active" : "needs_setup",
       phone: employee.phone,
+      accessRoleKey: employee.accessRoleKey,
+      accessRoleName: employee.accessRoleName,
     }))
   }, [storeEmployees])
 
@@ -132,7 +136,14 @@ export default function EmployeesView({ onBack }: { onBack: () => void }) {
                 <User className="h-5 w-5 text-primary" strokeWidth={1.5} />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-sm truncate">{employee.name}</h3>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-semibold text-sm truncate">{employee.name}</h3>
+                  {employee.accessRoleKey === "manager" && (
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                      {employee.accessRoleName ?? "Менеджер"}
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
                   {employee.positions.length > 0 ? (
                     employee.positions.map((position) => (

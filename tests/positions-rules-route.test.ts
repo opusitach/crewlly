@@ -16,7 +16,7 @@ const mocked = vi.hoisted(() => {
   return {
     prisma,
     getSessionUserWithOrg: vi.fn(),
-    isOwnerRole: vi.fn(),
+    isOwnerOrManagerRole: vi.fn(),
     syncScheduledProceduresForPosition: vi.fn(),
   }
 })
@@ -27,7 +27,7 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getSessionUserWithOrg: mocked.getSessionUserWithOrg,
-  isOwnerRole: mocked.isOwnerRole,
+  isOwnerOrManagerRole: mocked.isOwnerOrManagerRole,
 }))
 
 vi.mock("@/lib/procedures/scheduled-sync", () => ({
@@ -45,7 +45,7 @@ describe("positions rules routes", () => {
       organization: { id: "org_1" },
       membership: { role: "OWNER" },
     })
-    mocked.isOwnerRole.mockReturnValue(true)
+    mocked.isOwnerOrManagerRole.mockReturnValue(true)
     mocked.prisma.position.findUnique.mockResolvedValue({ id: "pos_1", organizationId: "org_1" })
     mocked.prisma.ruleTemplate.count.mockResolvedValue(0)
     mocked.syncScheduledProceduresForPosition.mockResolvedValue(undefined)

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, isOwnerRole } from "@/lib/auth"
+import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
 import { syncScheduledProceduresForPosition } from "@/lib/procedures/scheduled-sync"
 
 const whenValues = ["OPEN", "CLOSE"] as const
@@ -74,7 +74,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (!session || !session.organization) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-  if (!isOwnerRole(session.membership)) {
+  if (!isOwnerOrManagerRole(session.membership)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -233,7 +233,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   if (!session || !session.organization) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-  if (!isOwnerRole(session.membership)) {
+  if (!isOwnerOrManagerRole(session.membership)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

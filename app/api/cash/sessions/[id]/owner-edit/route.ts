@@ -32,8 +32,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  if (!auth.isOwner) {
-    return NextResponse.json({ error: "Только владелец может выполнять owner-правку кассы" }, { status: 403 })
+  if (!auth.isManagementRole) {
+    return NextResponse.json(
+      { error: "Только владелец или менеджер может выполнять правку кассы" },
+      { status: 403 },
+    )
   }
 
   const { id } = await context.params

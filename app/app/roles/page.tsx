@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { getSessionUserWithOrg, isOwnerRole } from "@/lib/auth"
+import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
 import PositionRulesView from "@/components/position-rules-view"
 
 export default async function RolesPage() {
@@ -9,7 +9,7 @@ export default async function RolesPage() {
   if (!session.user.onboardingReady) {
     redirect(session.user.primaryMode === "owner" ? "/onboarding/owner" : "/onboarding/employee")
   }
-  if (!isOwnerRole(session.membership)) redirect("/app")
+  if (!isOwnerOrManagerRole(session.membership)) redirect("/app")
 
   return <PositionRulesView />
 }

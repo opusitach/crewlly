@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useAuthStore } from "@/lib/store/auth-store"
 import { useShiftStore } from "@/lib/store/shift-store"
 import type { PayComponent } from "@/lib/pay-components"
 import { formatPhoneForDisplay } from "@/lib/validation/phone"
@@ -42,10 +43,22 @@ type PayKey = (typeof PAY_OPTIONS)[number]["key"]
 
 type PayState = Record<PayKey, { isActive: boolean; value: string }>
 
+type EarningsSummary = {
+  totalSalaryCents: number
+  shiftsCount: number
+  currency: string | null
+}
+
 const DEFAULT_PAY_STATE: PayState = {
   hourly: { isActive: false, value: "" },
   fixed_shift: { isActive: false, value: "" },
   percent_revenue: { isActive: false, value: "" },
+}
+
+const DEFAULT_EARNINGS_SUMMARY: EarningsSummary = {
+  totalSalaryCents: 0,
+  shiftsCount: 0,
+  currency: "CZK",
 }
 
 const parseNumericInput = (value: string): number | null => {
@@ -65,6 +78,26 @@ const toBasisPoints = (value: string): number | null => {
   const parsed = parseNumericInput(value)
   if (parsed === null) return null
   return Math.round(parsed * 100)
+}
+
+const toDateInputValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+const formatMoney = (valueCents: number, currency: string | null | undefined) => {
+  const safeCurrency = currency || "CZK"
+  try {
+    return new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency: safeCurrency,
+      maximumFractionDigits: 0,
+    }).format(valueCents / 100)
+  } catch {
+    return `${Math.round(valueCents / 100)} ${safeCurrency}`
+  }
 }
 
 const buildPayStateFromComponents = (components: PayComponent[] | undefined): PayState => {
@@ -98,6 +131,9 @@ const buildPayStateFromComponents = (components: PayComponent[] | undefined): Pa
 
 export default function EmployeeProfile({ employeeId, onBack }: { employeeId: string; onBack: () => void }) {
   const { toast } = useToast()
+  const authUser = useAuthStore((state) => state.user)
+  const authAccessRole = useAuthStore((state) => state.accessRole)
+  const authLegacyRole = useAuthStore((state) => state.legacyRole)
   const employee = useShiftStore((state) => state.employees.find((emp) => emp.id === employeeId))
   const orgPositions = useShiftStore((state) => state.positions)
   const refreshEmployees = useShiftStore((state) => state.refreshEmployees)
@@ -108,8 +144,13 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
   const [isLoadingPay, setIsLoadingPay] = useState(false)
   const [isSavingPay, setIsSavingPay] = useState(false)
   const [payState, setPayState] = useState<PayState>(() => buildPayStateFromComponents(employee?.payComponents))
+  const [earningsSummary, setEarningsSummary] = useState<EarningsSummary>(DEFAULT_EARNINGS_SUMMARY)
+  const [isLoadingEarnings, setIsLoadingEarnings] = useState(false)
+  const [earningsError, setEarningsError] = useState<string | null>(null)
   const [isEditingPositions, setIsEditingPositions] = useState(false)
   const [isSavingPositions, setIsSavingPositions] = useState(false)
+  const [isPromotingManager, setIsPromotingManager] = useState(false)
+  const earningsRequestIdRef = useRef(0)
   const [editedPositions, setEditedPositions] = useState<EmployeePosition[]>(() =>
     (employee?.positions ?? []).map((pos) => ({ id: pos.id, name: pos.name })),
   )
@@ -117,11 +158,25 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
   const joinedAt = employee?.createdAt ? new Date(employee.createdAt) : null
   const joinedAtLabel =
     joinedAt && !Number.isNaN(joinedAt.getTime()) ? format(joinedAt, "d MMMM yyyy", { locale: ru }) : null
+  const currentViewerRoleKey = authAccessRole?.key ?? authLegacyRole ?? authUser?.primaryMode ?? null
+  const employeeRoleKey = employee?.accessRoleKey ?? "worker"
+  const employeeRoleLabel =
+    employee?.accessRoleName ??
+    (employeeRoleKey === "owner" ? "Владелец" : employeeRoleKey === "manager" ? "Менеджер" : "Сотрудник")
+  const canPromoteManager =
+    currentViewerRoleKey === "owner" && employeeRoleKey !== "manager" && employeeRoleKey !== "owner"
+  const currentMonthRange = useMemo(() => {
+    const today = new Date()
+    return {
+      fromDate: toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)),
+      toDate: toDateInputValue(today),
+    }
+  }, [])
 
   useEffect(() => {
     if (!employee) return
     setPayState(buildPayStateFromComponents(employee.payComponents))
-  }, [employee?.id])
+  }, [employee?.id, employee?.payComponents])
 
   useEffect(() => {
     if (!employee || isEditingPositions) return
@@ -152,6 +207,46 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
     void loadPayComponents()
   }, [employee?.id, toast, updateEmployee])
 
+  const loadEarningsSummary = async (targetEmployeeId: string) => {
+    const requestId = earningsRequestIdRef.current + 1
+    earningsRequestIdRef.current = requestId
+    setIsLoadingEarnings(true)
+    setEarningsError(null)
+    try {
+      const params = new URLSearchParams({
+        dateFrom: currentMonthRange.fromDate,
+        dateTo: currentMonthRange.toDate,
+      })
+      const res = await fetch(`/api/employees/${targetEmployeeId}/earnings?${params.toString()}`, {
+        credentials: "include",
+        cache: "no-store",
+      })
+      if (!res.ok) {
+        throw new Error("Не удалось загрузить начисления")
+      }
+      const json = await res.json()
+      const rawSummary = json?.data?.summary ?? {}
+      if (earningsRequestIdRef.current !== requestId) return
+      setEarningsSummary({
+        totalSalaryCents: Number.isInteger(rawSummary.totalSalaryCents) ? Number(rawSummary.totalSalaryCents) : 0,
+        shiftsCount: Number.isInteger(rawSummary.shiftsCount) ? Number(rawSummary.shiftsCount) : 0,
+        currency: typeof rawSummary.currency === "string" ? rawSummary.currency : "CZK",
+      })
+    } catch {
+      if (earningsRequestIdRef.current !== requestId) return
+      setEarningsSummary(DEFAULT_EARNINGS_SUMMARY)
+      setEarningsError("Не удалось загрузить актуальную зарплату")
+    } finally {
+      if (earningsRequestIdRef.current !== requestId) return
+      setIsLoadingEarnings(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!employee) return
+    void loadEarningsSummary(employee.id)
+  }, [employee?.id, currentMonthRange.fromDate, currentMonthRange.toDate])
+
   const hasActivePay = useMemo(
     () => Object.values(payState).some((component) => component.isActive),
     [payState],
@@ -171,8 +266,8 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
     () =>
       isEditingPositions
         ? editedPositions
-        : (employee.positions ?? []).map((pos) => ({ id: pos.id, name: pos.name })),
-    [employee.positions, editedPositions, isEditingPositions],
+        : (employee?.positions ?? []).map((pos) => ({ id: pos.id, name: pos.name })),
+    [employee?.positions, editedPositions, isEditingPositions],
   )
 
   const togglePositionsEdit = () => {
@@ -284,6 +379,7 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
       const components = (json?.data ?? []) as PayComponent[]
       setPayState(buildPayStateFromComponents(components))
       updateEmployee(employee.id, { payComponents: components })
+      await loadEarningsSummary(employee.id)
       setIsEditingPay(false)
       toast({ title: "Оплата обновлена" })
     } catch (error: any) {
@@ -291,6 +387,30 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
       toast({ title: error?.message || "Не удалось сохранить оплату", variant: "destructive" })
     } finally {
       setIsSavingPay(false)
+    }
+  }
+
+  const handlePromoteToManager = async () => {
+    if (!employee || !canPromoteManager || isPromotingManager) return
+
+    setIsPromotingManager(true)
+    try {
+      const res = await fetch(`/api/employees/${employee.id}/manager`, {
+        method: "PUT",
+        credentials: "include",
+      })
+      const json = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Не удалось назначить менеджером")
+      }
+
+      await refreshEmployees()
+      toast({ title: `${employee.name} назначен менеджером` })
+    } catch (error: any) {
+      toast({ title: error?.message || "Не удалось назначить менеджером", variant: "destructive" })
+    } finally {
+      setIsPromotingManager(false)
     }
   }
 
@@ -444,7 +564,14 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
             </div>
             <div className="flex-1">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <h2 className="text-xl font-bold">{employee.name}</h2>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold truncate">{employee.name}</h2>
+                  <div className="mt-1">
+                    <Badge variant={employeeRoleKey === "manager" ? "default" : "secondary"} className="text-[11px]">
+                      {employeeRoleLabel}
+                    </Badge>
+                  </div>
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -544,6 +671,18 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
               )}
             </div>
           </div>
+
+          <div className="pt-4">
+            {employeeRoleKey === "manager" ? (
+              <Button variant="secondary" className="w-full h-10" disabled>
+                Менеджер уже назначен
+              </Button>
+            ) : canPromoteManager ? (
+              <Button className="w-full h-10" onClick={handlePromoteToManager} disabled={isPromotingManager}>
+                {isPromotingManager ? "Назначаем..." : "Назначить менеджером"}
+              </Button>
+            ) : null}
+          </div>
         </Card>
 
         {/* Salary Settings */}
@@ -641,17 +780,23 @@ export default function EmployeeProfile({ employeeId, onBack }: { employeeId: st
               <Calendar className="h-4 w-4" strokeWidth={1.5} />
               <span className="text-xs uppercase tracking-wide">Смены</span>
             </div>
-            <p className="text-2xl font-bold">—</p>
-            <p className="text-xs text-muted-foreground mt-1">Нет данных</p>
+            <p className="text-2xl font-bold">{isLoadingEarnings ? "—" : earningsSummary.shiftsCount}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {earningsError ? earningsError : "За текущий месяц"}
+            </p>
           </Card>
 
           <Card className="p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <TrendingUp className="h-4 w-4" strokeWidth={1.5} />
-              <span className="text-xs uppercase tracking-wide">Заработано</span>
+              <span className="text-xs uppercase tracking-wide">Зарплата</span>
             </div>
-            <p className="text-2xl font-bold">—</p>
-            <p className="text-xs text-muted-foreground mt-1">Нет данных</p>
+            <p className="text-2xl font-bold">
+              {isLoadingEarnings ? "—" : formatMoney(earningsSummary.totalSalaryCents, earningsSummary.currency)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {earningsError ? earningsError : "Актуально за текущий месяц"}
+            </p>
           </Card>
         </div>
 

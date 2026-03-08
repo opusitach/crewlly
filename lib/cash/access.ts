@@ -1,4 +1,4 @@
-import { getSessionUserWithOrg, getUserEmployee, hasPermission, isOwnerRole } from "@/lib/auth"
+import { getSessionUserWithOrg, getUserEmployee, hasPermission, isOwnerOrManagerRole, isOwnerRole } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 type CashAuthFailure = {
@@ -13,6 +13,7 @@ type CashAuthSuccess = {
   userId: string
   employeeId: string | null
   isOwner: boolean
+  isManagementRole: boolean
   canManageCash: boolean
 }
 
@@ -31,7 +32,8 @@ export async function getCashAuthContext(options?: { requireManage?: boolean }):
   const organizationId = session.organization.id
   const userId = session.user.id
   const owner = isOwnerRole(session.membership)
-  const canManageCash = owner || (await hasPermission(userId, organizationId, "cash:manage"))
+  const managementRole = isOwnerOrManagerRole(session.membership)
+  const canManageCash = managementRole || (await hasPermission(userId, organizationId, "cash:manage"))
 
   if (options?.requireManage && !canManageCash) {
     return {
@@ -49,6 +51,7 @@ export async function getCashAuthContext(options?: { requireManage?: boolean }):
     userId,
     employeeId: employee?.id ?? null,
     isOwner: owner,
+    isManagementRole: managementRole,
     canManageCash,
   }
 }

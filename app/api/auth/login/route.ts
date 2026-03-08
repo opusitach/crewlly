@@ -54,6 +54,7 @@ export async function POST(request: Request) {
       },
       organization: membership?.organization ?? null,
       accessRole: membership?.accessRole ?? null,
+      legacyRole: membership?.legacyRole ?? null,
     })
     res.cookies.set(cookie.name, cookie.value, cookie.options)
     return res

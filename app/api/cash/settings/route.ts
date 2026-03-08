@@ -85,8 +85,8 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  if (!auth.isOwner) {
-    return NextResponse.json({ error: "Только владелец может менять настройки кассы" }, { status: 403 })
+  if (!auth.isManagementRole) {
+    return NextResponse.json({ error: "Только владелец или менеджер может менять настройки кассы" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => null)

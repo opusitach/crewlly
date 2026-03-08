@@ -26,6 +26,32 @@ export async function POST(request: Request) {
     }
 
     const forceNew = parsed.data.forceNew === true
+    const activeMemberships = await prisma.organizationMember.findMany({
+      where: {
+        userId: user.id,
+        isActive: true,
+      },
+      include: {
+        accessRole: {
+          select: {
+            key: true,
+          },
+        },
+      },
+    })
+    const hasOwnerMembership = activeMemberships.some(
+      (membership) => (membership.accessRole?.key ?? membership.legacyRole ?? null) === "owner",
+    )
+    const hasManagerMembership = activeMemberships.some(
+      (membership) => (membership.accessRole?.key ?? membership.legacyRole ?? null) === "manager",
+    )
+
+    if (!hasOwnerMembership && hasManagerMembership) {
+      return NextResponse.json(
+        { error: "Менеджер не может создавать новое заведение" },
+        { status: 403 },
+      )
+    }
 
     if (!forceNew) {
       const existing = await prisma.organizationMember.findFirst({

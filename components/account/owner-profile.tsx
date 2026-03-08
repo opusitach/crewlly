@@ -17,9 +17,17 @@ interface OwnerProfileProps {
   onBack: () => void
   onLogout: () => void
   onEdit?: () => void
+  userRole?: "owner" | "manager"
+  canCreateVenue?: boolean
 }
 
-export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileProps) {
+export default function OwnerProfile({
+  onBack,
+  onLogout,
+  onEdit,
+  userRole = "owner",
+  canCreateVenue = true,
+}: OwnerProfileProps) {
   const router = useRouter()
   const { user, venues, selectedVenueId, selectVenue, updateUser, updateVenue, isHydrated, hydrate } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
@@ -43,6 +51,7 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
   )
   const [venueName, setVenueName] = useState(currentVenue?.name ?? "")
   const currentVenueId = currentVenue?.id ?? null
+  const roleLabel = userRole === "manager" ? "Менеджер" : "Владелец"
   const emailError = getEmailValidationError(profileData.email)
   const phoneError = getPhoneValidationError(profileData.phone)
   const showEmailError = isEditing && Boolean(emailError) && (emailTouched || emailValidationRequested)
@@ -231,7 +240,7 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
           </div>
           <div className="text-center">
             <h2 className="text-lg font-semibold">{profileData.name}</h2>
-            <p className="text-sm text-muted-foreground">Владелец</p>
+            <p className="text-sm text-muted-foreground">{roleLabel}</p>
           </div>
         </Card>
 
@@ -303,14 +312,16 @@ export default function OwnerProfile({ onBack, onLogout, onEdit }: OwnerProfileP
         <Card className="p-3 space-y-3 overflow-hidden">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-muted-foreground">Заведения</h3>
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs"
-              onClick={() => router.push("/app/venues/new")}
-            >
-              Добавить заведение
-            </Button>
+            {canCreateVenue && (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() => router.push("/app/venues/new")}
+              >
+                Добавить заведение
+              </Button>
+            )}
           </div>
 
           <div className="space-y-2">

@@ -105,6 +105,22 @@ export async function GET(request: Request) {
           email: true,
           phone: true,
           avatarUrl: true,
+          organizationMembers: {
+            where: {
+              organizationId,
+              isActive: true,
+            },
+            select: {
+              legacyRole: true,
+              accessRole: {
+                select: {
+                  key: true,
+                  name: true,
+                },
+              },
+            },
+            take: 1,
+          },
         },
       },
       employeePositions: {
@@ -122,51 +138,62 @@ export async function GET(request: Request) {
   })
 
   // Map to API response shape
-  const mapped = employees.map((e) => ({
-    id: e.id,
-    organizationId: e.organizationId,
-    userId: e.userId,
-    employeeCode: e.employeeCode,
-    employmentStatus: e.employmentStatus,
-    payType: e.payType,
-    defaultHourlyRateCents: e.defaultHourlyRateCents,
-    defaultShiftRateCents: e.defaultShiftRateCents,
-    percentRevenueBp: e.percentRevenueBp,
-    payComponents: e.payComponents.map((component) => ({
-      componentType: component.componentType,
-      amountCents: component.amountCents,
-      rateBp: component.rateBp,
-      isActive: component.isActive,
-      priority: component.priority,
-    })),
-    // From user
-    fullName: e.user.fullName,
-    name: e.user.fullName, // alias for UI compatibility
-    email: e.user.email,
-    phone: e.user.phone,
-    avatarUrl: e.user.avatarUrl,
-    // Positions
-    positions: e.employeePositions.map((ep) => ({
-      id: ep.position.id,
-      name: ep.position.name,
-      isPrimary: ep.isPrimary,
-    })),
-    primaryPosition: e.employeePositions.find((ep) => ep.isPrimary)?.position || e.employeePositions[0]?.position,
-    // Locations
-    locations: e.employeeLocations.map((el) => ({
-      id: el.location.id,
-      name: el.location.name,
-      isPrimary: el.isPrimary,
-    })),
-    // Legacy fields for UI compatibility
-    role: mapPositionToLegacyRole(e.employeePositions.find((ep) => ep.isPrimary)?.position?.name),
-    pay: {
-      payType: mapPayType(e.payType),
-      payValue: getPayValue(e),
-      currency: "CZK",
-    },
-    createdAt: e.createdAt.toISOString(),
-  }))
+  const mapped = employees.map((e) => {
+    const membership = e.user.organizationMembers[0]
+    const accessRoleKey = membership?.accessRole?.key ?? membership?.legacyRole ?? "worker"
+    const accessRoleName =
+      membership?.accessRole?.name ??
+      (accessRoleKey === "owner" ? "Владелец" : accessRoleKey === "manager" ? "Менеджер" : "Сотрудник")
+
+    return {
+      id: e.id,
+      organizationId: e.organizationId,
+      userId: e.userId,
+      employeeCode: e.employeeCode,
+      employmentStatus: e.employmentStatus,
+      payType: e.payType,
+      defaultHourlyRateCents: e.defaultHourlyRateCents,
+      defaultShiftRateCents: e.defaultShiftRateCents,
+      percentRevenueBp: e.percentRevenueBp,
+      payComponents: e.payComponents.map((component) => ({
+        componentType: component.componentType,
+        amountCents: component.amountCents,
+        rateBp: component.rateBp,
+        isActive: component.isActive,
+        priority: component.priority,
+      })),
+      // From user
+      fullName: e.user.fullName,
+      name: e.user.fullName, // alias for UI compatibility
+      email: e.user.email,
+      phone: e.user.phone,
+      avatarUrl: e.user.avatarUrl,
+      accessRoleKey,
+      accessRoleName,
+      isManager: accessRoleKey === "manager",
+      // Positions
+      positions: e.employeePositions.map((ep) => ({
+        id: ep.position.id,
+        name: ep.position.name,
+        isPrimary: ep.isPrimary,
+      })),
+      primaryPosition: e.employeePositions.find((ep) => ep.isPrimary)?.position || e.employeePositions[0]?.position,
+      // Locations
+      locations: e.employeeLocations.map((el) => ({
+        id: el.location.id,
+        name: el.location.name,
+        isPrimary: el.isPrimary,
+      })),
+      // Legacy fields for UI compatibility
+      role: mapPositionToLegacyRole(e.employeePositions.find((ep) => ep.isPrimary)?.position?.name),
+      pay: {
+        payType: mapPayType(e.payType),
+        payValue: getPayValue(e),
+        currency: "CZK",
+      },
+      createdAt: e.createdAt.toISOString(),
+    }
+  })
 
   return NextResponse.json({ data: mapped })
 }

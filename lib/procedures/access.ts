@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, getUserEmployee, isOwnerRole } from "@/lib/auth"
+import { getSessionUserWithOrg, getUserEmployee, isOwnerOrManagerRole, isOwnerRole } from "@/lib/auth"
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -10,6 +10,7 @@ export async function getAuthorizedInterval(intervalId: string) {
       interval: null,
       employee: null,
       isOwner: false,
+      hasManagementAccess: false,
       error: "Interval id is required",
       status: 400,
     }
@@ -20,6 +21,7 @@ export async function getAuthorizedInterval(intervalId: string) {
       interval: null,
       employee: null,
       isOwner: false,
+      hasManagementAccess: false,
       error: "Interval id is invalid",
       status: 400,
     }
@@ -27,7 +29,15 @@ export async function getAuthorizedInterval(intervalId: string) {
 
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
-    return { session: null, interval: null, employee: null, isOwner: false, error: "Unauthorized", status: 401 }
+    return {
+      session: null,
+      interval: null,
+      employee: null,
+      isOwner: false,
+      hasManagementAccess: false,
+      error: "Unauthorized",
+      status: 401,
+    }
   }
 
   const interval = await prisma.workInterval.findUnique({
@@ -39,17 +49,26 @@ export async function getAuthorizedInterval(intervalId: string) {
   })
 
   if (!interval || interval.workday.organizationId !== session.organization.id) {
-    return { session, interval: null, employee: null, isOwner: false, error: "Not found", status: 404 }
-  }
-
-  const isOwner = isOwnerRole(session.membership)
-  let employee = null
-  if (!isOwner) {
-    employee = await getUserEmployee(session.user.id, session.organization.id)
-    if (!employee || employee.id !== interval.employeeId) {
-      return { session, interval, employee: null, isOwner, error: "Forbidden", status: 403 }
+    return {
+      session,
+      interval: null,
+      employee: null,
+      isOwner: false,
+      hasManagementAccess: false,
+      error: "Not found",
+      status: 404,
     }
   }
 
-  return { session, interval, employee, isOwner, error: null, status: 200 }
+  const isOwner = isOwnerRole(session.membership)
+  const hasManagementAccess = isOwnerOrManagerRole(session.membership)
+  let employee = null
+  if (!hasManagementAccess) {
+    employee = await getUserEmployee(session.user.id, session.organization.id)
+    if (!employee || employee.id !== interval.employeeId) {
+      return { session, interval, employee: null, isOwner, hasManagementAccess, error: "Forbidden", status: 403 }
+    }
+  }
+
+  return { session, interval, employee, isOwner, hasManagementAccess, error: null, status: 200 }
 }

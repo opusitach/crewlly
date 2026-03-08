@@ -20,7 +20,7 @@ const forceSchema = z.object({
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { session, interval, isOwner, error, status } = await getAuthorizedInterval(id)
+  const { session, interval, hasManagementAccess, error, status } = await getAuthorizedInterval(id)
   if (error || !interval) {
     return NextResponse.json({ error }, { status })
   }
@@ -32,8 +32,8 @@ export async function POST(request: Request, context: RouteContext) {
   }
   const { force, skipCash, reason } = parsed.data
   const normalizedReason = typeof reason === "string" ? reason.trim() : undefined
-  if (force && !isOwner) {
-    return NextResponse.json({ error: "Only owner can force close a shift" }, { status: 403 })
+  if (force && !hasManagementAccess) {
+    return NextResponse.json({ error: "Только владелец или менеджер может принудительно закрыть смену" }, { status: 403 })
   }
   if (force && !normalizedReason) {
     return NextResponse.json({ error: "Reason is required for force close" }, { status: 400 })

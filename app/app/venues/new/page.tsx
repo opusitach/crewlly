@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation"
-import { getSessionUser } from "@/lib/auth"
+import { getSessionUserWithOrg, isOwnerRole } from "@/lib/auth"
 import OwnerOnboardingWrapper from "@/components/onboarding/owner-onboarding-wrapper"
 
 export default async function NewVenuePage() {
-  const user = await getSessionUser()
-  if (!user) redirect("/login")
-  if (!user.primaryMode) redirect("/select-role")
-  if (user.primaryMode !== "owner") redirect("/app")
-  if (!user.onboardingReady) redirect("/onboarding/owner")
+  const session = await getSessionUserWithOrg()
+  if (!session?.user) redirect("/login")
+  if (!session.user.primaryMode) redirect("/select-role")
+  if (!session.user.onboardingReady) redirect("/onboarding/owner")
+  if (!isOwnerRole(session.membership)) redirect("/app")
 
   return <OwnerOnboardingWrapper mode="new-venue" />
 }

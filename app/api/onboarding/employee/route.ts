@@ -85,6 +85,17 @@ export async function GET(request: Request) {
         include: {
           employeePositions: { include: { position: true } },
           employeeLocations: { include: { location: true } },
+          payComponents: {
+            where: { isActive: true },
+            orderBy: [{ priority: "desc" }, { componentType: "asc" }],
+            select: {
+              componentType: true,
+              amountCents: true,
+              rateBp: true,
+              isActive: true,
+              priority: true,
+            },
+          },
         },
       })
     : null

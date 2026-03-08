@@ -523,6 +523,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
 
       try {
         await selectVenue(venueId)
+        router.refresh()
         await Promise.all([loadNextShift({ silent: true }), loadMonthSummary({ silent: true })])
 
         const unreadPromise = fetch("/api/notifications?status=unread", {

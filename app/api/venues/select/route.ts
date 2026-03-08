@@ -33,6 +33,15 @@ export async function POST(request: Request) {
         : {}),
       organization: { status: "active" },
     },
+    include: {
+      accessRole: {
+        select: {
+          id: true,
+          key: true,
+          name: true,
+        },
+      },
+    },
   })
 
   if (!membership) {
@@ -63,6 +72,14 @@ export async function POST(request: Request) {
       timezone: organization.timezone,
       currency: organization.currency,
     },
+    accessRole: membership.accessRole
+      ? {
+          id: membership.accessRole.id,
+          key: membership.accessRole.key,
+          name: membership.accessRole.name,
+        }
+      : null,
+    legacyRole: membership.legacyRole ?? null,
     defaultLocation: defaultLocation
       ? {
           id: defaultLocation.id,

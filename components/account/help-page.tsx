@@ -27,7 +27,7 @@ import type { LucideIcon } from "lucide-react"
 
 interface HelpPageProps {
   onBack: () => void
-  userRole: "owner" | "worker"
+  userRole: "owner" | "manager" | "worker"
   hideHeader?: boolean
 }
 
@@ -345,6 +345,10 @@ const ROLE_META = {
     badge: "FAQ владельца",
     subtitle: "Команда, смены, касса, формулы, отчеты и проверка данных.",
   },
+  manager: {
+    badge: "FAQ менеджера",
+    subtitle: "Команда, смены, касса, формулы, отчеты и проверка данных.",
+  },
   worker: {
     badge: "FAQ сотрудника",
     subtitle: "Смены, деньги, уведомления и действия в личном кабинете.",
@@ -352,7 +356,7 @@ const ROLE_META = {
 } as const
 
 export default function HelpPage({ onBack, userRole, hideHeader = false }: HelpPageProps) {
-  const faqItems = userRole === "owner" ? OWNER_FAQ_ITEMS : WORKER_FAQ_ITEMS
+  const faqItems = userRole === "worker" ? WORKER_FAQ_ITEMS : OWNER_FAQ_ITEMS
   const roleMeta = ROLE_META[userRole]
 
   return (

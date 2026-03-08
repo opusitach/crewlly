@@ -49,6 +49,7 @@ interface AuthStore {
   user: User | null
   organization: Organization | null
   accessRole: AccessRole | null
+  legacyRole: string | null
   defaultLocationId: string | null
   isLoading: boolean
   isAuthenticated: boolean
@@ -87,6 +88,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   user: null,
   organization: null,
   accessRole: null,
+  legacyRole: null,
   defaultLocationId: null,
   isLoading: true,
   isAuthenticated: false,
@@ -113,6 +115,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         user: mappedUser,
         organization: json.organization,
         accessRole: json.accessRole,
+        legacyRole: json.legacyRole ?? null,
         isAuthenticated: true,
         isHydrated: false,
         venues: [],
@@ -146,6 +149,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         user: mappedUser,
         organization: null,
         accessRole: null,
+        legacyRole: null,
         isAuthenticated: true,
         isHydrated: false,
         venues: [],
@@ -170,9 +174,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       } finally {
         set({
           user: null,
-          organization: null,
-          accessRole: null,
-          defaultLocationId: null,
+        organization: null,
+        accessRole: null,
+        legacyRole: null,
+        defaultLocationId: null,
           isAuthenticated: false,
           isHydrated: true,
           isLoading: false,
@@ -198,6 +203,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         user: mappedUser,
         organization: json.organization,
         accessRole: json.accessRole,
+        legacyRole: json.legacyRole ?? null,
         defaultLocationId: json.defaultLocation?.id ?? null,
         isLoading: false,
         isAuthenticated: true,
@@ -250,6 +256,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         user: mappedUser,
         organization: meJson.organization,
         accessRole: meJson.accessRole,
+        legacyRole: meJson.legacyRole ?? null,
         defaultLocationId: meJson.defaultLocation?.id ?? null,
         isAuthenticated: true,
       })
@@ -296,6 +303,8 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       selectedVenueId: get().selectedVenueId,
       defaultLocationId: get().defaultLocationId,
       organization: get().organization,
+      accessRole: get().accessRole,
+      legacyRole: get().legacyRole,
     }
     if (previousState.selectedVenueId === venueId) return
 
@@ -333,6 +342,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         selectedVenueId: venueId,
         defaultLocationId: nextLocationId,
         organization: nextOrganization ?? null,
+        accessRole: json?.accessRole ?? previousState.accessRole,
+        legacyRole:
+          typeof json?.legacyRole === "string" || json?.legacyRole === null
+            ? json.legacyRole
+            : previousState.legacyRole,
       })
     } catch (error) {
       console.error("Failed to switch venue", error)
@@ -440,6 +454,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       user: null,
       organization: null,
       accessRole: null,
+      legacyRole: null,
       defaultLocationId: null,
       isAuthenticated: false,
       isHydrated: false,

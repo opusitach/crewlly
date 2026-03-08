@@ -164,7 +164,7 @@ function buildCashFormulaCalculations(input: {
 
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { session, interval, isOwner, error, status } = await getAuthorizedInterval(id)
+  const { session, interval, hasManagementAccess, error, status } = await getAuthorizedInterval(id)
   if (error || !interval) {
     return NextResponse.json({ error }, { status })
   }
@@ -484,7 +484,7 @@ export async function GET(request: Request, context: RouteContext) {
             salaryMessage,
             currency: session?.organization?.currency ?? null,
           },
-          canForce: isOwner,
+          canForce: hasManagementAccess,
         },
         procedures: formatted,
         formulaCalculations,
@@ -504,7 +504,7 @@ export async function GET(request: Request, context: RouteContext) {
             positionId: interval.positionId,
             workDate: interval.workday.workDate.toISOString().split("T")[0],
             payPreview: null,
-            canForce: isOwner,
+            canForce: hasManagementAccess,
           },
           procedures: [],
           formulaCalculations: {

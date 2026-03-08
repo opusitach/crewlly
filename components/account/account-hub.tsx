@@ -8,7 +8,7 @@ import { ImagePreview } from "@/components/ui/image-preview"
 interface AccountHubProps {
   isOpen: boolean
   onClose: () => void
-  userRole: "owner" | "worker"
+  userRole: "owner" | "manager" | "worker"
   userName: string
   avatarUrl?: string
   onNavigate: (screen: "profile" | "settings" | "language" | "help" | "team") => void
@@ -33,7 +33,7 @@ export default function AccountHub({
       .slice(0, 2)
   }
 
-  const roleLabel = userRole === "owner" ? "Владелец" : "Сотрудник"
+  const roleLabel = userRole === "owner" ? "Владелец" : userRole === "manager" ? "Менеджер" : "Сотрудник"
 
   return (
     <>
@@ -81,13 +81,13 @@ export default function AccountHub({
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">Профиль</p>
                   <p className="text-[10px] text-muted-foreground truncate">
-                    {userRole === "owner" ? "Личная информация" : "Личные данные и контакты"}
+                    {userRole !== "worker" ? "Личная информация" : "Личные данные и контакты"}
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
               </button>
 
-              {userRole === "owner" && (
+              {userRole !== "worker" && (
                 <button
                   onClick={() => onNavigate("settings")}
                   className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left"

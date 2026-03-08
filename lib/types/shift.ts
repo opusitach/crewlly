@@ -59,6 +59,9 @@ export interface Employee {
   email?: string
   phone?: string
   avatarUrl?: string
+  accessRoleKey?: string
+  accessRoleName?: string
+  isManager?: boolean
   createdAt?: string
   // Primary position for display
   primaryPosition?: Position

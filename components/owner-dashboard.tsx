@@ -29,6 +29,7 @@ import OwnerProfile from "@/components/account/owner-profile"
 import NotificationsPage from "@/components/account/notifications-page"
 import HelpPage from "@/components/account/help-page"
 import TeamMovedHint from "@/components/notifications/team-moved-hint"
+import ManagerNextShiftCard from "@/components/manager-next-shift-card"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { useShiftStore } from "@/lib/store/shift-store"
@@ -228,6 +229,9 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   ])
   const {
     user,
+    organization,
+    accessRole,
+    legacyRole,
     venues,
     selectedVenueId,
     defaultLocationId,
@@ -239,6 +243,10 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     isLoading: isAuthLoading,
   } = useAuthStore()
   const { hydrate: hydrateShifts, intervals, workdays } = useShiftStore()
+  const membershipRoleKey = accessRole?.key ?? legacyRole ?? user?.primaryMode ?? null
+  const dashboardUserRole: "owner" | "manager" =
+    membershipRoleKey === "manager" ? "manager" : "owner"
+  const canCreateVenue = membershipRoleKey === "owner"
 
   const selectedVenue = useMemo(
     () => venues.find((venue) => venue.id === selectedVenueId) ?? null,
@@ -806,6 +814,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
 
     try {
       await selectVenue(venueId)
+      router.refresh()
       if (activeTab === "dashboard") {
         setIsEventsLoading(true)
       }
@@ -847,6 +856,10 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   }
 
   const handleAddVenue = () => {
+    if (!canCreateVenue) {
+      setIsVenueSelectorOpen(false)
+      return
+    }
     setIsVenueSelectorOpen(false)
     setAccountView("none")
     router.push("/app/venues/new")
@@ -860,10 +873,17 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
 
   const renderAccountOverlay = () => {
     if (accountView === "profile") {
-      return <OwnerProfile onBack={() => setAccountView("none")} onLogout={handleLogout} />
+      return (
+        <OwnerProfile
+          onBack={() => setAccountView("none")}
+          onLogout={handleLogout}
+          userRole={dashboardUserRole}
+          canCreateVenue={canCreateVenue}
+        />
+      )
     }
     if (accountView === "help") {
-      return <HelpPage onBack={() => setAccountView("none")} userRole="owner" />
+      return <HelpPage onBack={() => setAccountView("none")} userRole={dashboardUserRole} />
     }
     if (accountView === "notifications") {
       return (
@@ -917,6 +937,13 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     return (
       <div key={`owner-dashboard-${tabResetVersion.dashboard}`} className="p-3 space-y-3">
         {showTeamHint && <TeamMovedHint />}
+
+        {dashboardUserRole === "manager" && (
+          <ManagerNextShiftCard
+            organizationId={selectedVenueId ?? organization?.id ?? null}
+            timeZone={selectedVenue?.timezone ?? organization?.timezone ?? null}
+          />
+        )}
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 gap-2.5">
@@ -1179,7 +1206,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       <AccountHub
         isOpen={accountView === "hub"}
         onClose={() => setAccountView("none")}
-        userRole="owner"
+        userRole={dashboardUserRole}
         userName={user?.name ?? "Аккаунт"}
         onNavigate={handleAccountNavigation}
       />
@@ -1228,10 +1255,12 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
             </div>
           )}
 
-          <Button className="w-full h-10" onClick={handleAddVenue}>
-            <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-            Добавить заведение
-          </Button>
+          {canCreateVenue && (
+            <Button className="w-full h-10" onClick={handleAddVenue}>
+              <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
+              Добавить заведение
+            </Button>
+          )}
         </div>
       </BottomSheet>
 
