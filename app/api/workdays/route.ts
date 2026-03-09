@@ -3,6 +3,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg } from "@/lib/auth"
 import { loadIntervalConflictSummariesByIds } from "@/lib/work-interval-conflicts"
+import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
 const workdayCreateSchema = z.object({
   locationId: z.string().uuid(),
@@ -19,6 +20,13 @@ const workdayQuerySchema = z.object({
 export async function GET(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "workday.list",
+      outcome: "denied",
+      status: 401,
+      route: "/api/workdays",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -163,18 +171,56 @@ export async function GET(request: Request) {
     cashSessionCount: wd._count.cashSessions,
   }))
 
+  logAuditEvent(request, {
+    event_type: "workday.list",
+    outcome: "success",
+    status: 200,
+    route: "/api/workdays",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "organization",
+      id: session.organization.id,
+      organization_id: session.organization.id,
+      location_id: locationId ?? null,
+    },
+    metadata: {
+      result_count: mapped.length,
+      date_from: dateFrom,
+      date_to: dateTo,
+    },
+  })
   return NextResponse.json({ data: mapped })
 }
 
 export async function POST(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "workday.create",
+      outcome: "denied",
+      status: 401,
+      route: "/api/workdays",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const json = await request.json().catch(() => null)
   const parsed = workdayCreateSchema.safeParse(json)
   if (!parsed.success) {
+    logAuditEvent(request, {
+      event_type: "workday.create",
+      outcome: "failure",
+      status: 400,
+      route: "/api/workdays",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "validation_error",
+    })
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
@@ -186,6 +232,20 @@ export async function POST(request: Request) {
   })
 
   if (!location) {
+    logAuditEvent(request, {
+      event_type: "workday.create",
+      outcome: "failure",
+      status: 404,
+      route: "/api/workdays",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "location",
+        id: locationId,
+        organization_id: session.organization.id,
+        location_id: locationId,
+      },
+      reason: "location_not_found",
+    })
     return NextResponse.json({ error: "Локация не найдена" }, { status: 404 })
   }
 
@@ -195,6 +255,24 @@ export async function POST(request: Request) {
   })
 
   if (existing) {
+    logAuditEvent(request, {
+      event_type: "workday.create",
+      outcome: "success",
+      status: 200,
+      route: "/api/workdays",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "workday",
+        id: existing.id,
+        organization_id: session.organization.id,
+        location_id: existing.locationId,
+        workday_id: existing.id,
+      },
+      metadata: {
+        reused_existing: true,
+        work_date: workDate,
+      },
+    })
     return NextResponse.json({ data: existing })
   }
 
@@ -208,6 +286,24 @@ export async function POST(request: Request) {
     },
   })
 
+  logAuditEvent(request, {
+    event_type: "workday.create",
+    outcome: "success",
+    status: 200,
+    route: "/api/workdays",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "workday",
+      id: workday.id,
+      organization_id: session.organization.id,
+      location_id: workday.locationId,
+      workday_id: workday.id,
+    },
+    metadata: {
+      reused_existing: false,
+      work_date: workDate,
+    },
+  })
   return NextResponse.json({
     data: {
       id: workday.id,

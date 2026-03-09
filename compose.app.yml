@@ -41,7 +41,9 @@ services:
     env_file:
       - .env.production
     environment:
+      APP_SERVICE_NAME: crewlly-back
       NODE_ENV: production
+      AUDIT_LOG_ENABLED: ${AUDIT_LOG_ENABLED:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
@@ -142,7 +144,9 @@ services:
     env_file:
       - .env.production
     environment:
+      APP_SERVICE_NAME: crewlly-front
       NODE_ENV: production
+      AUDIT_LOG_ENABLED: ${AUDIT_LOG_ENABLED:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}

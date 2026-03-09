@@ -5,6 +5,7 @@ import { getSessionUserWithOrg, getUserEmployee } from "@/lib/auth"
 import { computeIntervalPayrollSnapshot } from "@/lib/payroll/interval-compensation"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
+import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
 const clockSchema = z.object({
   intervalId: z.string().uuid(),
@@ -17,17 +18,39 @@ const clockSchema = z.object({
 export async function POST(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "clock.action",
+      outcome: "denied",
+      status: 401,
+      route: "/api/clock",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const organizationId = session.organization.id
+  const actor = auditActorFromSession(session)
 
   const json = await request.json().catch(() => null)
   const parsed = clockSchema.safeParse(json)
   if (!parsed.success) {
+    logAuditEvent(request, {
+      event_type: "clock.action",
+      outcome: "failure",
+      status: 400,
+      route: "/api/clock",
+      actor,
+      target: {
+        type: "organization",
+        id: organizationId,
+        organization_id: organizationId,
+      },
+      reason: "validation_error",
+    })
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
   const { intervalId, action, photoUrl, lat, lng } = parsed.data
+  const eventType = action === "in" ? "clock.in" : "clock.out"
 
   // Get the work interval
   const interval = await prisma.workInterval.findFirst({
@@ -36,6 +59,19 @@ export async function POST(request: Request) {
   })
 
   if (!interval || interval.workday.organizationId !== session.organization.id) {
+    logAuditEvent(request, {
+      event_type: eventType,
+      outcome: "failure",
+      status: 404,
+      route: "/api/clock",
+      actor,
+      target: {
+        type: "interval",
+        id: intervalId,
+        organization_id: organizationId,
+      },
+      reason: "interval_not_found",
+    })
     return NextResponse.json({ error: "Интервал не найден" }, { status: 404 })
   }
 
@@ -57,6 +93,21 @@ export async function POST(request: Request) {
   const isManager = session.accessRole?.key === "owner" || session.accessRole?.key === "manager"
   
   if (!isOwn && !isManager) {
+    logAuditEvent(request, {
+      event_type: eventType,
+      outcome: "denied",
+      status: 403,
+      route: "/api/clock",
+      actor,
+      target: {
+        type: "interval",
+        id: intervalId,
+        organization_id: organizationId,
+        workday_id: interval.workdayId,
+        employee_id: interval.employeeId,
+      },
+      reason: "not_interval_owner",
+    })
     return NextResponse.json({ error: "Нет доступа" }, { status: 403 })
   }
 
@@ -112,6 +163,27 @@ export async function POST(request: Request) {
       return entry
     })
 
+    logAuditEvent(request, {
+      event_type: eventType,
+      outcome: "success",
+      status: 200,
+      route: "/api/clock",
+      actor: {
+        ...actor,
+        employee_id: employee?.id ?? null,
+      },
+      target: {
+        type: "interval",
+        id: intervalId,
+        organization_id: organizationId,
+        workday_id: interval.workdayId,
+        employee_id: interval.employeeId,
+      },
+      metadata: {
+        has_photo: Boolean(photoUrl),
+        has_coordinates: lat != null && lng != null,
+      },
+    })
     return NextResponse.json({
       data: {
         id: timeEntry.id,
@@ -126,6 +198,24 @@ export async function POST(request: Request) {
     })
 
     if (!existing) {
+      logAuditEvent(request, {
+        event_type: eventType,
+        outcome: "failure",
+        status: 400,
+        route: "/api/clock",
+        actor: {
+          ...actor,
+          employee_id: employee?.id ?? null,
+        },
+        target: {
+          type: "interval",
+          id: intervalId,
+          organization_id: organizationId,
+          workday_id: interval.workdayId,
+          employee_id: interval.employeeId,
+        },
+        reason: "clock_in_required_first",
+      })
       return NextResponse.json({ error: "Сначала нужно отметить приход" }, { status: 400 })
     }
 
@@ -210,6 +300,27 @@ export async function POST(request: Request) {
       return { timeEntry, snapshot }
     })
 
+    logAuditEvent(request, {
+      event_type: eventType,
+      outcome: "success",
+      status: 200,
+      route: "/api/clock",
+      actor: {
+        ...actor,
+        employee_id: employee?.id ?? null,
+      },
+      target: {
+        type: "interval",
+        id: intervalId,
+        organization_id: organizationId,
+        workday_id: interval.workdayId,
+        employee_id: interval.employeeId,
+      },
+      metadata: {
+        has_photo: Boolean(photoUrl),
+        has_coordinates: lat != null && lng != null,
+      },
+    })
     return NextResponse.json({
       data: {
         id: result.timeEntry.id,
@@ -229,6 +340,13 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "clock.list",
+      outcome: "denied",
+      status: 401,
+      route: "/api/clock",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -298,5 +416,24 @@ export async function GET(request: Request) {
     clockOutPhotoUrl: e.clockOutPhotoUrl,
   }))
 
+  logAuditEvent(request, {
+    event_type: "clock.list",
+    outcome: "success",
+    status: 200,
+    route: "/api/clock",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "organization",
+      id: session.organization.id,
+      organization_id: session.organization.id,
+      employee_id: employeeId,
+    },
+    metadata: {
+      interval_id: intervalId,
+      date_from: dateFrom,
+      date_to: dateTo,
+      result_count: mapped.length,
+    },
+  })
   return NextResponse.json({ data: mapped })
 }

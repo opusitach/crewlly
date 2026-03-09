@@ -3,6 +3,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg, hasPermission } from "@/lib/auth"
 import crypto from "crypto"
+import { auditActorFromSession, hashAuditIdentifier, logAuditEvent } from "@/lib/observability/audit"
 
 const invitationCreateSchema = z.object({
   email: z.string().email("Некорректный email"),
@@ -13,6 +14,13 @@ const invitationCreateSchema = z.object({
 export async function GET(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "invitation.list",
+      outcome: "denied",
+      status: 401,
+      route: "/api/invitations",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -46,6 +54,22 @@ export async function GET(request: Request) {
     orderBy: { createdAt: "desc" },
   })
 
+  logAuditEvent(request, {
+    event_type: "invitation.list",
+    outcome: "success",
+    status: 200,
+    route: "/api/invitations",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "organization",
+      id: session.organization.id,
+      organization_id: session.organization.id,
+    },
+    metadata: {
+      status_filter: status,
+      result_count: invitations.length,
+    },
+  })
   return NextResponse.json({
     data: invitations.map((inv) => ({
       id: inv.id,
@@ -65,18 +89,51 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "invitation.create",
+      outcome: "denied",
+      status: 401,
+      route: "/api/invitations",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   // Check permission
   const canInvite = await hasPermission(session.user.id, session.organization.id, "employee:create")
   if (!canInvite) {
+    logAuditEvent(request, {
+      event_type: "invitation.create",
+      outcome: "denied",
+      status: 403,
+      route: "/api/invitations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_employee_create_permission",
+    })
     return NextResponse.json({ error: "Нет прав для приглашения сотрудников" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => null)
   const parsed = invitationCreateSchema.safeParse(json)
   if (!parsed.success) {
+    logAuditEvent(request, {
+      event_type: "invitation.create",
+      outcome: "failure",
+      status: 400,
+      route: "/api/invitations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "validation_error",
+    })
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
@@ -93,6 +150,23 @@ export async function POST(request: Request) {
   })
 
   if (existingInvitation) {
+    logAuditEvent(request, {
+      event_type: "invitation.create",
+      outcome: "failure",
+      status: 409,
+      route: "/api/invitations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+        location_id: locationId ?? null,
+      },
+      reason: "pending_invitation_exists",
+      metadata: {
+        invitee_email_hash: hashAuditIdentifier(email),
+      },
+    })
     return NextResponse.json({
       error: "Приглашение для этого email уже существует",
     }, { status: 409 })
@@ -111,6 +185,23 @@ export async function POST(request: Request) {
     })
 
     if (existingMember?.isActive) {
+      logAuditEvent(request, {
+        event_type: "invitation.create",
+        outcome: "failure",
+        status: 409,
+        route: "/api/invitations",
+        actor: auditActorFromSession(session),
+        target: {
+          type: "organization",
+          id: session.organization.id,
+          organization_id: session.organization.id,
+          location_id: locationId ?? null,
+        },
+        reason: "already_member",
+        metadata: {
+          invitee_email_hash: hashAuditIdentifier(email),
+        },
+      })
       return NextResponse.json({
         error: "Пользователь уже является членом организации",
       }, { status: 409 })
@@ -147,6 +238,24 @@ export async function POST(request: Request) {
     },
   })
 
+  logAuditEvent(request, {
+    event_type: "invitation.create",
+    outcome: "success",
+    status: 200,
+    route: "/api/invitations",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "invitation",
+      id: invitation.id,
+      organization_id: session.organization.id,
+      location_id: invitation.locationId ?? null,
+      invitation_id: invitation.id,
+    },
+    metadata: {
+      invitee_email_hash: hashAuditIdentifier(email),
+      access_role_key: invitation.accessRole?.key ?? accessRoleKey,
+    },
+  })
   return NextResponse.json({
     data: {
       id: invitation.id,
@@ -163,6 +272,13 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "invitation.delete",
+      outcome: "denied",
+      status: 401,
+      route: "/api/invitations",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -170,6 +286,19 @@ export async function DELETE(request: Request) {
   const id = url.searchParams.get("id")
 
   if (!id) {
+    logAuditEvent(request, {
+      event_type: "invitation.delete",
+      outcome: "failure",
+      status: 400,
+      route: "/api/invitations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_invitation_id",
+    })
     return NextResponse.json({ error: "id is required" }, { status: 400 })
   }
 
@@ -178,15 +307,58 @@ export async function DELETE(request: Request) {
   })
 
   if (!invitation) {
+    logAuditEvent(request, {
+      event_type: "invitation.delete",
+      outcome: "failure",
+      status: 404,
+      route: "/api/invitations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "invitation",
+        id,
+        organization_id: session.organization.id,
+        invitation_id: id,
+      },
+      reason: "invitation_not_found",
+    })
     return NextResponse.json({ error: "Приглашение не найдено" }, { status: 404 })
   }
 
   if (invitation.acceptedAt) {
+    logAuditEvent(request, {
+      event_type: "invitation.delete",
+      outcome: "failure",
+      status: 400,
+      route: "/api/invitations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "invitation",
+        id: invitation.id,
+        organization_id: session.organization.id,
+        invitation_id: invitation.id,
+      },
+      reason: "invitation_already_accepted",
+    })
     return NextResponse.json({ error: "Нельзя удалить принятое приглашение" }, { status: 400 })
   }
 
   await prisma.invitation.delete({ where: { id } })
 
+  logAuditEvent(request, {
+    event_type: "invitation.delete",
+    outcome: "success",
+    status: 200,
+    route: "/api/invitations",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "invitation",
+      id: invitation.id,
+      organization_id: session.organization.id,
+      invitation_id: invitation.id,
+    },
+    metadata: {
+      invitee_email_hash: hashAuditIdentifier(invitation.email),
+    },
+  })
   return NextResponse.json({ success: true })
 }
-

@@ -1,0 +1,99 @@
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "docker_logs" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "back"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  labels        = { platform = "docker", source = "audit", stack = "crewlly" }
+  relabel_rules = discovery.relabel.docker_logs.rules
+  forward_to    = [loki.process.crewlly.receiver]
+}
+
+loki.process "crewlly" {
+  stage.json {
+    drop_malformed = true
+
+    expressions = {
+      kind            = "kind",
+      level           = "level",
+      service         = "service",
+      environment     = "environment",
+      event_type      = "event_type",
+      outcome         = "outcome",
+      route           = "route",
+      reason          = "reason",
+      status          = "status",
+      status_class    = "status_class",
+      method          = "request.method",
+      request_id      = "request.id",
+      request_path    = "request.path",
+      actor_user_id   = "actor.user_id",
+      organization_id = "actor.organization_id",
+      access_role     = "actor.access_role",
+      target_type     = "target.type",
+      target_id       = "target.id",
+    }
+  }
+
+  stage.labels {
+    values = {
+      kind            = "",
+      level           = "",
+      service         = "",
+      environment     = "",
+      event_type      = "",
+      outcome         = "",
+      route           = "",
+      method          = "",
+      status_class    = "",
+      compose_service = "",
+    }
+  }
+
+  stage.structured_metadata {
+    values = {
+      reason          = "",
+      status          = "",
+      request_id      = "",
+      request_path    = "",
+      actor_user_id   = "",
+      organization_id = "",
+      access_role     = "",
+      target_type     = "",
+      target_id       = "",
+    }
+  }
+
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_LOKI_USERNAME")
+      password = sys.env("GRAFANA_CLOUD_LOGS_TOKEN")
+    }
+  }
+
+  external_labels = {
+    app = "crewlly",
+  }
+}

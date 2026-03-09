@@ -1,0 +1,48 @@
+name: Deploy Observability
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-observability.yml"
+      - "compose.observability.yml"
+      - "infra/observability/**"
+      - "docs/observability-grafana.md"
+      - ".env.example"
+
+concurrency:
+  group: deploy-observability
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+
+    steps:
+      - name: Deploy observability stack via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: DEPLOY_PATH
+          script: |
+            set -eu
+            DEPLOY_PATH="${DEPLOY_PATH:-/home/ubuntu/crewlly}"
+            echo "Using DEPLOY_PATH=$DEPLOY_PATH"
+            test -d "$DEPLOY_PATH" || { echo "Deploy path does not exist: $DEPLOY_PATH"; exit 1; }
+            cd "$DEPLOY_PATH"
+
+            test -f .env.production || { echo "Missing .env.production in $DEPLOY_PATH"; exit 1; }
+
+            git pull --ff-only origin main
+
+            export COMPOSE_IGNORE_ORPHANS=1
+
+            docker compose --env-file .env.production -f compose.observability.yml up -d

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { hashPassword, createSession, deleteUserSessions } from "@/lib/auth"
 import { Prisma } from "@prisma/client"
 import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
+import { auditActorFromSession, hashAuditIdentifier, logAuditEvent } from "@/lib/observability/audit"
 
 const registerSchema = z
   .object({
@@ -24,10 +25,24 @@ const registerSchema = z
   })
 
 export async function POST(request: Request) {
+  let attemptedEmailHash: string | undefined
+
   try {
     const json = await request.json().catch(() => null)
+    attemptedEmailHash =
+      typeof json?.email === "string" ? hashAuditIdentifier(json.email) : undefined
     const parsed = registerSchema.safeParse(json)
     if (!parsed.success) {
+      logAuditEvent(request, {
+        event_type: "auth.register",
+        outcome: "failure",
+        status: 400,
+        route: "/api/auth/register",
+        reason: "validation_error",
+        metadata: {
+          email_hash: attemptedEmailHash,
+        },
+      })
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
     const { fullName, name, email, password, phone } = parsed.data
@@ -36,6 +51,16 @@ export async function POST(request: Request) {
 
     const existing = await prisma.user.findUnique({ where: { email } })
     if (existing) {
+      logAuditEvent(request, {
+        event_type: "auth.register",
+        outcome: "failure",
+        status: 409,
+        route: "/api/auth/register",
+        reason: "email_exists",
+        metadata: {
+          email_hash: attemptedEmailHash,
+        },
+      })
       return NextResponse.json({ error: "Email уже используется" }, { status: 409 })
     }
 
@@ -65,9 +90,29 @@ export async function POST(request: Request) {
       },
     })
     res.cookies.set(cookie.name, cookie.value, cookie.options)
+    logAuditEvent(request, {
+      event_type: "auth.register",
+      outcome: "success",
+      status: 200,
+      route: "/api/auth/register",
+      actor: auditActorFromSession({ user }),
+      metadata: {
+        email_hash: attemptedEmailHash,
+      },
+    })
     return res
   } catch (error: unknown) {
     console.error("[auth/register] error", error)
+    logAuditEvent(request, {
+      event_type: "auth.register",
+      outcome: "failure",
+      status: 500,
+      route: "/api/auth/register",
+      reason: "server_error",
+      metadata: {
+        email_hash: attemptedEmailHash,
+      },
+    })
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
         return NextResponse.json({ error: "Email уже используется" }, { status: 409 })

@@ -16,6 +16,7 @@ import {
 } from "@/lib/work-interval-conflicts"
 import { getDefaultRuleCountsForPosition, isDefaultRulesetConfigured } from "@/lib/procedures/config"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
+import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
 const customPayTypeValues = ["hourly", "fixed_shift", "percent_revenue"] as const
 type CustomPayTypeValue = (typeof customPayTypeValues)[number]
@@ -274,6 +275,13 @@ const buildPositionRulesNotConfiguredError = (positionName?: string | null) =>
 export async function GET(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "interval.list",
+      outcome: "denied",
+      status: 401,
+      route: "/api/intervals",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const organizationId = session.organization.id
@@ -397,19 +405,59 @@ export async function GET(request: Request) {
       : null,
   }))
 
+  logAuditEvent(request, {
+    event_type: "interval.list",
+    outcome: "success",
+    status: 200,
+    route: "/api/intervals",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "organization",
+      id: organizationId,
+      organization_id: organizationId,
+      workday_id: workdayId,
+      employee_id: employeeId,
+    },
+    metadata: {
+      result_count: mapped.length,
+      date_from: dateFrom,
+      date_to: dateTo,
+    },
+  })
   return NextResponse.json({ data: mapped })
 }
 
 export async function POST(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "interval.create",
+      outcome: "denied",
+      status: 401,
+      route: "/api/intervals",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const organizationId = session.organization.id
+  const actor = auditActorFromSession(session)
   try {
     const json = await request.json().catch(() => null)
     const parsed = intervalCreateSchema.safeParse(json)
     if (!parsed.success) {
+      logAuditEvent(request, {
+        event_type: "interval.create",
+        outcome: "failure",
+        status: 400,
+        route: "/api/intervals",
+        actor,
+        target: {
+          type: "organization",
+          id: organizationId,
+          organization_id: organizationId,
+        },
+        reason: "validation_error",
+      })
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
 
@@ -427,6 +475,21 @@ export async function POST(request: Request) {
         })
     const validationError = data.useCustomPay ? validatePayComponents(intervalComponents) : null
     if (validationError) {
+      logAuditEvent(request, {
+        event_type: "interval.create",
+        outcome: "failure",
+        status: 400,
+        route: "/api/intervals",
+        actor,
+        target: {
+          type: "workday",
+          id: data.workdayId,
+          organization_id: organizationId,
+          workday_id: data.workdayId,
+          employee_id: data.employeeId,
+        },
+        reason: "invalid_pay_components",
+      })
       return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
@@ -435,6 +498,21 @@ export async function POST(request: Request) {
       where: { id: data.workdayId, organizationId },
     })
     if (!workday) {
+      logAuditEvent(request, {
+        event_type: "interval.create",
+        outcome: "failure",
+        status: 404,
+        route: "/api/intervals",
+        actor,
+        target: {
+          type: "workday",
+          id: data.workdayId,
+          organization_id: organizationId,
+          workday_id: data.workdayId,
+          employee_id: data.employeeId,
+        },
+        reason: "workday_not_found",
+      })
       return NextResponse.json({ error: "Рабочий день не найден" }, { status: 404 })
     }
 
@@ -450,9 +528,39 @@ export async function POST(request: Request) {
     ])
 
     if (!employee) {
+      logAuditEvent(request, {
+        event_type: "interval.create",
+        outcome: "failure",
+        status: 404,
+        route: "/api/intervals",
+        actor,
+        target: {
+          type: "employee",
+          id: data.employeeId,
+          organization_id: organizationId,
+          workday_id: data.workdayId,
+          employee_id: data.employeeId,
+        },
+        reason: "employee_not_found",
+      })
       return NextResponse.json({ error: "Сотрудник не найден в текущей организации" }, { status: 404 })
     }
     if (!position) {
+      logAuditEvent(request, {
+        event_type: "interval.create",
+        outcome: "failure",
+        status: 404,
+        route: "/api/intervals",
+        actor,
+        target: {
+          type: "position",
+          id: data.positionId,
+          organization_id: organizationId,
+          workday_id: data.workdayId,
+          employee_id: data.employeeId,
+        },
+        reason: "position_not_found",
+      })
       return NextResponse.json({ error: "Позиция не найдена или неактивна" }, { status: 404 })
     }
     const defaultRuleCounts = await getDefaultRuleCountsForPosition(prisma, position.id)
@@ -511,6 +619,24 @@ export async function POST(request: Request) {
       endAt,
     })
     if (overlaps.length > 0 && !allowConflictStatus) {
+      logAuditEvent(request, {
+        event_type: "interval.create",
+        outcome: "failure",
+        status: 409,
+        route: "/api/intervals",
+        actor,
+        target: {
+          type: "employee",
+          id: data.employeeId,
+          organization_id: organizationId,
+          workday_id: data.workdayId,
+          employee_id: data.employeeId,
+        },
+        reason: "overlap_conflict",
+        metadata: {
+          conflict_count: overlaps.length,
+        },
+      })
       return buildOverlapError(overlaps)
     }
 
@@ -634,6 +760,24 @@ export async function POST(request: Request) {
         .map((conflictId) => intervalResult.conflicts.get(conflictId))
         .filter((conflict): conflict is NonNullable<typeof conflict> => conflict != null) ?? []
 
+    logAuditEvent(request, {
+      event_type: "interval.create",
+      outcome: "success",
+      status: 200,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "interval",
+        id: interval?.id ?? null,
+        organization_id: organizationId,
+        workday_id: interval?.workdayId ?? data.workdayId,
+        employee_id: interval?.employeeId ?? data.employeeId,
+      },
+      metadata: {
+        conflict_count: intervalConflicts.length,
+        use_custom_pay: interval?.useCustomPay ?? data.useCustomPay,
+      },
+    })
     return NextResponse.json({
       data: {
         id: interval?.id,
@@ -674,6 +818,19 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
+    logAuditEvent(request, {
+      event_type: "interval.create",
+      outcome: "failure",
+      status: 500,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "organization",
+        id: organizationId,
+        organization_id: organizationId,
+      },
+      reason: "server_error",
+    })
     return buildApiErrorResponse(error, "Не удалось создать рабочий интервал.", "create")
   }
 }
@@ -681,13 +838,34 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "interval.update",
+      outcome: "denied",
+      status: 401,
+      route: "/api/intervals",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const organizationId = session.organization.id
+  const actor = auditActorFromSession(session)
   try {
     const json = await request.json().catch(() => null)
     const parsed = intervalUpdateSchema.safeParse(json)
     if (!parsed.success) {
+      logAuditEvent(request, {
+        event_type: "interval.update",
+        outcome: "failure",
+        status: 400,
+        route: "/api/intervals",
+        actor,
+        target: {
+          type: "organization",
+          id: organizationId,
+          organization_id: organizationId,
+        },
+        reason: "validation_error",
+      })
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
 
@@ -700,6 +878,19 @@ export async function PUT(request: Request) {
     })
 
     if (!existing || existing.workday.organizationId !== organizationId) {
+      logAuditEvent(request, {
+        event_type: "interval.update",
+        outcome: "failure",
+        status: 404,
+        route: "/api/intervals",
+        actor,
+        target: {
+          type: "interval",
+          id,
+          organization_id: organizationId,
+        },
+        reason: "interval_not_found",
+      })
       return NextResponse.json({ error: "Интервал не найден" }, { status: 404 })
     }
 
@@ -844,6 +1035,24 @@ export async function PUT(request: Request) {
         excludeIntervalId: id,
       })
       if (overlaps.length > 0) {
+        logAuditEvent(request, {
+          event_type: "interval.update",
+          outcome: "failure",
+          status: 409,
+          route: "/api/intervals",
+          actor,
+          target: {
+            type: "interval",
+            id,
+            organization_id: organizationId,
+            workday_id: targetWorkday.id,
+            employee_id: nextEmployeeId,
+          },
+          reason: "overlap_conflict",
+          metadata: {
+            conflict_count: overlaps.length,
+          },
+        })
         return buildOverlapError(overlaps)
       }
     }
@@ -918,6 +1127,24 @@ export async function PUT(request: Request) {
         .map((conflictId) => intervalResult.conflicts.get(conflictId))
         .filter((conflict): conflict is NonNullable<typeof conflict> => conflict != null) ?? []
 
+    logAuditEvent(request, {
+      event_type: "interval.update",
+      outcome: "success",
+      status: 200,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "interval",
+        id: interval?.id ?? id,
+        organization_id: organizationId,
+        workday_id: interval?.workdayId ?? targetWorkday.id,
+        employee_id: interval?.employeeId ?? nextEmployeeId,
+      },
+      metadata: {
+        changed_fields: Object.keys(updateData),
+        conflict_count: intervalConflicts.length,
+      },
+    })
     return NextResponse.json({
       data: {
         id: interval?.id,
@@ -949,6 +1176,19 @@ export async function PUT(request: Request) {
       },
     })
   } catch (error) {
+    logAuditEvent(request, {
+      event_type: "interval.update",
+      outcome: "failure",
+      status: 500,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "organization",
+        id: organizationId,
+        organization_id: organizationId,
+      },
+      reason: "server_error",
+    })
     return buildApiErrorResponse(error, "Не удалось обновить рабочий интервал.", "update")
   }
 }
@@ -956,14 +1196,35 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "interval.delete",
+      outcome: "denied",
+      status: 401,
+      route: "/api/intervals",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const organizationId = session.organization.id
+  const actor = auditActorFromSession(session)
 
   const url = new URL(request.url)
   const id = url.searchParams.get("id")
 
   if (!id) {
+    logAuditEvent(request, {
+      event_type: "interval.delete",
+      outcome: "failure",
+      status: 400,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "organization",
+        id: organizationId,
+        organization_id: organizationId,
+      },
+      reason: "missing_interval_id",
+    })
     return NextResponse.json({ error: "id is required" }, { status: 400 })
   }
 
@@ -974,6 +1235,19 @@ export async function DELETE(request: Request) {
   })
 
   if (!existing || existing.workday.organizationId !== organizationId) {
+    logAuditEvent(request, {
+      event_type: "interval.delete",
+      outcome: "failure",
+      status: 404,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "interval",
+        id,
+        organization_id: organizationId,
+      },
+      reason: "interval_not_found",
+    })
     return NextResponse.json({ error: "Интервал не найден" }, { status: 404 })
   }
 
@@ -985,5 +1259,19 @@ export async function DELETE(request: Request) {
     })
   })
 
+  logAuditEvent(request, {
+    event_type: "interval.delete",
+    outcome: "success",
+    status: 200,
+    route: "/api/intervals",
+    actor,
+    target: {
+      type: "interval",
+      id,
+      organization_id: organizationId,
+      workday_id: existing.workdayId,
+      employee_id: existing.employeeId,
+    },
+  })
   return NextResponse.json({ success: true })
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg } from "@/lib/auth"
+import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
 const locationCreateSchema = z.object({
   name: z.string().min(1, "Название обязательно"),
@@ -39,12 +40,32 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "location.create",
+      outcome: "denied",
+      status: 401,
+      route: "/api/locations",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const json = await request.json().catch(() => null)
   const parsed = locationCreateSchema.safeParse(json)
   if (!parsed.success) {
+    logAuditEvent(request, {
+      event_type: "location.create",
+      outcome: "failure",
+      status: 400,
+      route: "/api/locations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "validation_error",
+    })
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
@@ -56,6 +77,22 @@ export async function POST(request: Request) {
   })
 
   if (existing) {
+    logAuditEvent(request, {
+      event_type: "location.create",
+      outcome: "failure",
+      status: 409,
+      route: "/api/locations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "duplicate_name",
+      metadata: {
+        location_name: name,
+      },
+    })
     return NextResponse.json({ error: "Локация с таким названием уже существует" }, { status: 409 })
   }
 
@@ -75,6 +112,21 @@ export async function POST(request: Request) {
     },
   })
 
+  logAuditEvent(request, {
+    event_type: "location.create",
+    outcome: "success",
+    status: 200,
+    route: "/api/locations",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "location",
+      id: location.id,
+      organization_id: session.organization.id,
+      location_id: location.id,
+    },
+    metadata: {
+      location_name: location.name,
+    },
+  })
   return NextResponse.json({ data: location })
 }
-

@@ -3,19 +3,40 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
 import { createInviteCode } from "@/lib/invite-codes"
+import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
 const inviteCodeCreateSchema = z.object({
   expiresAt: z.string().datetime().optional(),
   maxUses: z.number().int().positive().optional(),
 })
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session?.organization || !session.membership) {
+    logAuditEvent(request, {
+      event_type: "invite_code.read",
+      outcome: "denied",
+      status: 401,
+      route: "/api/invite-codes",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   if (!isOwnerOrManagerRole(session.membership)) {
+    logAuditEvent(request, {
+      event_type: "invite_code.read",
+      outcome: "denied",
+      status: 403,
+      route: "/api/invite-codes",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "management_role_required",
+    })
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -33,6 +54,22 @@ export async function GET() {
       createdByUserId: session.user.id,
     })
 
+    logAuditEvent(request, {
+      event_type: "invite_code.read",
+      outcome: "success",
+      status: 200,
+      route: "/api/invite-codes",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      metadata: {
+        created_on_read: true,
+        invite_code_id: created.invitationId,
+      },
+    })
     return NextResponse.json({
       data: {
         id: created.invitationId,
@@ -46,6 +83,22 @@ export async function GET() {
     })
   }
 
+  logAuditEvent(request, {
+    event_type: "invite_code.read",
+    outcome: "success",
+    status: 200,
+    route: "/api/invite-codes",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "organization",
+      id: session.organization.id,
+      organization_id: session.organization.id,
+    },
+    metadata: {
+      invite_code_id: invitation.id,
+      uses_count: invitation.usesCount,
+    },
+  })
   return NextResponse.json({
     data: {
       id: invitation.id,
@@ -62,16 +115,49 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await getSessionUserWithOrg()
   if (!session?.organization || !session.membership) {
+    logAuditEvent(request, {
+      event_type: "invite_code.create",
+      outcome: "denied",
+      status: 401,
+      route: "/api/invite-codes",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   if (!isOwnerOrManagerRole(session.membership)) {
+    logAuditEvent(request, {
+      event_type: "invite_code.create",
+      outcome: "denied",
+      status: 403,
+      route: "/api/invite-codes",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "management_role_required",
+    })
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => ({}))
   const parsed = inviteCodeCreateSchema.safeParse(json)
   if (!parsed.success) {
+    logAuditEvent(request, {
+      event_type: "invite_code.create",
+      outcome: "failure",
+      status: 400,
+      route: "/api/invite-codes",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "validation_error",
+    })
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
@@ -85,6 +171,22 @@ export async function POST(request: Request) {
     maxUses,
   })
 
+  logAuditEvent(request, {
+    event_type: "invite_code.create",
+    outcome: "success",
+    status: 200,
+    route: "/api/invite-codes",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "organization",
+      id: session.organization.id,
+      organization_id: session.organization.id,
+    },
+    metadata: {
+      invite_code_id: created.invitationId,
+      max_uses: created.maxUses,
+    },
+  })
   return NextResponse.json({
     data: {
       invitationId: created.invitationId,

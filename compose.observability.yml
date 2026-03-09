@@ -1,0 +1,22 @@
+services:
+  alloy:
+    image: grafana/alloy:v1.13.2
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ALLOY_HTTP_PORT:-12345}:12345"
+    environment:
+      GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:?Set GRAFANA_CLOUD_LOKI_URL in .env.production}
+      GRAFANA_CLOUD_LOKI_USERNAME: ${GRAFANA_CLOUD_LOKI_USERNAME:?Set GRAFANA_CLOUD_LOKI_USERNAME in .env.production}
+      GRAFANA_CLOUD_LOGS_TOKEN: ${GRAFANA_CLOUD_LOGS_TOKEN:?Set GRAFANA_CLOUD_LOGS_TOKEN in .env.production}
+    volumes:
+      - ./infra/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - alloy_data:/var/lib/alloy/data
+
+volumes:
+  alloy_data:
