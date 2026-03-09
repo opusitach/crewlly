@@ -39,9 +39,26 @@ jobs:
             test -d "$DEPLOY_PATH" || { echo "Deploy path does not exist: $DEPLOY_PATH"; exit 1; }
             cd "$DEPLOY_PATH"
 
+            LOCK_FILE="$DEPLOY_PATH/.deploy.lock"
+            command -v flock >/dev/null 2>&1 || { echo "flock is required on the VPS"; exit 1; }
+            exec 9>"$LOCK_FILE"
+            flock -w 600 9 || { echo "Could not acquire deploy lock: $LOCK_FILE"; exit 1; }
+            echo "Acquired deploy lock: $LOCK_FILE"
+
+            sync_repo() {
+              if git pull --ff-only origin main; then
+                return 0
+              fi
+
+              echo "git pull failed, pruning remote refs and retrying once..."
+              git remote prune origin || true
+              git fetch --prune origin
+              git merge --ff-only origin/main
+            }
+
             test -f .env.production || { echo "Missing .env.production in $DEPLOY_PATH"; exit 1; }
 
-            git pull --ff-only origin main
+            sync_repo
 
             export COMPOSE_IGNORE_ORPHANS=1
 
