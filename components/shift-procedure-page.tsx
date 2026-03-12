@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useToast } from "@/hooks/use-toast"
 import { roundPayrollHourlyMinutes } from "@/lib/payroll/interval-compensation"
+import { shouldRedirectToAppAfterProcedureAction } from "@/lib/procedures/navigation"
 import { cn } from "@/lib/utils"
 import {
   decodeCashProcedureValues,
@@ -735,11 +736,17 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
         title: whenParam === "OPEN" ? "Смена открыта" : "Смена закрыта",
         description: "Статус смены обновлён",
       })
-      await refreshData()
       clearDraftCache()
-      if (whenParam === "CLOSE") {
+      if (
+        shouldRedirectToAppAfterProcedureAction({
+          when: whenParam,
+          hasManagementAccess: Boolean(interval?.canForce),
+        })
+      ) {
         router.replace("/app")
+        return
       }
+      await refreshData()
     } catch (err: any) {
       toast({
         title: "Ошибка",
