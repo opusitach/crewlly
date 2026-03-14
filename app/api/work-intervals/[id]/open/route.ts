@@ -12,6 +12,7 @@ import { listCashRegisterFields } from "@/lib/cash/fields-query"
 import { findWorkdayCashSourceAnswer } from "@/lib/cash/workday-cash-source"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
+import { finalizeWorkIntervalOpen } from "@/lib/work-intervals/open"
 
 type RouteContext = { params: Promise<{ id: string }> }
 const forceSchema = z.object({
@@ -25,10 +26,20 @@ const isProceduresSchemaMissing = (error: unknown) =>
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { session, interval, hasManagementAccess, error, status } = await getAuthorizedInterval(id)
+  const {
+    session,
+    interval,
+    hasManagementAccess,
+    effectiveStatus,
+    effectiveOpenedAt,
+    error,
+    status,
+  } = await getAuthorizedInterval(id)
   if (error || !interval) {
     return NextResponse.json({ error }, { status })
   }
+  const resolvedStatus = effectiveStatus ?? interval.status
+  const resolvedOpenedAt = effectiveOpenedAt ?? interval.openedAt ?? interval.timeEntry?.clockInAt ?? null
 
   const json = await request.json().catch(() => ({}))
   const parsed = forceSchema.safeParse(json)
@@ -44,10 +55,10 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Reason is required for force open" }, { status: 400 })
   }
 
-  if (isOpenedStatus(interval.status)) {
+  if (isOpenedStatus(resolvedStatus)) {
     return NextResponse.json({ error: "Shift already opened" }, { status: 409 })
   }
-  if (isClosedStatus(interval.status)) {
+  if (isClosedStatus(resolvedStatus)) {
     return NextResponse.json({ error: "Shift already closed" }, { status: 409 })
   }
   if (!interval.positionId) {
@@ -70,18 +81,15 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const openWithoutProcedures = async () => {
-    if (!isPlannedStatus(interval.status)) {
+    if (!isPlannedStatus(resolvedStatus)) {
       return NextResponse.json({ error: "Shift cannot be opened in current status" }, { status: 409 })
     }
     const opened = await prisma.$transaction(async (tx) => {
-      const updated = await tx.workInterval.update({
-        where: { id: interval.id },
-        data: {
-          status: "in_progress",
-          openedAt: interval.openedAt ?? new Date(),
-          openedByOwnerId: force ? session?.user.id ?? null : null,
-          openOverrideReason: force ? normalizedReason ?? null : null,
-        },
+      const updated = await finalizeWorkIntervalOpen(tx, {
+        intervalId: interval.id,
+        openedAt: resolvedOpenedAt ?? new Date(),
+        openedByOwnerId: force ? session?.user.id ?? null : null,
+        openOverrideReason: force ? normalizedReason ?? null : null,
       })
 
       await notifyOrganizationOwners(tx, {
@@ -179,18 +187,15 @@ export async function POST(request: Request, context: RouteContext) {
         return { ok: false, error: "Required rules are not completed", missing: missingRequired }
       }
 
-      if (!isPlannedStatus(interval.status)) {
+      if (!isPlannedStatus(resolvedStatus)) {
         return { ok: false, error: "Shift cannot be opened in current status" }
       }
 
-      const opened = await tx.workInterval.update({
-        where: { id: interval.id },
-        data: {
-          status: "in_progress",
-          openedAt: interval.openedAt ?? new Date(),
-          openedByOwnerId: force ? session?.user.id ?? null : null,
-          openOverrideReason: force ? normalizedReason ?? null : null,
-        },
+      const opened = await finalizeWorkIntervalOpen(tx, {
+        intervalId: interval.id,
+        openedAt: resolvedOpenedAt ?? new Date(),
+        openedByOwnerId: force ? session?.user.id ?? null : null,
+        openOverrideReason: force ? normalizedReason ?? null : null,
       })
 
       await notifyOrganizationOwners(tx, {

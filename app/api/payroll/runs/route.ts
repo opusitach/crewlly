@@ -3,6 +3,11 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
 import { computeIntervalPayrollSnapshot } from "@/lib/payroll/interval-compensation"
+import {
+  resolveEffectiveWorkIntervalClosedAt,
+  resolveEffectiveWorkIntervalOpenedAt,
+  resolveEffectiveWorkIntervalStatus,
+} from "@/lib/work-intervals/status"
 
 const payloadSchema = z.object({
   periodStart: z.coerce.date(),
@@ -43,7 +48,17 @@ export async function POST(request: Request) {
 
     const intervals = await tx.workInterval.findMany({
       where: {
-        status: "completed",
+        OR: [
+          { status: "completed" },
+          {
+            status: { notIn: ["canceled", "conflict"] },
+            timeEntry: {
+              is: {
+                clockOutAt: { not: null },
+              },
+            },
+          },
+        ],
         workday: {
           organizationId,
           workDate: { gte: periodStart, lte: periodEnd },
@@ -108,6 +123,9 @@ export async function POST(request: Request) {
     const snapshotUpdates: Array<Promise<unknown>> = []
 
     for (const interval of intervals) {
+      const effectiveStatus = resolveEffectiveWorkIntervalStatus(interval)
+      const effectiveOpenedAt = resolveEffectiveWorkIntervalOpenedAt(interval)
+      const effectiveClosedAt = resolveEffectiveWorkIntervalClosedAt(interval)
       let minutesWorked = interval.calculatedMinutesWorked ?? 0
       let grossPayCents = interval.calculatedGrossPayCents ?? 0
 
@@ -116,10 +134,10 @@ export async function POST(request: Request) {
           interval: {
             startAt: interval.startAt,
             endAt: interval.endAt,
-            openedAt: interval.openedAt,
-            closedAt: interval.closedAt,
+            openedAt: effectiveOpenedAt,
+            closedAt: effectiveClosedAt,
             breakMinutes: interval.breakMinutes,
-            status: interval.status,
+            status: effectiveStatus,
             useCustomPay: interval.useCustomPay,
             revenueCents: interval.revenueCents,
           },

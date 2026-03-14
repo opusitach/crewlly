@@ -53,12 +53,13 @@ const isProceduresSchemaMissing = (error: unknown) =>
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { interval, error, status } = await getAuthorizedInterval(id)
+  const { interval, effectiveStatus, error, status } = await getAuthorizedInterval(id)
   if (error || !interval) {
     return NextResponse.json({ error }, { status })
   }
+  const resolvedStatus = effectiveStatus ?? interval.status
 
-  if (isClosedStatus(interval.status)) {
+  if (isClosedStatus(resolvedStatus)) {
     return NextResponse.json({ error: "Shift is closed" }, { status: 409 })
   }
   if (!interval.positionId) {
@@ -72,10 +73,10 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { when, answers } = parsed.data
-  if (when === "CLOSE" && interval.status !== "in_progress") {
+  if (when === "CLOSE" && resolvedStatus !== "in_progress") {
     return NextResponse.json({ error: "Close rules can be filled only for opened shifts" }, { status: 409 })
   }
-  const allowUpdate = isPlannedStatus(interval.status)
+  const allowUpdate = isPlannedStatus(resolvedStatus)
 
   try {
     await prisma.$transaction(async (tx) => {

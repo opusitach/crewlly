@@ -21,10 +21,20 @@ const forceSchema = z.object({
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { session, interval, hasManagementAccess, error, status } = await getAuthorizedInterval(id)
+  const {
+    session,
+    interval,
+    hasManagementAccess,
+    effectiveStatus,
+    effectiveClosedAt,
+    error,
+    status,
+  } = await getAuthorizedInterval(id)
   if (error || !interval) {
     return NextResponse.json({ error }, { status })
   }
+  const resolvedStatus = effectiveStatus ?? interval.status
+  const resolvedClosedAt = effectiveClosedAt ?? interval.closedAt ?? interval.timeEntry?.clockOutAt ?? null
 
   const json = await request.json().catch(() => ({}))
   const parsed = forceSchema.safeParse(json)
@@ -40,10 +50,10 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Reason is required for force close" }, { status: 400 })
   }
 
-  if (isClosedStatus(interval.status)) {
+  if (isClosedStatus(resolvedStatus)) {
     return NextResponse.json({ error: "Shift already closed" }, { status: 409 })
   }
-  if (!isOpenedStatus(interval.status)) {
+  if (!isOpenedStatus(resolvedStatus)) {
     return NextResponse.json({ error: "Shift is not opened" }, { status: 409 })
   }
 
@@ -70,7 +80,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const closeWithoutProcedures = async () => {
-    if (!isOpenedStatus(interval.status)) {
+    if (!isOpenedStatus(resolvedStatus)) {
       return NextResponse.json({ error: "Shift is not opened" }, { status: 409 })
     }
     const result = await prisma.$transaction(async (tx) => {
@@ -78,7 +88,7 @@ export async function POST(request: Request, context: RouteContext) {
         intervalId: interval.id,
         workdayId: interval.workday.id,
         locationId: interval.workday.locationId,
-        closedAt: interval.closedAt ?? new Date(),
+        closedAt: resolvedClosedAt ?? new Date(),
         closedByOwnerId: force ? session?.user.id ?? null : null,
         closeOverrideReason: force ? normalizedReason ?? null : null,
         notification,
@@ -193,7 +203,7 @@ export async function POST(request: Request, context: RouteContext) {
         intervalId: interval.id,
         workdayId: interval.workday.id,
         locationId: interval.workday.locationId,
-        closedAt: interval.closedAt ?? new Date(),
+        closedAt: resolvedClosedAt ?? new Date(),
         closedByOwnerId: force ? session?.user.id ?? null : null,
         closeOverrideReason: force ? normalizedReason ?? null : null,
         notification,

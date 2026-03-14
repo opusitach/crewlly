@@ -242,7 +242,7 @@ docker compose -f docker-compose.dev.yml up -d pgadmin
 Новая схема прод-деплоя разделена на 3 compose-файла:
 
 - `compose.data.yml` — `db`, `minio`, `pgadmin` (редкие изменения)
-- `compose.app.yml` — `front`, `back`, `shift_auto_close` (+ one-shot `migrate`)
+- `compose.app.yml` — `front`, `back`, `internal_scheduler` (+ one-shot `migrate`)
 - `compose.caddy.yml` — `caddy` (редкие роутинговые изменения)
 
 `Caddyfile` хранится в git по пути `infra/caddy/Caddyfile`, а секреты/пароли передаются через `.env.production`.
@@ -271,9 +271,12 @@ docker compose -f docker-compose.dev.yml up -d pgadmin
 
 ### Фоновые задачи
 
-- `shift_auto_close` в `compose.app.yml` каждые `STALE_SHIFT_AUTO_CLOSE_INTERVAL_SECONDS` секунд вызывает internal endpoint `/api/internal/work-intervals/auto-complete`.
-- Задача автоматически переводит зависшие смены из `in_progress` в `completed`, когда с `openedAt`/`clockInAt` (или `startAt` как fallback) прошло 24 часа.
-- Для защиты endpoint требуется `STALE_SHIFT_AUTO_CLOSE_CRON_SECRET`.
+- `internal_scheduler` в `compose.app.yml` запускается тем же release, что и backend, но отдельным контейнером в том же app stack.
+- Регистр задач описан в `lib/internal-scheduler/index.mjs`: сейчас это `shift_auto_close` и `work_interval_consistency_monitor`.
+- `shift_auto_close` каждые `STALE_SHIFT_AUTO_CLOSE_INTERVAL_SECONDS` секунд вызывает internal endpoint `/api/internal/work-intervals/auto-complete` и автоматически переводит зависшие смены из `in_progress` в `completed`, когда с `openedAt`/`clockInAt` (или `startAt` как fallback) прошло 24 часа.
+- `work_interval_consistency_monitor` каждые `WORK_INTERVAL_CONSISTENCY_INTERVAL_SECONDS` секунд вызывает internal endpoint `/api/internal/work-intervals/consistency-check`, ищет drift между `work_intervals` и `time_entries` и пишет audit event `cron.work_interval_consistency.run`.
+- По умолчанию scheduler использует единый `INTERNAL_CRON_SECRET`; для безопасной миграции поддерживаются и legacy per-job secrets как override.
+- Для liveness-check scheduler пишет state-file (`INTERNAL_SCHEDULER_STATE_PATH`) и проверяется отдельным Docker healthcheck.
 
 ### 1) Первый запуск: создать общую сеть
 
@@ -304,7 +307,7 @@ docker compose --env-file .env.production -f compose.data.yml up -d db minio pga
 # (опционально, один раз) инициализация bucket/CORS для MinIO
 docker compose --env-file .env.production -f compose.data.yml run --rm minio-init
 
-# 2. App services (front/back/shift_auto_close + миграции)
+# 2. App services (front/back/internal_scheduler + миграции)
 docker compose --env-file .env.production -f compose.app.yml up -d --build
 
 # 3. Caddy reverse proxy
@@ -327,7 +330,7 @@ caddy hash-password --plaintext 'PASSWORD'
 
 В репозитории есть 3 workflow:
 
-- `deploy-app.yml` — деплоит весь `compose.app.yml` (`front/back/shift_auto_close` + `migrate`)
+- `deploy-app.yml` — деплоит весь `compose.app.yml` (`front/back/internal_scheduler` + `migrate`)
 - `deploy-caddy.yml` — деплоит/валидирует/reload только `caddy`
 - `deploy-data.yml` — деплоит только `db/minio/pgadmin`
 

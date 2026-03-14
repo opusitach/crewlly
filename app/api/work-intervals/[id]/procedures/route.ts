@@ -164,10 +164,22 @@ function buildCashFormulaCalculations(input: {
 
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { session, interval, hasManagementAccess, error, status } = await getAuthorizedInterval(id)
+  const {
+    session,
+    interval,
+    hasManagementAccess,
+    effectiveStatus,
+    effectiveOpenedAt,
+    effectiveClosedAt,
+    error,
+    status,
+  } = await getAuthorizedInterval(id)
   if (error || !interval) {
     return NextResponse.json({ error }, { status })
   }
+  const resolvedStatus = effectiveStatus ?? interval.status
+  const resolvedOpenedAt = effectiveOpenedAt ?? interval.openedAt ?? interval.timeEntry?.clockInAt ?? null
+  const resolvedClosedAt = effectiveClosedAt ?? interval.closedAt ?? interval.timeEntry?.clockOutAt ?? null
 
   if (!interval.positionId) {
     return NextResponse.json({ error: "Position is required for this interval" }, { status: 400 })
@@ -180,7 +192,7 @@ export async function GET(request: Request, context: RouteContext) {
     : null
 
   try {
-    const allowUpdate = isPlannedStatus(interval.status)
+    const allowUpdate = isPlannedStatus(resolvedStatus)
     const templatesByWhen = await getRuleTemplatesForPositionAndDate(
       prisma,
       interval.positionId,
@@ -222,22 +234,24 @@ export async function GET(request: Request, context: RouteContext) {
     const fixedComponent = componentByType.get("fixed_shift")
     const percentComponent = componentByType.get("percent_revenue")
 
-    const startedAt = interval.openedAt ?? interval.startAt
-    const elapsedUntil = interval.status === "in_progress" ? new Date() : interval.endAt
+    const startedAt = resolvedOpenedAt ?? interval.startAt
+    const elapsedUntil = resolvedStatus === "in_progress" ? new Date() : resolvedClosedAt ?? interval.endAt
     const elapsedMinutes = toMinutes(startedAt, elapsedUntil)
     const baseMinutes = computeIntervalMinutesWorked({
       interval: {
         startAt: interval.startAt,
         endAt: interval.endAt,
+        openedAt: resolvedOpenedAt ?? undefined,
+        closedAt: resolvedClosedAt ?? undefined,
         breakMinutes: interval.breakMinutes,
       },
-      timeEntry: null,
+      timeEntry: interval.timeEntry,
     })
 
-    const effectiveMinutes = interval.status === "in_progress" ? elapsedMinutes : baseMinutes.minutesWorked
+    const effectiveMinutes = resolvedStatus === "in_progress" ? elapsedMinutes : baseMinutes.minutesWorked
     const compensation = computeIntervalCompensation({
       interval: {
-        status: interval.status,
+        status: resolvedStatus,
         revenueCents: interval.revenueCents,
       },
       minutesWorked: effectiveMinutes,
@@ -371,7 +385,7 @@ export async function GET(request: Request, context: RouteContext) {
     })
 
     const shouldResolveCloseCashSkip =
-      interval.status === "in_progress" &&
+      resolvedStatus === "in_progress" &&
       procedures.some((procedure) => procedure.when === "CLOSE" && procedure.rules.some((rule) => rule.type === "CASH"))
     const closeCashSkipEligibility = shouldResolveCloseCashSkip
       ? await getCloseCashSkipEligibility(prisma, {
@@ -467,11 +481,11 @@ export async function GET(request: Request, context: RouteContext) {
       data: {
         interval: {
           id: interval.id,
-          status: interval.status,
+          status: resolvedStatus,
           startAt: interval.startAt.toISOString(),
           endAt: interval.endAt.toISOString(),
-          openedAt: interval.openedAt?.toISOString() ?? null,
-          closedAt: interval.closedAt?.toISOString() ?? null,
+          openedAt: resolvedOpenedAt?.toISOString() ?? null,
+          closedAt: resolvedClosedAt?.toISOString() ?? null,
           positionId: interval.positionId,
           workDate: interval.workday.workDate.toISOString().split("T")[0],
           payPreview: {
@@ -496,11 +510,11 @@ export async function GET(request: Request, context: RouteContext) {
         data: {
           interval: {
             id: interval.id,
-            status: interval.status,
+            status: resolvedStatus,
             startAt: interval.startAt.toISOString(),
             endAt: interval.endAt.toISOString(),
-            openedAt: interval.openedAt?.toISOString() ?? null,
-            closedAt: interval.closedAt?.toISOString() ?? null,
+            openedAt: resolvedOpenedAt?.toISOString() ?? null,
+            closedAt: resolvedClosedAt?.toISOString() ?? null,
             positionId: interval.positionId,
             workDate: interval.workday.workDate.toISOString().split("T")[0],
             payPreview: null,

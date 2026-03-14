@@ -7,7 +7,7 @@ const RETENTION_DAYS = 14
 const BATCH_LIMIT = 200
 
 export async function POST(request: Request) {
-  if (!isAuthorizedInternalCronRequest(request, "MEDIA_RETENTION_CRON_SECRET")) {
+  if (!isAuthorizedInternalCronRequest(request, ["INTERNAL_CRON_SECRET", "MEDIA_RETENTION_CRON_SECRET"])) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

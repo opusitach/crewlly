@@ -702,10 +702,10 @@ export default function ShiftsView({
     if (interval.status === "canceled") {
       return { key: "canceled", label: "Отменена", className: STATUS_STYLES.canceled as string }
     }
-    if (interval.status === "completed" || interval.timeEntry?.clockOutAt) {
+    if (interval.status === "completed") {
       return { key: "completed", label: "Завершена", className: STATUS_STYLES.completed as string }
     }
-    if (interval.status === "in_progress" || interval.timeEntry?.clockInAt) {
+    if (interval.status === "in_progress") {
       return { key: "in_progress", label: "Идет", className: STATUS_STYLES.in_progress as string }
     }
     return { key: "scheduled", label: "Запланирована", className: STATUS_STYLES.scheduled as string }

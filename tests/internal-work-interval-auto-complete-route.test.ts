@@ -239,4 +239,47 @@ describe("POST /api/internal/work-intervals/auto-complete", () => {
       }),
     )
   })
+
+  it("auto-closes desynced intervals that are effectively open via clock-in", async () => {
+    mocked.prisma.workInterval.findMany.mockResolvedValue([
+      {
+        id: "interval-desynced",
+        status: "scheduled",
+        startAt: new Date("2026-03-04T08:00:00.000Z"),
+        openedAt: null,
+        closedAt: null,
+        conflictWithIntervalIds: [],
+        timeEntry: {
+          clockInAt: new Date("2026-03-04T09:00:00.000Z"),
+          clockOutAt: null,
+        },
+        employee: { user: { fullName: "Иван Петров", email: "ivan@example.com" } },
+        workday: {
+          id: "workday-1",
+          organizationId: "org-1",
+          locationId: "location-1",
+          workDate: new Date("2026-03-05T00:00:00.000Z"),
+        },
+      },
+    ])
+
+    mocked.finalizeWorkIntervalClose.mockResolvedValue({
+      interval: { id: "interval-desynced" },
+      snapshot: null,
+      closedAt: new Date("2026-03-05T09:00:00.000Z"),
+    })
+
+    const response = await POST(new Request("http://localhost/api/internal/work-intervals/auto-complete", { method: "POST" }))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(mocked.finalizeWorkIntervalClose).toHaveBeenCalledTimes(1)
+    expect(body).toEqual(
+      expect.objectContaining({
+        ok: true,
+        matched: 1,
+        closed: 1,
+      }),
+    )
+  })
 })

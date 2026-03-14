@@ -22,10 +22,12 @@ const buildCancelErrorResponse = (error: unknown) => {
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { session, interval, error, status } = await getAuthorizedInterval(id)
+  const { session, interval, effectiveStatus, effectiveClosedAt, error, status } = await getAuthorizedInterval(id)
   if (error || !interval || !session?.organization) {
     return NextResponse.json({ error }, { status })
   }
+  const resolvedStatus = effectiveStatus ?? interval.status
+  const resolvedClosedAt = effectiveClosedAt ?? interval.closedAt ?? interval.timeEntry?.clockOutAt ?? null
   const organizationId = session.organization.id
 
   const json = await request.json().catch(() => null)
@@ -40,13 +42,13 @@ export async function POST(request: Request, context: RouteContext) {
     )
   }
 
-  if (interval.status === "completed") {
+  if (resolvedStatus === "completed") {
     return NextResponse.json({ error: "Смена уже завершена." }, { status: 409 })
   }
-  if (interval.status === "canceled") {
+  if (resolvedStatus === "canceled") {
     return NextResponse.json({ error: "Смена уже отменена." }, { status: 409 })
   }
-  if (interval.status !== "scheduled") {
+  if (resolvedStatus !== "scheduled") {
     return NextResponse.json(
       {
         error: "Отменить можно только запланированную смену.",
@@ -72,7 +74,7 @@ export async function POST(request: Request, context: RouteContext) {
         data: {
           status: "canceled",
           cancelReason: parsed.data.reason,
-          closedAt: interval.closedAt ?? new Date(),
+          closedAt: resolvedClosedAt ?? new Date(),
         },
       })
 

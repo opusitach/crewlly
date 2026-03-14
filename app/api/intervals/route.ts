@@ -14,6 +14,11 @@ import {
   loadIntervalConflictSummariesByIds,
   recomputeEmployeeConflictStatuses,
 } from "@/lib/work-interval-conflicts"
+import {
+  resolveEffectiveWorkIntervalClosedAt,
+  resolveEffectiveWorkIntervalOpenedAt,
+  resolveEffectiveWorkIntervalStatus,
+} from "@/lib/work-intervals/status"
 import { getDefaultRuleCountsForPosition, isDefaultRulesetConfigured } from "@/lib/procedures/config"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
@@ -56,7 +61,6 @@ const intervalCreateSchema = z.object({
 
 const intervalUpdateSchema = intervalCreateSchema.partial().extend({
   id: z.string().uuid(),
-  status: z.enum(["scheduled", "in_progress", "canceled", "completed", "conflict"]).optional(),
 })
 
 const normalizeCustomPayTypes = (
@@ -345,65 +349,71 @@ export async function GET(request: Request) {
     ids: conflictIds,
   })
 
-  const mapped = intervals.map((wi) => ({
-    id: wi.id,
-    workdayId: wi.workdayId,
-    workday: {
-      id: wi.workday.id,
-      workDate: wi.workday.workDate.toISOString().split("T")[0],
-      locationId: wi.workday.locationId,
-      status: wi.workday.status,
-    },
-    employeeId: wi.employeeId,
-    employee: {
-      id: wi.employee.id,
-      fullName: wi.employee.user.fullName,
-      avatarUrl: wi.employee.user.avatarUrl,
-    },
-    positionId: wi.positionId,
-    position: wi.position,
-    startAt: wi.startAt.toISOString(),
-    endAt: wi.endAt.toISOString(),
-    startTime: wi.startAt.toTimeString().slice(0, 5),
-    endTime: wi.endAt.toTimeString().slice(0, 5),
-    status: wi.status,
-    conflictWithIntervalIds: wi.conflictWithIntervalIds ?? [],
-    conflicts:
-      (wi.conflictWithIntervalIds ?? [])
-        .map((conflictId) => conflictMap.get(conflictId))
-        .filter((conflict): conflict is NonNullable<typeof conflict> => conflict != null) ?? [],
-    openedAt: wi.openedAt?.toISOString() ?? null,
-    closedAt: wi.closedAt?.toISOString() ?? null,
-    cancelReason: wi.cancelReason ?? null,
-    useCustomPay: wi.useCustomPay,
-    payComponents: wi.payComponents.map((component) => ({
-      componentType: component.componentType,
-      amountCents: component.amountCents,
-      rateBp: component.rateBp,
-      isActive: component.isActive,
-      priority: component.priority,
-    })),
-    customPayType: wi.customPayType,
-    customHourlyRateCents: wi.customHourlyRateCents,
-    customShiftRateCents: wi.customShiftRateCents,
-    customPercentRevenueBp: wi.customPercentRevenueBp,
-    breakMinutes: wi.breakMinutes,
-    revenueCents: wi.revenueCents,
-    calculatedMinutesWorked: wi.calculatedMinutesWorked,
-    calculatedGrossPayCents: wi.calculatedGrossPayCents,
-    currency: organizationCurrency,
-    payCalculatedAt: wi.payCalculatedAt?.toISOString() ?? null,
-    notes: wi.notes,
-    timeEntry: wi.timeEntry
-      ? {
-          id: wi.timeEntry.id,
-          clockInAt: wi.timeEntry.clockInAt?.toISOString(),
-          clockOutAt: wi.timeEntry.clockOutAt?.toISOString(),
-          clockInPhotoUrl: wi.timeEntry.clockInPhotoUrl,
-          clockOutPhotoUrl: wi.timeEntry.clockOutPhotoUrl,
-        }
-      : null,
-  }))
+  const mapped = intervals.map((wi) => {
+    const status = resolveEffectiveWorkIntervalStatus(wi)
+    const openedAt = resolveEffectiveWorkIntervalOpenedAt(wi)
+    const closedAt = resolveEffectiveWorkIntervalClosedAt(wi)
+
+    return {
+      id: wi.id,
+      workdayId: wi.workdayId,
+      workday: {
+        id: wi.workday.id,
+        workDate: wi.workday.workDate.toISOString().split("T")[0],
+        locationId: wi.workday.locationId,
+        status: wi.workday.status,
+      },
+      employeeId: wi.employeeId,
+      employee: {
+        id: wi.employee.id,
+        fullName: wi.employee.user.fullName,
+        avatarUrl: wi.employee.user.avatarUrl,
+      },
+      positionId: wi.positionId,
+      position: wi.position,
+      startAt: wi.startAt.toISOString(),
+      endAt: wi.endAt.toISOString(),
+      startTime: wi.startAt.toTimeString().slice(0, 5),
+      endTime: wi.endAt.toTimeString().slice(0, 5),
+      status,
+      conflictWithIntervalIds: wi.conflictWithIntervalIds ?? [],
+      conflicts:
+        (wi.conflictWithIntervalIds ?? [])
+          .map((conflictId) => conflictMap.get(conflictId))
+          .filter((conflict): conflict is NonNullable<typeof conflict> => conflict != null) ?? [],
+      openedAt: openedAt?.toISOString() ?? null,
+      closedAt: closedAt?.toISOString() ?? null,
+      cancelReason: wi.cancelReason ?? null,
+      useCustomPay: wi.useCustomPay,
+      payComponents: wi.payComponents.map((component) => ({
+        componentType: component.componentType,
+        amountCents: component.amountCents,
+        rateBp: component.rateBp,
+        isActive: component.isActive,
+        priority: component.priority,
+      })),
+      customPayType: wi.customPayType,
+      customHourlyRateCents: wi.customHourlyRateCents,
+      customShiftRateCents: wi.customShiftRateCents,
+      customPercentRevenueBp: wi.customPercentRevenueBp,
+      breakMinutes: wi.breakMinutes,
+      revenueCents: wi.revenueCents,
+      calculatedMinutesWorked: wi.calculatedMinutesWorked,
+      calculatedGrossPayCents: wi.calculatedGrossPayCents,
+      currency: organizationCurrency,
+      payCalculatedAt: wi.payCalculatedAt?.toISOString() ?? null,
+      notes: wi.notes,
+      timeEntry: wi.timeEntry
+        ? {
+            id: wi.timeEntry.id,
+            clockInAt: wi.timeEntry.clockInAt?.toISOString(),
+            clockOutAt: wi.timeEntry.clockOutAt?.toISOString(),
+            clockInPhotoUrl: wi.timeEntry.clockInPhotoUrl,
+            clockOutPhotoUrl: wi.timeEntry.clockOutPhotoUrl,
+          }
+        : null,
+    }
+  })
 
   logAuditEvent(request, {
     event_type: "interval.list",
@@ -851,6 +861,14 @@ export async function PUT(request: Request) {
   const actor = auditActorFromSession(session)
   try {
     const json = await request.json().catch(() => null)
+    if (json && typeof json === "object" && "status" in json) {
+      return NextResponse.json(
+        {
+          error: "Статус смены нельзя менять через /api/intervals. Используйте dedicated open/close/cancel routes.",
+        },
+        { status: 400 },
+      )
+    }
     const parsed = intervalUpdateSchema.safeParse(json)
     if (!parsed.success) {
       logAuditEvent(request, {
@@ -874,7 +892,15 @@ export async function PUT(request: Request) {
     // Verify interval exists and belongs to organization
     const existing = await prisma.workInterval.findFirst({
       where: { id },
-      include: { workday: true },
+      include: {
+        workday: true,
+        timeEntry: {
+          select: {
+            clockInAt: true,
+            clockOutAt: true,
+          },
+        },
+      },
     })
 
     if (!existing || existing.workday.organizationId !== organizationId) {
@@ -892,6 +918,16 @@ export async function PUT(request: Request) {
         reason: "interval_not_found",
       })
       return NextResponse.json({ error: "Интервал не найден" }, { status: 404 })
+    }
+
+    const existingEffectiveStatus = resolveEffectiveWorkIntervalStatus(existing)
+    if (existingEffectiveStatus !== "scheduled" && existingEffectiveStatus !== "conflict") {
+      return NextResponse.json(
+        {
+          error: "Редактировать можно только запланированные смены и смены в конфликте.",
+        },
+        { status: 409 },
+      )
     }
 
     let targetWorkday = existing.workday
@@ -1025,8 +1061,7 @@ export async function PUT(request: Request) {
       }
     }
 
-    const nextStatus = updateData.status ?? existing.status
-    if (nextStatus === "scheduled") {
+    if (existingEffectiveStatus === "scheduled") {
       const overlaps = await findOverlappingIntervals(prisma, {
         organizationId,
         employeeId: nextEmployeeId,
@@ -1231,7 +1266,15 @@ export async function DELETE(request: Request) {
   // Verify interval exists and belongs to organization
   const existing = await prisma.workInterval.findFirst({
     where: { id },
-    include: { workday: true },
+    include: {
+      workday: true,
+      timeEntry: {
+        select: {
+          clockInAt: true,
+          clockOutAt: true,
+        },
+      },
+    },
   })
 
   if (!existing || existing.workday.organizationId !== organizationId) {
@@ -1249,6 +1292,16 @@ export async function DELETE(request: Request) {
       reason: "interval_not_found",
     })
     return NextResponse.json({ error: "Интервал не найден" }, { status: 404 })
+  }
+
+  const existingEffectiveStatus = resolveEffectiveWorkIntervalStatus(existing)
+  if (existingEffectiveStatus !== "scheduled" && existingEffectiveStatus !== "conflict") {
+    return NextResponse.json(
+      {
+        error: "Удалять можно только запланированные смены и смены в конфликте.",
+      },
+      { status: 409 },
+    )
   }
 
   await prisma.$transaction(async (tx) => {

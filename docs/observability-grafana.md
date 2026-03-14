@@ -13,6 +13,7 @@ Current coverage:
 - scheduling: workday list, workday create, workday publish, interval list, interval create, interval update, interval delete
 - clock: clock-in, clock-out, clock list
 - internal cron: stale shift auto-close runs
+- internal cron: work interval consistency checks
 
 Transport path:
 
@@ -25,7 +26,7 @@ flowchart LR
 ```
 
 By default Alloy ships only structured JSON lines from the `back` container. Plaintext logs are dropped. That is intentional: lower Grafana Cloud volume, lower noise, lower cardinality.
-Internal cron audit events are emitted by the backend endpoint itself, so they are ingested through the same `back` pipeline without extra Alloy changes.
+Internal cron audit events are emitted by the backend endpoint itself, so they are ingested through the same `back` pipeline without extra Alloy changes. The `internal_scheduler` container only triggers the jobs and provides its own liveness logs/healthcheck.
 
 ## Audit event contract
 
@@ -246,10 +247,16 @@ Cron auto-close runs:
 {app="crewlly", kind="audit", event_type="cron.shift_auto_close.run"}
 ```
 
+Cron consistency checks:
+
+```logql
+{app="crewlly", kind="audit", event_type="cron.work_interval_consistency.run"}
+```
+
 Cron failures:
 
 ```logql
-{app="crewlly", kind="audit", event_type="cron.shift_auto_close.run", outcome!="success"}
+{app="crewlly", kind="audit", event_type=~"cron\\.shift_auto_close\\.run|cron\\.work_interval_consistency\\.run", outcome!="success"}
 ```
 
 ### 7. Alerts to add in Grafana Cloud
@@ -260,6 +267,7 @@ Cron failures:
 - any `organization.update`
 - any `failure` on schedule or clock flows
 - any `outcome!="success"` for `cron.shift_auto_close.run`
+- any `outcome!="success"` for `cron.work_interval_consistency.run`
 
 ## Security notes
 

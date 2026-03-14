@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg, getUserEmployee, isOwnerOrManagerRole, isOwnerRole } from "@/lib/auth"
+import {
+  resolveEffectiveWorkIntervalClosedAt,
+  resolveEffectiveWorkIntervalOpenedAt,
+  resolveEffectiveWorkIntervalStatus,
+} from "@/lib/work-intervals/status"
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -45,6 +50,12 @@ export async function getAuthorizedInterval(intervalId: string) {
     include: {
       workday: { select: { id: true, organizationId: true, locationId: true, workDate: true } },
       position: true,
+      timeEntry: {
+        select: {
+          clockInAt: true,
+          clockOutAt: true,
+        },
+      },
     },
   })
 
@@ -70,5 +81,20 @@ export async function getAuthorizedInterval(intervalId: string) {
     }
   }
 
-  return { session, interval, employee, isOwner, hasManagementAccess, error: null, status: 200 }
+  const effectiveStatus = resolveEffectiveWorkIntervalStatus(interval)
+  const effectiveOpenedAt = resolveEffectiveWorkIntervalOpenedAt(interval)
+  const effectiveClosedAt = resolveEffectiveWorkIntervalClosedAt(interval)
+
+  return {
+    session,
+    interval,
+    employee,
+    isOwner,
+    hasManagementAccess,
+    effectiveStatus,
+    effectiveOpenedAt,
+    effectiveClosedAt,
+    error: null,
+    status: 200,
+  }
 }

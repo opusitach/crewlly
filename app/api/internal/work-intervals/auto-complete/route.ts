@@ -11,9 +11,10 @@ import {
   isProceduresSchemaMissing,
   resolveWorkIntervalAutoCloseAt,
 } from "@/lib/work-intervals/close"
+import { resolveEffectiveWorkIntervalStatus } from "@/lib/work-intervals/status"
 
 const BATCH_LIMIT = 200
-const CRON_SECRET_ENV_KEY = "STALE_SHIFT_AUTO_CLOSE_CRON_SECRET"
+const CRON_SECRET_ENV_KEYS = ["INTERNAL_CRON_SECRET", "STALE_SHIFT_AUTO_CLOSE_CRON_SECRET"] as const
 const ROUTE_PATH = "/api/internal/work-intervals/auto-complete"
 const EVENT_TYPE = "cron.shift_auto_close.run"
 const CRON_TARGET = {
@@ -57,7 +58,7 @@ function logAutoCloseAuditEvent(
 }
 
 export async function POST(request: Request) {
-  if (!isAuthorizedInternalCronRequest(request, CRON_SECRET_ENV_KEY)) {
+  if (!isAuthorizedInternalCronRequest(request, CRON_SECRET_ENV_KEYS)) {
     logAutoCloseAuditEvent(request, {
       outcome: "denied",
       status: 401,
@@ -72,34 +73,39 @@ export async function POST(request: Request) {
 
     const candidates = await prisma.workInterval.findMany({
       where: {
-        status: "in_progress",
+        status: { not: "canceled" },
         OR: [
+          {
+            status: "in_progress",
+          },
           {
             openedAt: {
               not: null,
-              lte: cutoff,
             },
           },
           {
-            openedAt: null,
             timeEntry: {
               is: {
                 clockInAt: {
                   not: null,
-                  lte: cutoff,
                 },
+                clockOutAt: null,
               },
             },
           },
           {
             openedAt: null,
+            status: "in_progress",
             OR: [
               { timeEntry: { is: null } },
-              { timeEntry: { is: { clockInAt: null } } },
+              {
+                timeEntry: {
+                  is: {
+                    clockInAt: null,
+                  },
+                },
+              },
             ],
-            startAt: {
-              lte: cutoff,
-            },
           },
         ],
       },
@@ -107,8 +113,11 @@ export async function POST(request: Request) {
       take: BATCH_LIMIT,
       select: {
         id: true,
+        status: true,
         startAt: true,
         openedAt: true,
+        closedAt: true,
+        conflictWithIntervalIds: true,
         timeEntry: {
           select: {
             clockInAt: true,
@@ -137,6 +146,7 @@ export async function POST(request: Request) {
     })
 
     const staleCandidates = candidates
+      .filter((interval) => resolveEffectiveWorkIntervalStatus(interval) === "in_progress")
       .map((interval) => ({
         ...interval,
         autoClosedAt: resolveWorkIntervalAutoCloseAt({

@@ -2,10 +2,17 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg, getUserEmployee } from "@/lib/auth"
-import { computeIntervalPayrollSnapshot } from "@/lib/payroll/interval-compensation"
+import { isOpenedStatus, isPlannedStatus } from "@/lib/procedures/status"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
+import { finalizeWorkIntervalClose } from "@/lib/work-intervals/close"
+import { finalizeWorkIntervalOpen } from "@/lib/work-intervals/open"
+import {
+  resolveEffectiveWorkIntervalClosedAt,
+  resolveEffectiveWorkIntervalOpenedAt,
+  resolveEffectiveWorkIntervalStatus,
+} from "@/lib/work-intervals/status"
 
 const clockSchema = z.object({
   intervalId: z.string().uuid(),
@@ -55,7 +62,10 @@ export async function POST(request: Request) {
   // Get the work interval
   const interval = await prisma.workInterval.findFirst({
     where: { id: intervalId },
-    include: { workday: true },
+    include: {
+      workday: true,
+      timeEntry: true,
+    },
   })
 
   if (!interval || interval.workday.organizationId !== session.organization.id) {
@@ -75,23 +85,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Интервал не найден" }, { status: 404 })
   }
 
-  if (interval.status === "canceled") {
+  const effectiveStatus = resolveEffectiveWorkIntervalStatus(interval)
+  const effectiveOpenedAt = resolveEffectiveWorkIntervalOpenedAt(interval)
+  const effectiveClosedAt = resolveEffectiveWorkIntervalClosedAt(interval)
+
+  if (effectiveStatus === "canceled") {
     return NextResponse.json({ error: "Смена отменена" }, { status: 409 })
   }
-  if (interval.status === "completed") {
+  if (effectiveStatus === "completed") {
     return NextResponse.json({ error: "Смена уже завершена" }, { status: 409 })
   }
-  if (interval.status === "conflict") {
+  if (effectiveStatus === "conflict") {
     return NextResponse.json({ error: "Смена в конфликте. Требуется корректировка расписания." }, { status: 409 })
   }
 
   // Get employee record for current user
   const employee = await getUserEmployee(session.user.id, session.organization.id)
-  
+
   // Verify the interval belongs to this employee or user has permission
   const isOwn = employee && interval.employeeId === employee.id
   const isManager = session.accessRole?.key === "owner" || session.accessRole?.key === "manager"
-  
+
   if (!isOwn && !isManager) {
     logAuditEvent(request, {
       event_type: eventType,
@@ -123,28 +137,24 @@ export async function POST(request: Request) {
     : `${actorName} закрыл(а) рабочую смену.`
 
   if (action === "in") {
-    const timeEntry = await prisma.$transaction(async (tx) => {
-      const entry = await tx.timeEntry.upsert({
-        where: { workIntervalId: intervalId },
-        create: {
-          workIntervalId: intervalId,
+    if (isOpenedStatus(effectiveStatus)) {
+      return NextResponse.json({ error: "Смена уже открыта" }, { status: 409 })
+    }
+    if (!isPlannedStatus(effectiveStatus)) {
+      return NextResponse.json({ error: "Смену нельзя открыть в текущем статусе" }, { status: 409 })
+    }
+
+    const opened = await prisma.$transaction(async (tx) => {
+      const updated = await finalizeWorkIntervalOpen(tx, {
+        intervalId,
+        openedAt: effectiveOpenedAt ?? now,
+        clockIn: {
           employeeId: interval.employeeId,
           clockInAt: now,
-          clockInPhotoUrl: photoUrl,
-          clockInLat: lat,
-          clockInLng: lng,
+          photoUrl,
+          lat,
+          lng,
         },
-        update: {
-          clockInAt: now,
-          clockInPhotoUrl: photoUrl,
-          clockInLat: lat,
-          clockInLng: lng,
-        },
-      })
-
-      await tx.workInterval.update({
-        where: { id: intervalId },
-        data: { status: "in_progress" },
       })
 
       await notifyOrganizationOwners(tx, {
@@ -160,7 +170,7 @@ export async function POST(request: Request) {
         excludeUserId: session.user.id,
       })
 
-      return entry
+      return updated
     })
 
     logAuditEvent(request, {
@@ -186,12 +196,16 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({
       data: {
-        id: timeEntry.id,
-        clockInAt: timeEntry.clockInAt?.toISOString(),
-        clockInPhotoUrl: timeEntry.clockInPhotoUrl,
+        id: opened.id,
+        status: "in_progress",
+        openedAt: opened.openedAt?.toISOString() ?? null,
       },
     })
   } else {
+    if (!isOpenedStatus(effectiveStatus)) {
+      return NextResponse.json({ error: "Смена не открыта" }, { status: 409 })
+    }
+
     // Clock-out
     const existing = await prisma.timeEntry.findUnique({
       where: { workIntervalId: intervalId },
@@ -229,63 +243,8 @@ export async function POST(request: Request) {
           clockOutLng: lng,
         },
       })
-
-      const intervalComponents = interval.useCustomPay
-        ? await tx.workIntervalPayComponent.findMany({
-            where: { workIntervalId: intervalId, isActive: true },
-            orderBy: [{ priority: "desc" }, { componentType: "asc" }],
-          })
-        : []
-      const employeeComponents = interval.useCustomPay
-        ? []
-        : await tx.employeePayComponent.findMany({
-            where: { employeeId: interval.employeeId, isActive: true },
-            orderBy: [{ priority: "desc" }, { componentType: "asc" }],
-          })
-
-      const snapshot = computeIntervalPayrollSnapshot({
-        interval: {
-          startAt: interval.startAt,
-          endAt: interval.endAt,
-          openedAt: interval.openedAt,
-          closedAt: now,
-          breakMinutes: interval.breakMinutes,
-          status: "completed",
-          useCustomPay: interval.useCustomPay,
-          revenueCents: interval.revenueCents,
-        },
-        timeEntry: {
-          clockInAt: timeEntry.clockInAt,
-          clockOutAt: timeEntry.clockOutAt,
-        },
-        intervalComponents: intervalComponents.map((component) => ({
-          componentType: component.componentType,
-          amountCents: component.amountCents,
-          rateBp: component.rateBp,
-          isActive: component.isActive,
-        })),
-        employeeComponents: employeeComponents.map((component) => ({
-          componentType: component.componentType,
-          amountCents: component.amountCents,
-          rateBp: component.rateBp,
-          isActive: component.isActive,
-        })),
-      })
-
-      await tx.workInterval.update({
-        where: { id: intervalId },
-        data: {
-          status: "completed",
-          closedAt: interval.closedAt ?? now,
-          calculatedMinutesWorked: snapshot.minutesWorked,
-          calculatedGrossPayCents: snapshot.grossPayCents,
-          payCalculatedAt: new Date(),
-        },
-      })
-
-      await notifyOrganizationOwners(tx, {
+      const notification = {
         organizationId,
-        type: "shift",
         title: "Закрыта рабочая смена",
         message: closeNotificationMessage,
         payload: {
@@ -295,9 +254,17 @@ export async function POST(request: Request) {
           ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
         },
         excludeUserId: session.user.id,
+      }
+
+      const closed = await finalizeWorkIntervalClose(tx, {
+        intervalId,
+        workdayId: interval.workdayId,
+        locationId: interval.workday.locationId,
+        closedAt: effectiveClosedAt ?? now,
+        notification,
       })
 
-      return { timeEntry, snapshot }
+      return { timeEntry, snapshot: closed.snapshot }
     })
 
     logAuditEvent(request, {
@@ -327,11 +294,13 @@ export async function POST(request: Request) {
         clockInAt: result.timeEntry.clockInAt?.toISOString(),
         clockOutAt: result.timeEntry.clockOutAt?.toISOString(),
         clockOutPhotoUrl: result.timeEntry.clockOutPhotoUrl,
-        payrollSnapshot: {
-          minutesWorked: result.snapshot.minutesWorked,
-          grossPayCents: result.snapshot.grossPayCents,
-          unresolvedPercentRevenue: result.snapshot.unresolvedPercentRevenue,
-        },
+        payrollSnapshot: result.snapshot
+          ? {
+              minutesWorked: result.snapshot.minutesWorked,
+              grossPayCents: result.snapshot.grossPayCents,
+              unresolvedPercentRevenue: result.snapshot.unresolvedPercentRevenue,
+            }
+          : null,
       },
     })
   }

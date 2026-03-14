@@ -3,6 +3,11 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg } from "@/lib/auth"
 import { loadIntervalConflictSummariesByIds } from "@/lib/work-interval-conflicts"
+import {
+  resolveEffectiveWorkIntervalClosedAt,
+  resolveEffectiveWorkIntervalOpenedAt,
+  resolveEffectiveWorkIntervalStatus,
+} from "@/lib/work-intervals/status"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
 const workdayCreateSchema = z.object({
@@ -113,59 +118,65 @@ export async function GET(request: Request) {
     publishedAt: wd.publishedAt?.toISOString(),
     createdAt: wd.createdAt.toISOString(),
     updatedAt: wd.updatedAt.toISOString(),
-    intervals: wd.workIntervals.map((wi) => ({
-      id: wi.id,
-      workdayId: wi.workdayId,
-      employeeId: wi.employeeId,
-      positionId: wi.positionId,
-      position: wi.position,
-      startAt: wi.startAt.toISOString(),
-      endAt: wi.endAt.toISOString(),
-      startTime: wi.startAt.toTimeString().slice(0, 5),
-      endTime: wi.endAt.toTimeString().slice(0, 5),
-      status: wi.status,
-      conflictWithIntervalIds: wi.conflictWithIntervalIds ?? [],
-      conflicts:
-        (wi.conflictWithIntervalIds ?? [])
-          .map((conflictId) => conflictMap.get(conflictId))
-          .filter(Boolean) ?? [],
-      openedAt: wi.openedAt?.toISOString() ?? null,
-      closedAt: wi.closedAt?.toISOString() ?? null,
-      cancelReason: wi.cancelReason ?? null,
-      useCustomPay: wi.useCustomPay,
-      payComponents: wi.payComponents.map((component) => ({
-        componentType: component.componentType,
-        amountCents: component.amountCents,
-        rateBp: component.rateBp,
-        isActive: component.isActive,
-        priority: component.priority,
-      })),
-      customPayType: wi.customPayType,
-      customHourlyRateCents: wi.customHourlyRateCents,
-      customShiftRateCents: wi.customShiftRateCents,
-      customPercentRevenueBp: wi.customPercentRevenueBp,
-      breakMinutes: wi.breakMinutes,
-      revenueCents: wi.revenueCents,
-      calculatedMinutesWorked: wi.calculatedMinutesWorked,
-      calculatedGrossPayCents: wi.calculatedGrossPayCents,
-      payCalculatedAt: wi.payCalculatedAt?.toISOString() ?? null,
-      notes: wi.notes,
-      employee: {
-        id: wi.employee.id,
-        fullName: wi.employee.user.fullName,
-        avatarUrl: wi.employee.user.avatarUrl,
-        primaryPosition: wi.employee.employeePositions[0]?.position,
-      },
-      timeEntry: wi.timeEntry
-        ? {
-            id: wi.timeEntry.id,
-            clockInAt: wi.timeEntry.clockInAt?.toISOString(),
-            clockOutAt: wi.timeEntry.clockOutAt?.toISOString(),
-            clockInPhotoUrl: wi.timeEntry.clockInPhotoUrl,
-            clockOutPhotoUrl: wi.timeEntry.clockOutPhotoUrl,
-          }
-        : null,
-    })),
+    intervals: wd.workIntervals.map((wi) => {
+      const status = resolveEffectiveWorkIntervalStatus(wi)
+      const openedAt = resolveEffectiveWorkIntervalOpenedAt(wi)
+      const closedAt = resolveEffectiveWorkIntervalClosedAt(wi)
+
+      return {
+        id: wi.id,
+        workdayId: wi.workdayId,
+        employeeId: wi.employeeId,
+        positionId: wi.positionId,
+        position: wi.position,
+        startAt: wi.startAt.toISOString(),
+        endAt: wi.endAt.toISOString(),
+        startTime: wi.startAt.toTimeString().slice(0, 5),
+        endTime: wi.endAt.toTimeString().slice(0, 5),
+        status,
+        conflictWithIntervalIds: wi.conflictWithIntervalIds ?? [],
+        conflicts:
+          (wi.conflictWithIntervalIds ?? [])
+            .map((conflictId) => conflictMap.get(conflictId))
+            .filter(Boolean) ?? [],
+        openedAt: openedAt?.toISOString() ?? null,
+        closedAt: closedAt?.toISOString() ?? null,
+        cancelReason: wi.cancelReason ?? null,
+        useCustomPay: wi.useCustomPay,
+        payComponents: wi.payComponents.map((component) => ({
+          componentType: component.componentType,
+          amountCents: component.amountCents,
+          rateBp: component.rateBp,
+          isActive: component.isActive,
+          priority: component.priority,
+        })),
+        customPayType: wi.customPayType,
+        customHourlyRateCents: wi.customHourlyRateCents,
+        customShiftRateCents: wi.customShiftRateCents,
+        customPercentRevenueBp: wi.customPercentRevenueBp,
+        breakMinutes: wi.breakMinutes,
+        revenueCents: wi.revenueCents,
+        calculatedMinutesWorked: wi.calculatedMinutesWorked,
+        calculatedGrossPayCents: wi.calculatedGrossPayCents,
+        payCalculatedAt: wi.payCalculatedAt?.toISOString() ?? null,
+        notes: wi.notes,
+        employee: {
+          id: wi.employee.id,
+          fullName: wi.employee.user.fullName,
+          avatarUrl: wi.employee.user.avatarUrl,
+          primaryPosition: wi.employee.employeePositions[0]?.position,
+        },
+        timeEntry: wi.timeEntry
+          ? {
+              id: wi.timeEntry.id,
+              clockInAt: wi.timeEntry.clockInAt?.toISOString(),
+              clockOutAt: wi.timeEntry.clockOutAt?.toISOString(),
+              clockInPhotoUrl: wi.timeEntry.clockInPhotoUrl,
+              clockOutPhotoUrl: wi.timeEntry.clockOutPhotoUrl,
+            }
+          : null,
+      }
+    }),
     tipsPool: wd.tipsPool,
     intervalCount: wd._count.workIntervals,
     cashSessionCount: wd._count.cashSessions,

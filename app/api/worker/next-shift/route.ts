@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getSessionUserWithOrg, getUserEmployee } from "@/lib/auth"
 import { computeIntervalCompensation, computeIntervalMinutesWorked, resolveIntervalPayComponents } from "@/lib/payroll/interval-compensation"
+import {
+  resolveEffectiveWorkIntervalClosedAt,
+  resolveEffectiveWorkIntervalOpenedAt,
+  resolveEffectiveWorkIntervalStatus,
+} from "@/lib/work-intervals/status"
 
 export async function GET() {
   const session = await getSessionUserWithOrg()
@@ -15,17 +20,35 @@ export async function GET() {
   }
 
   const now = new Date()
-  const [inProgressInterval, overdueScheduledInterval, upcomingInterval] = await Promise.all([
-    prisma.workInterval.findFirst({
+  const [openCandidates, overdueScheduledInterval, upcomingInterval] = await Promise.all([
+    prisma.workInterval.findMany({
       where: {
         employeeId: employee.id,
-        status: "in_progress",
-        endAt: { gte: now },
+        status: { not: "canceled" },
+        OR: [
+          { status: "in_progress" },
+          { openedAt: { not: null } },
+          {
+            timeEntry: {
+              is: {
+                clockInAt: { not: null },
+                clockOutAt: null,
+              },
+            },
+          },
+        ],
       },
       include: {
         position: true,
+        timeEntry: {
+          select: {
+            clockInAt: true,
+            clockOutAt: true,
+          },
+        },
       },
-      orderBy: [{ startAt: "desc" }, { endAt: "asc" }],
+      orderBy: [{ startAt: "desc" }, { id: "desc" }],
+      take: 10,
     }),
     prisma.workInterval.findFirst({
       where: {
@@ -36,6 +59,12 @@ export async function GET() {
       },
       include: {
         position: true,
+        timeEntry: {
+          select: {
+            clockInAt: true,
+            clockOutAt: true,
+          },
+        },
       },
       orderBy: [{ startAt: "desc" }, { endAt: "asc" }],
     }),
@@ -47,14 +76,24 @@ export async function GET() {
       },
       include: {
         position: true,
+        timeEntry: {
+          select: {
+            clockInAt: true,
+            clockOutAt: true,
+          },
+        },
       },
       orderBy: [{ startAt: "asc" }, { endAt: "asc" }],
     }),
   ])
 
+  const inProgressInterval = openCandidates.find((candidate) => resolveEffectiveWorkIntervalStatus(candidate) === "in_progress") ?? null
   const interval = inProgressInterval ?? overdueScheduledInterval ?? upcomingInterval
 
   if (interval) {
+    const effectiveStatus = resolveEffectiveWorkIntervalStatus(interval)
+    const effectiveOpenedAt = resolveEffectiveWorkIntervalOpenedAt(interval)
+    const effectiveClosedAt = resolveEffectiveWorkIntervalClosedAt(interval)
     const intervalComponents = interval.useCustomPay
       ? await prisma.workIntervalPayComponent.findMany({
           where: { workIntervalId: interval.id, isActive: true },
@@ -95,7 +134,7 @@ export async function GET() {
     })
     const compensation = computeIntervalCompensation({
       interval: {
-        status: interval.status,
+        status: effectiveStatus,
         revenueCents: interval.revenueCents,
       },
       minutesWorked: minutes.minutesWorked,
@@ -116,9 +155,9 @@ export async function GET() {
         id: interval.id,
         startAt: interval.startAt.toISOString(),
         endAt: interval.endAt.toISOString(),
-        status: interval.status,
-        openedAt: interval.openedAt?.toISOString() ?? null,
-        closedAt: interval.closedAt?.toISOString() ?? null,
+        status: effectiveStatus,
+        openedAt: effectiveOpenedAt?.toISOString() ?? null,
+        closedAt: effectiveClosedAt?.toISOString() ?? null,
         positionName: interval.position?.name ?? null,
         salaryCents,
         salaryMessage,

@@ -4,6 +4,7 @@ const mocked = vi.hoisted(() => {
   const prisma = {
     workInterval: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
     workIntervalPayComponent: {
       findMany: vi.fn(),
@@ -45,17 +46,26 @@ const makeInterval = (input: {
   status: string
   startAt: string
   endAt: string
+  openedAt?: string | null
+  closedAt?: string | null
+  timeEntry?: { clockInAt?: string | null; clockOutAt?: string | null } | null
 }) => ({
   id: input.id,
   status: input.status,
   startAt: new Date(input.startAt),
   endAt: new Date(input.endAt),
-  openedAt: null,
-  closedAt: null,
+  openedAt: input.openedAt ? new Date(input.openedAt) : null,
+  closedAt: input.closedAt ? new Date(input.closedAt) : null,
   position: { name: "Официант" },
   useCustomPay: false,
   breakMinutes: 0,
   revenueCents: null,
+  timeEntry: input.timeEntry
+    ? {
+        clockInAt: input.timeEntry.clockInAt ? new Date(input.timeEntry.clockInAt) : null,
+        clockOutAt: input.timeEntry.clockOutAt ? new Date(input.timeEntry.clockOutAt) : null,
+      }
+    : null,
 })
 
 describe("GET /api/worker/next-shift", () => {
@@ -74,15 +84,15 @@ describe("GET /api/worker/next-shift", () => {
   })
 
   it("returns in_progress interval first when it exists", async () => {
+    mocked.prisma.workInterval.findMany.mockResolvedValueOnce([
+      makeInterval({
+        id: "in-progress",
+        status: "in_progress",
+        startAt: "2026-03-01T08:00:00.000Z",
+        endAt: "2026-03-01T20:00:00.000Z",
+      }),
+    ])
     mocked.prisma.workInterval.findFirst
-      .mockResolvedValueOnce(
-        makeInterval({
-          id: "in-progress",
-          status: "in_progress",
-          startAt: "2026-03-01T08:00:00.000Z",
-          endAt: "2026-03-01T20:00:00.000Z",
-        }),
-      )
       .mockResolvedValueOnce(
         makeInterval({
           id: "overdue",
@@ -108,8 +118,8 @@ describe("GET /api/worker/next-shift", () => {
   })
 
   it("falls back to overdue scheduled interval before upcoming", async () => {
+    mocked.prisma.workInterval.findMany.mockResolvedValueOnce([])
     mocked.prisma.workInterval.findFirst
-      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(
         makeInterval({
           id: "overdue",
@@ -132,5 +142,32 @@ describe("GET /api/worker/next-shift", () => {
 
     expect(response.status).toBe(200)
     expect(body.data?.id).toBe("overdue")
+  })
+
+  it("treats a scheduled interval with open clock-in as in_progress", async () => {
+    mocked.prisma.workInterval.findMany.mockResolvedValueOnce([
+      makeInterval({
+        id: "desynced-open",
+        status: "scheduled",
+        startAt: "2026-03-01T08:00:00.000Z",
+        endAt: "2026-03-01T20:00:00.000Z",
+        timeEntry: {
+          clockInAt: "2026-03-01T08:05:00.000Z",
+          clockOutAt: null,
+        },
+      }),
+    ])
+    mocked.prisma.workInterval.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null)
+
+    const response = await GET()
+    const body = (await response.json()) as { data: { id: string; status: string } | null }
+
+    expect(response.status).toBe(200)
+    expect(body.data).toEqual(
+      expect.objectContaining({
+        id: "desynced-open",
+        status: "in_progress",
+      }),
+    )
   })
 })

@@ -6,6 +6,11 @@ import { computeIntervalMinutesWorked, computeIntervalPayrollSnapshot } from "@/
 import { syncCashSessionFromWorkdayProcedures } from "@/lib/cash/session-sync"
 import { syncWorkdayTipsFromCashSessions } from "@/lib/cash/tips-sync"
 import { computeEmployeeTipsByWorkdayForEarnings } from "@/lib/cash/earnings-tips"
+import {
+  resolveEffectiveWorkIntervalClosedAt,
+  resolveEffectiveWorkIntervalOpenedAt,
+  resolveEffectiveWorkIntervalStatus,
+} from "@/lib/work-intervals/status"
 
 const querySchema = z.object({
   dateFrom: z
@@ -209,6 +214,9 @@ export async function GET(request: Request, context: RouteContext) {
   let totalMinutesWorked = 0
 
   const items = intervals.map((interval) => {
+    const effectiveStatus = resolveEffectiveWorkIntervalStatus(interval)
+    const effectiveOpenedAt = resolveEffectiveWorkIntervalOpenedAt(interval)
+    const effectiveClosedAt = resolveEffectiveWorkIntervalClosedAt(interval)
     let minutesWorked = interval.calculatedMinutesWorked ?? 0
     let grossPayCents = interval.calculatedGrossPayCents ?? 0
 
@@ -217,10 +225,10 @@ export async function GET(request: Request, context: RouteContext) {
         interval: {
           startAt: interval.startAt,
           endAt: interval.endAt,
-          openedAt: interval.openedAt,
-          closedAt: interval.closedAt,
+          openedAt: effectiveOpenedAt,
+          closedAt: effectiveClosedAt,
           breakMinutes: interval.breakMinutes,
-          status: interval.status,
+          status: effectiveStatus,
           useCustomPay: interval.useCustomPay,
           revenueCents: interval.revenueCents,
         },
@@ -246,8 +254,8 @@ export async function GET(request: Request, context: RouteContext) {
       interval: {
         startAt: interval.startAt,
         endAt: interval.endAt,
-        openedAt: interval.openedAt,
-        closedAt: interval.closedAt,
+        openedAt: effectiveOpenedAt,
+        closedAt: effectiveClosedAt,
         breakMinutes: interval.breakMinutes,
       },
       timeEntry: interval.timeEntry,
@@ -262,7 +270,7 @@ export async function GET(request: Request, context: RouteContext) {
       workDate: formatDateKey(interval.workday.workDate, dateKeyFormatter),
       startAt: interval.startAt.toISOString(),
       endAt: interval.endAt.toISOString(),
-      status: interval.status,
+      status: effectiveStatus,
       positionName: interval.position?.name ?? null,
       minutesWorked,
       grossPayCents,

@@ -193,4 +193,56 @@ describe("POST /api/work-intervals/[id]/close", () => {
     expect(body.error).toBe("Вы последний сотрудник с кассой в этом рабочем дне. Закрытие кассы обязательно.")
     expect(mocked.finalizeWorkIntervalClose).not.toHaveBeenCalled()
   })
+
+  it("allows closing a desynced interval when effective status is in_progress", async () => {
+    const tx = {
+      workIntervalProcedure: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "procedure-close-1",
+          rules: [],
+        }),
+      },
+      workIntervalProcedureAnswer: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    }
+
+    mocked.getAuthorizedInterval.mockResolvedValue({
+      session: {
+        user: { id: "user-1", fullName: "Иван Петров", email: "ivan@example.com" },
+      },
+      interval: {
+        id: "interval-legacy-open",
+        status: "scheduled",
+        closedAt: null,
+        workday: {
+          id: "workday-1",
+          locationId: "location-1",
+          organizationId: "org-1",
+          workDate: new Date("2026-03-05T00:00:00.000Z"),
+        },
+      },
+      effectiveStatus: "in_progress",
+      error: null,
+      status: 200,
+    })
+    mocked.prisma.$transaction.mockImplementation(async (callback: (trx: unknown) => Promise<unknown>) => callback(tx))
+
+    const response = await POST(
+      new Request("http://localhost/api/work-intervals/interval-legacy-open/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: "interval-legacy-open" }) },
+    )
+
+    expect(response.status).toBe(200)
+    expect(mocked.finalizeWorkIntervalClose).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        intervalId: "interval-legacy-open",
+      }),
+    )
+  })
 })
