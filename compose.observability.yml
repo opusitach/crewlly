@@ -25,7 +25,10 @@ services:
       - /sys:/sys:ro
       - /sys:/host/sys:ro
       - /var/run:/var/run:rw
-      - /var/lib/docker:/var/lib/docker:ro
+      # cAdvisor resolves some Docker paths relative to the mounted host rootfs.
+      - /var/run/docker.sock:/rootfs/var/run/docker.sock:ro
+      - ${DOCKER_ROOT_DIR:-/var/lib/docker}:/var/lib/docker:ro
+      - ${DOCKER_ROOT_DIR:-/var/lib/docker}:/rootfs/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
       - alloy_data:/var/lib/alloy/data
 

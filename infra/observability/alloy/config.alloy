@@ -56,7 +56,7 @@ prometheus.relabel "integrations_node_exporter" {
 }
 
 prometheus.exporter.cadvisor "integrations_cadvisor" {
-  docker_host                = "unix:///var/run/docker.sock"
+  docker_host                = "unix:///rootfs/var/run/docker.sock"
   docker_only                = true
   disable_root_cgroup_stats  = true
   storage_duration           = "5m"

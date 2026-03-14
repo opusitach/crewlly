@@ -179,6 +179,7 @@ Add:
 ```env
 AUDIT_LOG_ENABLED=true
 ALLOY_HTTP_PORT=12345
+DOCKER_ROOT_DIR=/var/lib/docker
 
 GRAFANA_CLOUD_LOKI_URL=https://logs-prod-XXX.grafana.net/loki/api/v1/push
 GRAFANA_CLOUD_LOKI_USERNAME=CHANGE_ME_GRAFANA_CLOUD_LOKI_USERNAME
@@ -190,6 +191,8 @@ GRAFANA_CLOUD_METRICS_TOKEN=CHANGE_ME_GRAFANA_CLOUD_METRICS_TOKEN
 ```
 
 `APP_SERVICE_NAME` is already set in `compose.app.yml`. Audit events from API traffic and internal cron runs go out as `crewlly-back`.
+
+If `docker info` shows a different Docker root dir on the VPS, set `DOCKER_ROOT_DIR` to that exact value instead of `/var/lib/docker`.
 
 ### 3. Deploy app changes
 
