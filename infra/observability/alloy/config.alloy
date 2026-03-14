@@ -2,6 +2,116 @@ discovery.docker "containers" {
   host = "unix:///var/run/docker.sock"
 }
 
+prometheus.exporter.unix "integrations_node_exporter" {
+  disable_collectors = ["ipvs", "btrfs", "infiniband", "xfs", "zfs"]
+  enable_collectors  = ["meminfo"]
+
+  filesystem {
+    fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|tmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+    mount_points_exclude = "^/(dev|proc|run/credentials/.+|sys|var/lib/docker/.+)($|/)"
+    mount_timeout        = "5s"
+  }
+
+  netclass {
+    ignored_devices = "^(veth.*|cali.*|[a-f0-9]{15}|lo)$"
+  }
+
+  netdev {
+    device_exclude = "^(veth.*|cali.*|[a-f0-9]{15}|lo)$"
+  }
+
+  procfs_path = "/host/proc"
+  rootfs_path = "/rootfs"
+  sysfs_path  = "/host/sys"
+}
+
+discovery.relabel "integrations_node_exporter" {
+  targets = prometheus.exporter.unix.integrations_node_exporter.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "integrations/node_exporter"
+  }
+}
+
+prometheus.scrape "integrations_node_exporter" {
+  targets         = discovery.relabel.integrations_node_exporter.output
+  scrape_interval = "30s"
+  forward_to      = [prometheus.relabel.integrations_node_exporter.receiver]
+}
+
+prometheus.relabel "integrations_node_exporter" {
+  rule {
+    source_labels = ["__name__"]
+    regex         = "node_scrape_collector_.+"
+    action        = "drop"
+  }
+
+  forward_to = [prometheus.remote_write.grafana_cloud_metrics.receiver]
+}
+
+prometheus.exporter.cadvisor "integrations_cadvisor" {
+  docker_host                = "unix:///var/run/docker.sock"
+  docker_only                = true
+  disable_root_cgroup_stats  = true
+  storage_duration           = "5m"
+  store_container_labels     = false
+  allowlisted_container_labels = [
+    "com.docker.compose.project",
+    "com.docker.compose.service",
+  ]
+}
+
+discovery.relabel "integrations_cadvisor" {
+  targets = prometheus.exporter.cadvisor.integrations_cadvisor.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "integrations/docker"
+  }
+}
+
+prometheus.scrape "integrations_cadvisor" {
+  targets         = discovery.relabel.integrations_cadvisor.output
+  scrape_interval = "30s"
+  forward_to      = [prometheus.relabel.integrations_cadvisor.receiver]
+}
+
+prometheus.relabel "integrations_cadvisor" {
+  rule {
+    source_labels = ["name"]
+    regex         = "(.+)"
+    target_label  = "container_name"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["container_label_com_docker_compose_service"]
+    regex         = "(.+)"
+    target_label  = "compose_service"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["container_label_com_docker_compose_project"]
+    regex         = "(.+)"
+    target_label  = "compose_project"
+    replacement   = "$1"
+  }
+
+  forward_to = [prometheus.remote_write.grafana_cloud_metrics.receiver]
+}
+
 discovery.relabel "docker_logs" {
   targets = []
 
@@ -95,5 +205,21 @@ loki.write "grafana_cloud" {
 
   external_labels = {
     app = "crewlly",
+  }
+}
+
+prometheus.remote_write "grafana_cloud_metrics" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USERNAME")
+      password = sys.env("GRAFANA_CLOUD_METRICS_TOKEN")
+    }
+  }
+
+  external_labels = {
+    app   = "crewlly",
+    stack = "crewlly",
   }
 }

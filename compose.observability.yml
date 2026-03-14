@@ -7,15 +7,26 @@ services:
       - --storage.path=/var/lib/alloy/data
       - --server.http.listen-addr=0.0.0.0:12345
     restart: unless-stopped
+    privileged: true
     ports:
       - "127.0.0.1:${ALLOY_HTTP_PORT:-12345}:12345"
     environment:
       GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:?Set GRAFANA_CLOUD_LOKI_URL in .env.production}
       GRAFANA_CLOUD_LOKI_USERNAME: ${GRAFANA_CLOUD_LOKI_USERNAME:?Set GRAFANA_CLOUD_LOKI_USERNAME in .env.production}
       GRAFANA_CLOUD_LOGS_TOKEN: ${GRAFANA_CLOUD_LOGS_TOKEN:?Set GRAFANA_CLOUD_LOGS_TOKEN in .env.production}
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:?Set GRAFANA_CLOUD_PROMETHEUS_URL in .env.production}
+      GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${GRAFANA_CLOUD_PROMETHEUS_USERNAME:?Set GRAFANA_CLOUD_PROMETHEUS_USERNAME in .env.production}
+      GRAFANA_CLOUD_METRICS_TOKEN: ${GRAFANA_CLOUD_METRICS_TOKEN:?Set GRAFANA_CLOUD_METRICS_TOKEN in .env.production}
     volumes:
       - ./infra/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Host mounts required for VPS and container resource metrics.
+      - /:/rootfs:ro
+      - /proc:/host/proc:ro
+      - /sys:/sys:ro
+      - /sys:/host/sys:ro
+      - /var/run:/var/run:rw
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
       - alloy_data:/var/lib/alloy/data
 
 volumes:
