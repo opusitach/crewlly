@@ -172,6 +172,86 @@ export async function hasPermission(userId: string, organizationId: string, perm
   }
 }
 
+type OrganizationActionAccessOptions = {
+  permission?: string | readonly string[]
+  allowManagementRole?: boolean
+  allowOwnerRole?: boolean
+}
+
+type OrganizationReadScopeOptions = {
+  orgWidePermissions?: string | readonly string[]
+  allowManagementRole?: boolean
+}
+
+type OrganizationReadScope =
+  | { scope: "org" }
+  | { scope: "self"; employeeId: string }
+  | { scope: "none" }
+
+export async function hasOrganizationActionAccess(
+  session: Awaited<ReturnType<typeof getSessionUserWithOrg>> | null,
+  options: OrganizationActionAccessOptions,
+): Promise<boolean> {
+  if (!session?.user?.id || !session.organization?.id || !session.membership?.isActive) {
+    return false
+  }
+
+  const {
+    permission,
+    allowManagementRole = false,
+    allowOwnerRole = allowManagementRole,
+  } = options
+
+  if (allowManagementRole && isOwnerOrManagerRole(session.membership)) {
+    return true
+  }
+
+  if (!allowManagementRole && allowOwnerRole && isOwnerRole(session.membership)) {
+    return true
+  }
+
+  const permissionKeys = Array.isArray(permission)
+    ? permission
+    : permission
+      ? [permission]
+      : []
+
+  for (const permissionKey of permissionKeys) {
+    if (await hasPermission(session.user.id, session.organization.id, permissionKey)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+export async function getOrganizationReadScope(
+  session: Awaited<ReturnType<typeof getSessionUserWithOrg>> | null,
+  options: OrganizationReadScopeOptions = {},
+): Promise<OrganizationReadScope> {
+  if (!session?.user?.id || !session.organization?.id || !session.membership?.isActive) {
+    return { scope: "none" }
+  }
+
+  const canViewOrgWide = await hasOrganizationActionAccess(session, {
+    permission: options.orgWidePermissions,
+    allowManagementRole: options.allowManagementRole ?? true,
+  })
+  if (canViewOrgWide) {
+    return { scope: "org" }
+  }
+
+  const employee = await getUserEmployee(session.user.id, session.organization.id)
+  if (!employee) {
+    return { scope: "none" }
+  }
+
+  return {
+    scope: "self",
+    employeeId: employee.id,
+  }
+}
+
 export function isOwnerOrManagerRole(membership: {
   isActive?: boolean
   legacyRole?: string | null

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
+import { getSessionUserWithOrg, hasOrganizationActionAccess } from "@/lib/auth"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -30,7 +30,11 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  if (!isOwnerOrManagerRole(session.membership)) {
+  const canPublishWorkday = await hasOrganizationActionAccess(session, {
+    permission: "workday:publish",
+    allowManagementRole: true,
+  })
+  if (!canPublishWorkday) {
     logAuditEvent(request, {
       event_type: "workday.publish",
       outcome: "denied",
@@ -42,7 +46,7 @@ export async function POST(_request: Request, context: RouteContext) {
         id: session.organization.id,
         organization_id: session.organization.id,
       },
-      reason: "management_role_required",
+      reason: "missing_workday_publish_permission",
     })
     return NextResponse.json({ error: "Недостаточно прав для публикации дня" }, { status: 403 })
   }

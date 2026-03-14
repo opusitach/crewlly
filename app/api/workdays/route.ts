@@ -1,7 +1,8 @@
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg } from "@/lib/auth"
+import { getOrganizationReadScope, getSessionUserWithOrg, hasOrganizationActionAccess } from "@/lib/auth"
 import { loadIntervalConflictSummariesByIds } from "@/lib/work-interval-conflicts"
 import {
   resolveEffectiveWorkIntervalClosedAt,
@@ -34,17 +35,41 @@ export async function GET(request: Request) {
     })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const readScope = await getOrganizationReadScope(session, {
+    orgWidePermissions: [
+      "workday:create",
+      "workday:edit",
+      "workday:publish",
+      "interval:create",
+      "interval:edit",
+      "interval:delete",
+      "payroll:view",
+    ],
+  })
+  if (readScope.scope === "none") {
+    logAuditEvent(request, {
+      event_type: "workday.list",
+      outcome: "denied",
+      status: 403,
+      route: "/api/workdays",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_workday_view_access",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для просмотра рабочих дней" }, { status: 403 })
+  }
+  const isSelfScopedRead = readScope.scope === "self"
 
   const url = new URL(request.url)
   const locationId = url.searchParams.get("locationId")
   const dateFrom = url.searchParams.get("dateFrom")
   const dateTo = url.searchParams.get("dateTo")
 
-  const whereClause: {
-    organizationId: string
-    locationId?: string
-    workDate?: { gte?: Date; lte?: Date }
-  } = {
+  const whereClause: Prisma.WorkdayWhereInput = {
     organizationId: session.organization.id,
   }
 
@@ -62,6 +87,14 @@ export async function GET(request: Request) {
     }
   }
 
+  if (isSelfScopedRead) {
+    whereClause.workIntervals = {
+      some: {
+        employeeId: readScope.employeeId,
+      },
+    }
+  }
+
   const workdays = await prisma.workday.findMany({
     where: whereClause,
     include: {
@@ -69,6 +102,13 @@ export async function GET(request: Request) {
         select: { id: true, name: true },
       },
       workIntervals: {
+        ...(isSelfScopedRead
+          ? {
+              where: {
+                employeeId: readScope.employeeId,
+              },
+            }
+          : {}),
         include: {
           employee: {
             include: {
@@ -98,13 +138,17 @@ export async function GET(request: Request) {
     orderBy: { workDate: "asc" },
   })
 
-  const conflictIds = Array.from(
-    new Set(workdays.flatMap((workday) => workday.workIntervals.flatMap((interval) => interval.conflictWithIntervalIds ?? []))),
-  )
-  const conflictMap = await loadIntervalConflictSummariesByIds(prisma, {
-    organizationId: session.organization.id,
-    ids: conflictIds,
-  })
+  const canViewSensitiveDetails = readScope.scope === "org"
+  const conflictMap = canViewSensitiveDetails
+    ? await loadIntervalConflictSummariesByIds(prisma, {
+        organizationId: session.organization.id,
+        ids: Array.from(
+          new Set(
+            workdays.flatMap((workday) => workday.workIntervals.flatMap((interval) => interval.conflictWithIntervalIds ?? [])),
+          ),
+        ),
+      })
+    : new Map()
 
   // Transform for API response
   const mapped = workdays.map((wd) => ({
@@ -123,7 +167,7 @@ export async function GET(request: Request) {
       const openedAt = resolveEffectiveWorkIntervalOpenedAt(wi)
       const closedAt = resolveEffectiveWorkIntervalClosedAt(wi)
 
-      return {
+      const baseInterval = {
         id: wi.id,
         workdayId: wi.workdayId,
         employeeId: wi.employeeId,
@@ -134,14 +178,44 @@ export async function GET(request: Request) {
         startTime: wi.startAt.toTimeString().slice(0, 5),
         endTime: wi.endAt.toTimeString().slice(0, 5),
         status,
+        openedAt: openedAt?.toISOString() ?? null,
+        closedAt: closedAt?.toISOString() ?? null,
+        cancelReason: wi.cancelReason ?? null,
+        breakMinutes: wi.breakMinutes,
+        notes: wi.notes,
+        employee: {
+          id: wi.employee.id,
+          fullName: wi.employee.user.fullName,
+          avatarUrl: wi.employee.user.avatarUrl,
+          primaryPosition: wi.employee.employeePositions[0]?.position,
+        },
+      }
+
+      if (!canViewSensitiveDetails) {
+        return {
+          ...baseInterval,
+          conflictWithIntervalIds: [],
+          conflicts: [],
+          useCustomPay: wi.useCustomPay,
+          payComponents: [],
+          customPayType: [],
+          timeEntry: wi.timeEntry
+            ? {
+                id: wi.timeEntry.id,
+                clockInAt: wi.timeEntry.clockInAt?.toISOString(),
+                clockOutAt: wi.timeEntry.clockOutAt?.toISOString(),
+              }
+            : null,
+        }
+      }
+
+      return {
+        ...baseInterval,
         conflictWithIntervalIds: wi.conflictWithIntervalIds ?? [],
         conflicts:
           (wi.conflictWithIntervalIds ?? [])
             .map((conflictId) => conflictMap.get(conflictId))
             .filter(Boolean) ?? [],
-        openedAt: openedAt?.toISOString() ?? null,
-        closedAt: closedAt?.toISOString() ?? null,
-        cancelReason: wi.cancelReason ?? null,
         useCustomPay: wi.useCustomPay,
         payComponents: wi.payComponents.map((component) => ({
           componentType: component.componentType,
@@ -154,18 +228,10 @@ export async function GET(request: Request) {
         customHourlyRateCents: wi.customHourlyRateCents,
         customShiftRateCents: wi.customShiftRateCents,
         customPercentRevenueBp: wi.customPercentRevenueBp,
-        breakMinutes: wi.breakMinutes,
         revenueCents: wi.revenueCents,
         calculatedMinutesWorked: wi.calculatedMinutesWorked,
         calculatedGrossPayCents: wi.calculatedGrossPayCents,
         payCalculatedAt: wi.payCalculatedAt?.toISOString() ?? null,
-        notes: wi.notes,
-        employee: {
-          id: wi.employee.id,
-          fullName: wi.employee.user.fullName,
-          avatarUrl: wi.employee.user.avatarUrl,
-          primaryPosition: wi.employee.employeePositions[0]?.position,
-        },
         timeEntry: wi.timeEntry
           ? {
               id: wi.timeEntry.id,
@@ -177,9 +243,9 @@ export async function GET(request: Request) {
           : null,
       }
     }),
-    tipsPool: wd.tipsPool,
-    intervalCount: wd._count.workIntervals,
-    cashSessionCount: wd._count.cashSessions,
+    tipsPool: canViewSensitiveDetails ? wd.tipsPool : null,
+    intervalCount: canViewSensitiveDetails ? wd._count.workIntervals : wd.workIntervals.length,
+    cashSessionCount: canViewSensitiveDetails ? wd._count.cashSessions : 0,
   }))
 
   logAuditEvent(request, {
@@ -195,6 +261,7 @@ export async function GET(request: Request) {
       location_id: locationId ?? null,
     },
     metadata: {
+      access_scope: readScope.scope,
       result_count: mapped.length,
       date_from: dateFrom,
       date_to: dateTo,
@@ -214,6 +281,27 @@ export async function POST(request: Request) {
       reason: "unauthorized",
     })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const canCreateWorkdays = await hasOrganizationActionAccess(session, {
+    permission: "workday:create",
+    allowManagementRole: true,
+  })
+  if (!canCreateWorkdays) {
+    logAuditEvent(request, {
+      event_type: "workday.create",
+      outcome: "denied",
+      status: 403,
+      route: "/api/workdays",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_workday_create_permission",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для создания рабочих дней" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => null)

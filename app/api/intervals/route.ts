@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg } from "@/lib/auth"
+import { getOrganizationReadScope, getSessionUserWithOrg, hasOrganizationActionAccess } from "@/lib/auth"
 import {
   PAY_COMPONENT_TYPES,
   normalizePayComponentsInput,
@@ -290,6 +290,31 @@ export async function GET(request: Request) {
   }
   const organizationId = session.organization.id
   const organizationCurrency = session.organization.currency ?? null
+  const readScope = await getOrganizationReadScope(session, {
+    orgWidePermissions: [
+      "interval:create",
+      "interval:edit",
+      "interval:delete",
+      "payroll:view",
+    ],
+  })
+  if (readScope.scope === "none") {
+    logAuditEvent(request, {
+      event_type: "interval.list",
+      outcome: "denied",
+      status: 403,
+      route: "/api/intervals",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: organizationId,
+        organization_id: organizationId,
+      },
+      reason: "missing_interval_view_access",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для просмотра смен" }, { status: 403 })
+  }
+  const canViewSensitiveDetails = readScope.scope === "org"
 
   const url = new URL(request.url)
   const workdayId = url.searchParams.get("workdayId")
@@ -297,26 +322,26 @@ export async function GET(request: Request) {
   const dateFrom = url.searchParams.get("dateFrom")
   const dateTo = url.searchParams.get("dateTo")
 
-  const whereClause: {
-    workday?: { organizationId: string; workDate?: { gte?: Date; lte?: Date } }
-    workdayId?: string
-    employeeId?: string
-  } = {}
+  const whereClause: Prisma.WorkIntervalWhereInput = {
+    workday: {
+      organizationId,
+    },
+  }
 
   if (workdayId) {
     whereClause.workdayId = workdayId
-  } else {
-    whereClause.workday = { organizationId }
-    if (dateFrom || dateTo) {
-      whereClause.workday.workDate = {}
-      if (dateFrom) whereClause.workday.workDate.gte = new Date(dateFrom)
-      if (dateTo) whereClause.workday.workDate.lte = new Date(dateTo)
+  }
+  if (!workdayId && (dateFrom || dateTo)) {
+    whereClause.workday = {
+      organizationId,
+      workDate: {
+        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+        ...(dateTo ? { lte: new Date(dateTo) } : {}),
+      },
     }
   }
 
-  if (employeeId) {
-    whereClause.employeeId = employeeId
-  }
+  whereClause.employeeId = readScope.scope === "self" ? readScope.employeeId : employeeId ?? undefined
 
   const intervals = await prisma.workInterval.findMany({
     where: whereClause,
@@ -341,20 +366,19 @@ export async function GET(request: Request) {
     orderBy: { startAt: "asc" },
   })
 
-  const conflictIds = Array.from(
-    new Set(intervals.flatMap((interval) => interval.conflictWithIntervalIds ?? [])),
-  )
-  const conflictMap = await loadIntervalConflictSummariesByIds(prisma, {
-    organizationId,
-    ids: conflictIds,
-  })
+  const conflictMap = canViewSensitiveDetails
+    ? await loadIntervalConflictSummariesByIds(prisma, {
+        organizationId,
+        ids: Array.from(new Set(intervals.flatMap((interval) => interval.conflictWithIntervalIds ?? []))),
+      })
+    : new Map()
 
   const mapped = intervals.map((wi) => {
     const status = resolveEffectiveWorkIntervalStatus(wi)
     const openedAt = resolveEffectiveWorkIntervalOpenedAt(wi)
     const closedAt = resolveEffectiveWorkIntervalClosedAt(wi)
 
-    return {
+    const baseInterval = {
       id: wi.id,
       workdayId: wi.workdayId,
       workday: {
@@ -376,14 +400,38 @@ export async function GET(request: Request) {
       startTime: wi.startAt.toTimeString().slice(0, 5),
       endTime: wi.endAt.toTimeString().slice(0, 5),
       status,
+      openedAt: openedAt?.toISOString() ?? null,
+      closedAt: closedAt?.toISOString() ?? null,
+      cancelReason: wi.cancelReason ?? null,
+      breakMinutes: wi.breakMinutes,
+      notes: wi.notes,
+    }
+
+    if (!canViewSensitiveDetails) {
+      return {
+        ...baseInterval,
+        conflictWithIntervalIds: [],
+        conflicts: [],
+        useCustomPay: wi.useCustomPay,
+        payComponents: [],
+        customPayType: [],
+        timeEntry: wi.timeEntry
+          ? {
+              id: wi.timeEntry.id,
+              clockInAt: wi.timeEntry.clockInAt?.toISOString(),
+              clockOutAt: wi.timeEntry.clockOutAt?.toISOString(),
+            }
+          : null,
+      }
+    }
+
+    return {
+      ...baseInterval,
       conflictWithIntervalIds: wi.conflictWithIntervalIds ?? [],
       conflicts:
         (wi.conflictWithIntervalIds ?? [])
           .map((conflictId) => conflictMap.get(conflictId))
           .filter((conflict): conflict is NonNullable<typeof conflict> => conflict != null) ?? [],
-      openedAt: openedAt?.toISOString() ?? null,
-      closedAt: closedAt?.toISOString() ?? null,
-      cancelReason: wi.cancelReason ?? null,
       useCustomPay: wi.useCustomPay,
       payComponents: wi.payComponents.map((component) => ({
         componentType: component.componentType,
@@ -396,13 +444,11 @@ export async function GET(request: Request) {
       customHourlyRateCents: wi.customHourlyRateCents,
       customShiftRateCents: wi.customShiftRateCents,
       customPercentRevenueBp: wi.customPercentRevenueBp,
-      breakMinutes: wi.breakMinutes,
       revenueCents: wi.revenueCents,
       calculatedMinutesWorked: wi.calculatedMinutesWorked,
       calculatedGrossPayCents: wi.calculatedGrossPayCents,
       currency: organizationCurrency,
       payCalculatedAt: wi.payCalculatedAt?.toISOString() ?? null,
-      notes: wi.notes,
       timeEntry: wi.timeEntry
         ? {
             id: wi.timeEntry.id,
@@ -426,9 +472,10 @@ export async function GET(request: Request) {
       id: organizationId,
       organization_id: organizationId,
       workday_id: workdayId,
-      employee_id: employeeId,
+      employee_id: readScope.scope === "self" ? readScope.employeeId : employeeId,
     },
     metadata: {
+      access_scope: readScope.scope,
       result_count: mapped.length,
       date_from: dateFrom,
       date_to: dateTo,
@@ -451,6 +498,26 @@ export async function POST(request: Request) {
   }
   const organizationId = session.organization.id
   const actor = auditActorFromSession(session)
+  const canCreateIntervals = await hasOrganizationActionAccess(session, {
+    permission: "interval:create",
+    allowManagementRole: true,
+  })
+  if (!canCreateIntervals) {
+    logAuditEvent(request, {
+      event_type: "interval.create",
+      outcome: "denied",
+      status: 403,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "organization",
+        id: organizationId,
+        organization_id: organizationId,
+      },
+      reason: "missing_interval_create_permission",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для создания смен" }, { status: 403 })
+  }
   try {
     const json = await request.json().catch(() => null)
     const parsed = intervalCreateSchema.safeParse(json)
@@ -859,6 +926,26 @@ export async function PUT(request: Request) {
   }
   const organizationId = session.organization.id
   const actor = auditActorFromSession(session)
+  const canEditIntervals = await hasOrganizationActionAccess(session, {
+    permission: "interval:edit",
+    allowManagementRole: true,
+  })
+  if (!canEditIntervals) {
+    logAuditEvent(request, {
+      event_type: "interval.update",
+      outcome: "denied",
+      status: 403,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "organization",
+        id: organizationId,
+        organization_id: organizationId,
+      },
+      reason: "missing_interval_edit_permission",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для редактирования смен" }, { status: 403 })
+  }
   try {
     const json = await request.json().catch(() => null)
     if (json && typeof json === "object" && "status" in json) {
@@ -1242,6 +1329,26 @@ export async function DELETE(request: Request) {
   }
   const organizationId = session.organization.id
   const actor = auditActorFromSession(session)
+  const canDeleteIntervals = await hasOrganizationActionAccess(session, {
+    permission: "interval:delete",
+    allowManagementRole: true,
+  })
+  if (!canDeleteIntervals) {
+    logAuditEvent(request, {
+      event_type: "interval.delete",
+      outcome: "denied",
+      status: 403,
+      route: "/api/intervals",
+      actor,
+      target: {
+        type: "organization",
+        id: organizationId,
+        organization_id: organizationId,
+      },
+      reason: "missing_interval_delete_permission",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для удаления смен" }, { status: 403 })
+  }
 
   const url = new URL(request.url)
   const id = url.searchParams.get("id")

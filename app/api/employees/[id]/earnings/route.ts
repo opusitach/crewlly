@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg } from "@/lib/auth"
+import { getOrganizationReadScope, getSessionUserWithOrg } from "@/lib/auth"
 import { computeIntervalMinutesWorked, computeIntervalPayrollSnapshot } from "@/lib/payroll/interval-compensation"
 import { syncCashSessionFromWorkdayProcedures } from "@/lib/cash/session-sync"
 import { syncWorkdayTipsFromCashSessions } from "@/lib/cash/tips-sync"
 import { computeEmployeeTipsByWorkdayForEarnings } from "@/lib/cash/earnings-tips"
+import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 import {
   resolveEffectiveWorkIntervalClosedAt,
   resolveEffectiveWorkIntervalOpenedAt,
@@ -75,10 +76,55 @@ type RouteContext = { params: Promise<{ id: string }> }
 export async function GET(request: Request, context: RouteContext) {
   const session = await getSessionUserWithOrg()
   if (!session || !session.organization) {
+    logAuditEvent(request, {
+      event_type: "employee.earnings.read",
+      outcome: "denied",
+      status: 401,
+      route: "/api/employees/[id]/earnings",
+      reason: "unauthorized",
+    })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const { id: employeeId } = await context.params
+  const readScope = await getOrganizationReadScope(session, {
+    orgWidePermissions: ["payroll:view"],
+  })
+  if (readScope.scope === "none") {
+    logAuditEvent(request, {
+      event_type: "employee.earnings.read",
+      outcome: "denied",
+      status: 403,
+      route: "/api/employees/[id]/earnings",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "employee",
+        id: employeeId,
+        organization_id: session.organization.id,
+        employee_id: employeeId,
+      },
+      reason: "missing_payroll_view_access",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для просмотра начислений" }, { status: 403 })
+  }
+  if (readScope.scope === "self" && readScope.employeeId !== employeeId) {
+    logAuditEvent(request, {
+      event_type: "employee.earnings.read",
+      outcome: "denied",
+      status: 403,
+      route: "/api/employees/[id]/earnings",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "employee",
+        id: employeeId,
+        organization_id: session.organization.id,
+        employee_id: employeeId,
+      },
+      reason: "not_own_employee_earnings",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для просмотра начислений" }, { status: 403 })
+  }
+
   const employee = await prisma.employee.findFirst({
     where: {
       id: employeeId,
@@ -90,6 +136,20 @@ export async function GET(request: Request, context: RouteContext) {
   })
 
   if (!employee) {
+    logAuditEvent(request, {
+      event_type: "employee.earnings.read",
+      outcome: "failure",
+      status: 404,
+      route: "/api/employees/[id]/earnings",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "employee",
+        id: employeeId,
+        organization_id: session.organization.id,
+        employee_id: employeeId,
+      },
+      reason: "employee_not_found",
+    })
     return NextResponse.json({ error: "Сотрудник не найден" }, { status: 404 })
   }
 
@@ -312,6 +372,25 @@ export async function GET(request: Request, context: RouteContext) {
     }
   }
 
+  logAuditEvent(request, {
+    event_type: "employee.earnings.read",
+    outcome: "success",
+    status: 200,
+    route: "/api/employees/[id]/earnings",
+    actor: auditActorFromSession(session),
+    target: {
+      type: "employee",
+      id: employee.id,
+      organization_id: session.organization.id,
+      employee_id: employee.id,
+    },
+    metadata: {
+      access_scope: readScope.scope,
+      result_count: items.length,
+      date_from: dateFrom,
+      date_to: dateTo,
+    },
+  })
   return NextResponse.json({
     data: {
       summary: {

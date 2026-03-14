@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, hasPermission } from "@/lib/auth"
+import { getSessionUserWithOrg, hasOrganizationActionAccess } from "@/lib/auth"
 import crypto from "crypto"
 import { auditActorFromSession, hashAuditIdentifier, logAuditEvent } from "@/lib/observability/audit"
 
@@ -22,6 +22,27 @@ export async function GET(request: Request) {
       reason: "unauthorized",
     })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const canManageInvitations = await hasOrganizationActionAccess(session, {
+    permission: "employee:create",
+    allowManagementRole: true,
+  })
+  if (!canManageInvitations) {
+    logAuditEvent(request, {
+      event_type: "invitation.list",
+      outcome: "denied",
+      status: 403,
+      route: "/api/invitations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_employee_create_permission",
+    })
+    return NextResponse.json({ error: "Нет прав для приглашения сотрудников" }, { status: 403 })
   }
 
   const url = new URL(request.url)
@@ -76,7 +97,6 @@ export async function GET(request: Request) {
       email: inv.email,
       accessRole: inv.accessRole,
       location: inv.location,
-      token: inv.token,
       expiresAt: inv.expiresAt.toISOString(),
       acceptedAt: inv.acceptedAt?.toISOString(),
       createdAt: inv.createdAt.toISOString(),
@@ -99,8 +119,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Check permission
-  const canInvite = await hasPermission(session.user.id, session.organization.id, "employee:create")
+  const canInvite = await hasOrganizationActionAccess(session, {
+    permission: "employee:create",
+    allowManagementRole: true,
+  })
   if (!canInvite) {
     logAuditEvent(request, {
       event_type: "invitation.create",
@@ -280,6 +302,27 @@ export async function DELETE(request: Request) {
       reason: "unauthorized",
     })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const canManageInvitations = await hasOrganizationActionAccess(session, {
+    permission: "employee:create",
+    allowManagementRole: true,
+  })
+  if (!canManageInvitations) {
+    logAuditEvent(request, {
+      event_type: "invitation.delete",
+      outcome: "denied",
+      status: 403,
+      route: "/api/invitations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_employee_create_permission",
+    })
+    return NextResponse.json({ error: "Нет прав для приглашения сотрудников" }, { status: 403 })
   }
 
   const url = new URL(request.url)

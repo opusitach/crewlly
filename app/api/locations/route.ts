@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg } from "@/lib/auth"
+import { getSessionUserWithOrg, hasOrganizationActionAccess } from "@/lib/auth"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
 const locationCreateSchema = z.object({
@@ -48,6 +48,27 @@ export async function POST(request: Request) {
       reason: "unauthorized",
     })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const canManageLocations = await hasOrganizationActionAccess(session, {
+    permission: "settings:manage",
+    allowManagementRole: true,
+  })
+  if (!canManageLocations) {
+    logAuditEvent(request, {
+      event_type: "location.create",
+      outcome: "denied",
+      status: 403,
+      route: "/api/locations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_settings_manage_permission",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для управления локациями" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => null)

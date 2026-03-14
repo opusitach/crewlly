@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg } from "@/lib/auth"
+import { getSessionUserWithOrg, hasOrganizationActionAccess } from "@/lib/auth"
 import { timezoneSchema } from "@/lib/validation/timezone"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
@@ -55,6 +55,27 @@ export async function PUT(request: Request) {
       reason: "unauthorized",
     })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const canManageOrganization = await hasOrganizationActionAccess(session, {
+    permission: "settings:manage",
+    allowManagementRole: true,
+  })
+  if (!canManageOrganization) {
+    logAuditEvent(request, {
+      event_type: "organization.update",
+      outcome: "denied",
+      status: 403,
+      route: "/api/organizations",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_settings_manage_permission",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для изменения настроек организации" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => null)

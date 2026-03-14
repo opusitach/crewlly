@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, getUserEmployee } from "@/lib/auth"
+import { getOrganizationReadScope, getSessionUserWithOrg, getUserEmployee, hasOrganizationActionAccess } from "@/lib/auth"
 import { isOpenedStatus, isPlannedStatus } from "@/lib/procedures/status"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
@@ -104,9 +105,12 @@ export async function POST(request: Request) {
 
   // Verify the interval belongs to this employee or user has permission
   const isOwn = employee && interval.employeeId === employee.id
-  const isManager = session.accessRole?.key === "owner" || session.accessRole?.key === "manager"
+  const canManageOtherIntervals = await hasOrganizationActionAccess(session, {
+    permission: ["interval:edit", "payroll:view"],
+    allowManagementRole: true,
+  })
 
-  if (!isOwn && !isManager) {
+  if (!isOwn && !canManageOtherIntervals) {
     logAuditEvent(request, {
       event_type: eventType,
       outcome: "denied",
@@ -318,6 +322,25 @@ export async function GET(request: Request) {
     })
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const readScope = await getOrganizationReadScope(session, {
+    orgWidePermissions: ["interval:edit", "payroll:view"],
+  })
+  if (readScope.scope === "none") {
+    logAuditEvent(request, {
+      event_type: "clock.list",
+      outcome: "denied",
+      status: 403,
+      route: "/api/clock",
+      actor: auditActorFromSession(session),
+      target: {
+        type: "organization",
+        id: session.organization.id,
+        organization_id: session.organization.id,
+      },
+      reason: "missing_clock_view_access",
+    })
+    return NextResponse.json({ error: "Недостаточно прав для просмотра отметок времени" }, { status: 403 })
+  }
 
   const url = new URL(request.url)
   const intervalId = url.searchParams.get("intervalId")
@@ -325,7 +348,7 @@ export async function GET(request: Request) {
   const dateFrom = url.searchParams.get("dateFrom")
   const dateTo = url.searchParams.get("dateTo")
 
-  interface WhereClause {
+  interface WhereClause extends Prisma.TimeEntryWhereInput {
     workInterval?: { workday: { organizationId: string } }
     workIntervalId?: string
     employeeId?: string
@@ -344,9 +367,7 @@ export async function GET(request: Request) {
     whereClause.workIntervalId = intervalId
   }
 
-  if (employeeId) {
-    whereClause.employeeId = employeeId
-  }
+  whereClause.employeeId = readScope.scope === "self" ? readScope.employeeId : employeeId ?? undefined
 
   if (dateFrom || dateTo) {
     whereClause.clockInAt = {}
@@ -395,9 +416,10 @@ export async function GET(request: Request) {
       type: "organization",
       id: session.organization.id,
       organization_id: session.organization.id,
-      employee_id: employeeId,
+      employee_id: readScope.scope === "self" ? readScope.employeeId : employeeId,
     },
     metadata: {
+      access_scope: readScope.scope,
       interval_id: intervalId,
       date_from: dateFrom,
       date_to: dateTo,

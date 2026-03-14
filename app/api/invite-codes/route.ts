@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
+import { getSessionUserWithOrg, hasOrganizationActionAccess } from "@/lib/auth"
 import { createInviteCode } from "@/lib/invite-codes"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
 
@@ -23,7 +23,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  if (!isOwnerOrManagerRole(session.membership)) {
+  const canManageInviteCodes = await hasOrganizationActionAccess(session, {
+    permission: "employee:create",
+    allowManagementRole: true,
+  })
+  if (!canManageInviteCodes) {
     logAuditEvent(request, {
       event_type: "invite_code.read",
       outcome: "denied",
@@ -35,7 +39,7 @@ export async function GET(request: Request) {
         id: session.organization.id,
         organization_id: session.organization.id,
       },
-      reason: "management_role_required",
+      reason: "missing_employee_create_permission",
     })
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
@@ -125,7 +129,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  if (!isOwnerOrManagerRole(session.membership)) {
+  const canManageInviteCodes = await hasOrganizationActionAccess(session, {
+    permission: "employee:create",
+    allowManagementRole: true,
+  })
+  if (!canManageInviteCodes) {
     logAuditEvent(request, {
       event_type: "invite_code.create",
       outcome: "denied",
@@ -137,7 +145,7 @@ export async function POST(request: Request) {
         id: session.organization.id,
         organization_id: session.organization.id,
       },
-      reason: "management_role_required",
+      reason: "missing_employee_create_permission",
     })
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
