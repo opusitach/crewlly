@@ -59,6 +59,10 @@ prometheus.exporter.cadvisor "integrations_cadvisor" {
   docker_host                = "unix:///rootfs/var/run/docker.sock"
   docker_only                = true
   disable_root_cgroup_stats  = true
+  // Docker Engine with containerd image store (driver-type io.containerd.snapshotter.v1)
+  // is currently incompatible with cAdvisor disk/filesystem layer discovery.
+  // Keep container CPU/memory/network metrics and suppress broken disk/diskIO metrics.
+  enabled_metrics            = ["cpu", "memory", "network", "oom_event"]
   storage_duration           = "5m"
   store_container_labels     = false
   allowlisted_container_labels = [

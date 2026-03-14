@@ -24,6 +24,12 @@ Current metrics coverage:
 - VPS: CPU, load, RAM, swap, disk usage, inode usage, filesystem latency/basic IO, network traffic
 - containers: CPU, memory, network, filesystem usage, CPU throttling, uptime/last seen, top resource consumers
 
+Current Docker backend limitation:
+
+- if the VPS runs Docker with `driver-type: io.containerd.snapshotter.v1`, cAdvisor cannot resolve container filesystem layers correctly
+- in that mode this config keeps container CPU, memory, network and throttling metrics enabled, but container filesystem usage metrics are intentionally suppressed to avoid noisy errors
+- full per-container filesystem usage requires switching Docker back to the classic image store backend during a maintenance window
+
 Transport path:
 
 ```mermaid
@@ -77,6 +83,7 @@ Cost controls already applied:
 - Linux exporter ignores loopback and transient `veth*` interfaces in network metrics
 - cAdvisor disables root cgroup stats
 - cAdvisor allowlists only the Docker Compose labels needed for grouping
+- cAdvisor suppresses container disk/filesystem metrics on Docker hosts using the containerd image store backend
 
 ## Audit event contract
 
