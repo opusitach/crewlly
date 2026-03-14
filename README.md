@@ -242,7 +242,7 @@ docker compose -f docker-compose.dev.yml up -d pgadmin
 Новая схема прод-деплоя разделена на 3 compose-файла:
 
 - `compose.data.yml` — `db`, `minio`, `pgadmin` (редкие изменения)
-- `compose.app.yml` — `front`, `back` (+ one-shot `migrate`)
+- `compose.app.yml` — `front`, `back`, `shift_auto_close` (+ one-shot `migrate`)
 - `compose.caddy.yml` — `caddy` (редкие роутинговые изменения)
 
 `Caddyfile` хранится в git по пути `infra/caddy/Caddyfile`, а секреты/пароли передаются через `.env.production`.
@@ -304,8 +304,8 @@ docker compose --env-file .env.production -f compose.data.yml up -d db minio pga
 # (опционально, один раз) инициализация bucket/CORS для MinIO
 docker compose --env-file .env.production -f compose.data.yml run --rm minio-init
 
-# 2. App services (front/back + миграции)
-docker compose --env-file .env.production -f compose.app.yml up -d --build front back
+# 2. App services (front/back/shift_auto_close + миграции)
+docker compose --env-file .env.production -f compose.app.yml up -d --build
 
 # 3. Caddy reverse proxy
 docker compose --env-file .env.production -f compose.caddy.yml up -d caddy
@@ -327,7 +327,7 @@ caddy hash-password --plaintext 'PASSWORD'
 
 В репозитории есть 3 workflow:
 
-- `deploy-app.yml` — деплоит только `front/back`
+- `deploy-app.yml` — деплоит весь `compose.app.yml` (`front/back/shift_auto_close` + `migrate`)
 - `deploy-caddy.yml` — деплоит/валидирует/reload только `caddy`
 - `deploy-data.yml` — деплоит только `db/minio/pgadmin`
 

@@ -105,8 +105,15 @@ services:
           ;(async () => {
             const response = await fetch(url, { method: "POST", headers })
             const body = await response.text()
+            let payload = null
+            try {
+              payload = JSON.parse(body)
+            } catch {}
             if (!response.ok) {
               throw new Error("Auto-close request failed with " + response.status + ": " + body)
+            }
+            if (payload && payload.ok === false) {
+              throw new Error("Auto-close request reported failures: " + body)
             }
             console.log(body)
           })().catch((error) => {

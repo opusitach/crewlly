@@ -12,6 +12,7 @@ const mocked = vi.hoisted(() => ({
   isProceduresSchemaMissing: vi.fn(),
   toEventActorName: vi.fn(),
   toEventDateLabel: vi.fn(),
+  logAuditEvent: vi.fn(),
 }))
 
 vi.mock("@/lib/prisma", () => ({
@@ -25,6 +26,10 @@ vi.mock("@/lib/internal-cron", () => ({
 vi.mock("@/lib/notifications/owner-events", () => ({
   toEventActorName: mocked.toEventActorName,
   toEventDateLabel: mocked.toEventDateLabel,
+}))
+
+vi.mock("@/lib/observability/audit", () => ({
+  logAuditEvent: mocked.logAuditEvent,
 }))
 
 vi.mock("@/lib/work-intervals/close", () => ({
@@ -119,6 +124,24 @@ describe("POST /api/internal/work-intervals/auto-complete", () => {
         failed: 0,
       }),
     )
+    expect(mocked.logAuditEvent).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({
+        event_type: "cron.shift_auto_close.run",
+        outcome: "success",
+        status: 200,
+        route: "/api/internal/work-intervals/auto-complete",
+        target: {
+          type: "internal_cron",
+          id: "shift_auto_close",
+        },
+        metadata: expect.objectContaining({
+          matched: 1,
+          closed: 1,
+          failed: 0,
+        }),
+      }),
+    )
   })
 
   it("retries without workday sync when procedures schema is missing", async () => {
@@ -164,6 +187,55 @@ describe("POST /api/internal/work-intervals/auto-complete", () => {
         warnings: 1,
         closed: 1,
         failed: 0,
+      }),
+    )
+  })
+
+  it("writes failure audit event when some intervals could not be auto-closed", async () => {
+    mocked.prisma.workInterval.findMany.mockResolvedValue([
+      {
+        id: "interval-stale",
+        startAt: new Date("2026-03-04T08:00:00.000Z"),
+        openedAt: new Date("2026-03-04T09:00:00.000Z"),
+        timeEntry: null,
+        employee: { user: { fullName: "Иван Петров", email: "ivan@example.com" } },
+        workday: {
+          id: "workday-1",
+          organizationId: "org-1",
+          locationId: "location-1",
+          workDate: new Date("2026-03-05T00:00:00.000Z"),
+        },
+      },
+    ])
+
+    mocked.finalizeWorkIntervalClose.mockRejectedValueOnce(new Error("cash sync failed"))
+    mocked.isProceduresSchemaMissing.mockReturnValue(false)
+
+    const response = await POST(new Request("http://localhost/api/internal/work-intervals/auto-complete", { method: "POST" }))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body).toEqual(
+      expect.objectContaining({
+        ok: false,
+        matched: 1,
+        closed: 0,
+        failed: 1,
+      }),
+    )
+    expect(mocked.logAuditEvent).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({
+        event_type: "cron.shift_auto_close.run",
+        outcome: "failure",
+        status: 200,
+        reason: "partial_failure",
+        metadata: expect.objectContaining({
+          matched: 1,
+          closed: 0,
+          failed: 1,
+          failureIds: ["interval-stale"],
+        }),
       }),
     )
   })

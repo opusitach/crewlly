@@ -89,4 +89,4 @@ jobs:
               docker compose --env-file .env.production -f docker-compose.prod.yml rm -sf frontend backend || true
             fi
 
-            docker compose --env-file .env.production -f compose.app.yml up -d --build front back
+            docker compose --env-file .env.production -f compose.app.yml up -d --build

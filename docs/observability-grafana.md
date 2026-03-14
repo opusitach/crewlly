@@ -12,6 +12,7 @@ Current coverage:
 - invitations: list, create, delete, invite-code read, invite-code create
 - scheduling: workday list, workday create, workday publish, interval list, interval create, interval update, interval delete
 - clock: clock-in, clock-out, clock list
+- internal cron: stale shift auto-close runs
 
 Transport path:
 
@@ -24,6 +25,7 @@ flowchart LR
 ```
 
 By default Alloy ships only structured JSON lines from the `back` container. Plaintext logs are dropped. That is intentional: lower Grafana Cloud volume, lower noise, lower cardinality.
+Internal cron audit events are emitted by the backend endpoint itself, so they are ingested through the same `back` pipeline without extra Alloy changes.
 
 ## Audit event contract
 
@@ -118,7 +120,6 @@ Every audit event is a single JSON line with:
 - employee earnings
 - onboarding state transitions
 - procedure answers and procedure sync
-- internal cron and auto-close jobs
 - presign routes
 
 ## Never send
@@ -187,7 +188,7 @@ GRAFANA_CLOUD_LOKI_USERNAME=CHANGE_ME_GRAFANA_CLOUD_LOKI_USERNAME
 GRAFANA_CLOUD_LOGS_TOKEN=CHANGE_ME_GRAFANA_CLOUD_LOGS_TOKEN
 ```
 
-`APP_SERVICE_NAME` is already set in `compose.app.yml`. Audit events from API traffic go out as `crewlly-back`.
+`APP_SERVICE_NAME` is already set in `compose.app.yml`. Audit events from API traffic and internal cron runs go out as `crewlly-back`.
 
 ### 3. Deploy app changes
 
@@ -195,7 +196,7 @@ GRAFANA_CLOUD_LOGS_TOKEN=CHANGE_ME_GRAFANA_CLOUD_LOGS_TOKEN
 cd /home/ubuntu/crewlly
 git pull --ff-only origin main
 docker network inspect app_net >/dev/null 2>&1 || docker network create app_net
-docker compose --env-file .env.production -f compose.app.yml up -d --build front back
+docker compose --env-file .env.production -f compose.app.yml up -d --build
 ```
 
 ### 4. Deploy Alloy
@@ -239,6 +240,18 @@ Schedule changes:
 {app="crewlly", kind="audit", event_type=~"interval\\..+|workday\\..+"}
 ```
 
+Cron auto-close runs:
+
+```logql
+{app="crewlly", kind="audit", event_type="cron.shift_auto_close.run"}
+```
+
+Cron failures:
+
+```logql
+{app="crewlly", kind="audit", event_type="cron.shift_auto_close.run", outcome!="success"}
+```
+
 ### 7. Alerts to add in Grafana Cloud
 
 - spike in `outcome="denied"` for `auth.login`
@@ -246,6 +259,7 @@ Schedule changes:
 - burst of `interval.delete`
 - any `organization.update`
 - any `failure` on schedule or clock flows
+- any `outcome!="success"` for `cron.shift_auto_close.run`
 
 ## Security notes
 
