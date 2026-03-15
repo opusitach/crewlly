@@ -1,15 +1,41 @@
 "use client"
 
 import { useState } from "react"
+import { Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PhoneInput } from "@/components/ui/phone-input"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 import { getPhoneValidationError } from "@/lib/validation/phone"
+import { getPasswordRequirementChecks, isStrongPassword } from "@/lib/validation/password"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+
+type FlattenedValidationError = {
+  fieldErrors?: Record<string, string[] | undefined>
+  formErrors?: string[]
+}
+
+function getFirstValidationError(error: FlattenedValidationError | string | null | undefined): string | null {
+  if (!error) {
+    return null
+  }
+
+  if (typeof error === "string") {
+    return error
+  }
+
+  const fieldError = Object.values(error.fieldErrors ?? {}).flat().find(Boolean)
+  if (fieldError) {
+    return fieldError
+  }
+
+  const formError = error.formErrors?.find(Boolean)
+  return formError ?? null
+}
 
 export default function RegistrationScreen({ onRegistered, redirectTo = "/select-role" }: { onRegistered?: () => void; redirectTo?: string }) {
   const { toast } = useToast()
@@ -23,8 +49,11 @@ export default function RegistrationScreen({ onRegistered, redirectTo = "/select
   const [formError, setFormError] = useState<string | null>(null)
   const phoneError = getPhoneValidationError(phone)
   const showPhoneError = Boolean(phoneError) && phoneTouched
+  const passwordRequirements = getPasswordRequirementChecks(password)
+  const hasStartedTypingPassword = password.length > 0
+  const isPasswordValid = isStrongPassword(password)
 
-  const isValid = name.trim().length >= 2 && email.includes("@") && password.length >= 6 && !phoneError
+  const isValid = name.trim().length >= 2 && email.includes("@") && isPasswordValid && !phoneError
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -54,7 +83,7 @@ export default function RegistrationScreen({ onRegistered, redirectTo = "/select
           throw new Error("Email уже используется")
         }
         if (res.status === 400) {
-          throw new Error("Проверьте корректность данных")
+          throw new Error(getFirstValidationError(msg?.error) || "Проверьте корректность данных")
         }
         throw new Error(msg?.error || "Не удалось создать аккаунт")
       }
@@ -87,12 +116,29 @@ export default function RegistrationScreen({ onRegistered, redirectTo = "/select
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <Label htmlFor="name">Имя</Label>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                setFormError(null)
+              }}
+              required
+            />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                setFormError(null)
+              }}
+              required
+            />
           </div>
 
           <div className="space-y-2">
@@ -125,11 +171,64 @@ export default function RegistrationScreen({ onRegistered, redirectTo = "/select
               id="password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={6}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setFormError(null)
+              }}
+              minLength={8}
+              maxLength={64}
+              autoComplete="new-password"
+              aria-invalid={hasStartedTypingPassword && !isPasswordValid}
+              aria-describedby="registration-password-requirements"
+              className={cn(
+                hasStartedTypingPassword && isPasswordValid && [
+                  "border-emerald-300 bg-emerald-50/60",
+                  "focus-visible:border-emerald-400 focus-visible:ring-emerald-200/60",
+                ],
+              )}
               required
             />
-            <p className="text-xs text-muted-foreground">Минимум 6 символов</p>
+            <div id="registration-password-requirements" className="space-y-1.5">
+              <p className="text-[11px] font-medium leading-4 text-muted-foreground">Пароль должен содержать:</p>
+              <ul className="space-y-1">
+                {passwordRequirements.map((requirement) => {
+                  const isUnmet = hasStartedTypingPassword && !requirement.met
+
+                  return (
+                    <li
+                      key={requirement.id}
+                      className={cn(
+                        "flex items-center gap-2 text-[11px] leading-4 transition-colors",
+                        requirement.met && "text-emerald-700",
+                        isUnmet && "text-destructive",
+                        !requirement.met && !hasStartedTypingPassword && "text-muted-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                          requirement.met && "border-emerald-500 bg-emerald-500 text-white",
+                          isUnmet && "border-destructive/50 bg-destructive/10 text-destructive",
+                          !requirement.met &&
+                            !hasStartedTypingPassword &&
+                            "border-border bg-background text-transparent",
+                        )}
+                        aria-hidden="true"
+                      >
+                        {requirement.met ? (
+                          <Check className="h-3 w-3" strokeWidth={2.4} />
+                        ) : isUnmet ? (
+                          <X className="h-3 w-3" strokeWidth={2.4} />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                        )}
+                      </span>
+                      <span>{requirement.label}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
           </div>
 
           <Button type="submit" className="w-full" disabled={!isValid || isSubmitting}>

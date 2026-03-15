@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { hashPassword, createSession, deleteUserSessions } from "@/lib/auth"
 import { Prisma } from "@prisma/client"
 import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
+import { PASSWORD_POLICY_ERROR_MESSAGE, isStrongPassword } from "@/lib/validation/password"
 import { auditActorFromSession, hashAuditIdentifier, logAuditEvent } from "@/lib/observability/audit"
 
 const registerSchema = z
@@ -17,7 +18,7 @@ const registerSchema = z
       .optional()
       .nullable()
       .refine((value) => value == null || getPhoneValidationError(value) === null, DEFAULT_PHONE_ERROR_MESSAGE),
-    password: z.string().min(6, "Пароль должен быть не менее 6 символов"),
+    password: z.string().min(1, "Введите пароль").refine(isStrongPassword, PASSWORD_POLICY_ERROR_MESSAGE),
   })
   .refine((data) => Boolean(data.fullName || data.name), {
     message: "Имя обязательно",
