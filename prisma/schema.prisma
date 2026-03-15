@@ -16,6 +16,11 @@ enum PayComponentType {
   percent_revenue
 }
 
+enum EmployeeEarningAdjustmentType {
+  bonus
+  penalty
+}
+
 enum ProcedureWhen {
   OPEN
   CLOSE
@@ -75,6 +80,7 @@ model Organization {
   comments              Comment[]
   payrollRuns           PayrollRun[]
   notifications         Notification[]
+  earningAdjustments    EmployeeEarningAdjustment[]
 
   @@map("organizations")
 }
@@ -138,6 +144,7 @@ model User {
   notifications           Notification[]
   cashSessionsOwnerEdited CashSession[]          @relation("CashSessionOwnerEditor")
   cashSessionAuditLogs    CashSessionAuditLog[]  @relation("CashSessionAuditActor")
+  createdEarningAdjustments EmployeeEarningAdjustment[] @relation("EmployeeEarningAdjustmentCreator")
 
   @@map("users")
 }
@@ -319,6 +326,7 @@ model Employee {
   cashSessionsClosed   CashSession[]          @relation("CashSessionCloser")
   cashSessionsReviewed CashSession[]          @relation("CashSessionReviewer")
   receiptUploads       ReceiptUpload[]
+  earningAdjustments   EmployeeEarningAdjustment[]
 
   @@unique([organizationId, userId])
   @@map("employees")
@@ -341,6 +349,27 @@ model Notification {
 
   @@index([userId, organizationId])
   @@map("notifications")
+}
+
+model EmployeeEarningAdjustment {
+  id             String                       @id @default(uuid()) @db.Uuid
+  organizationId String                       @map("organization_id") @db.Uuid
+  employeeId     String                       @map("employee_id") @db.Uuid
+  createdByUserId String?                     @map("created_by_user_id") @db.Uuid
+  adjustmentType EmployeeEarningAdjustmentType @map("adjustment_type")
+  amountCents    Int                          @map("amount_cents")
+  comment        String
+  effectiveDate  DateTime                     @map("effective_date") @db.Date
+  createdAt      DateTime                     @default(now()) @map("created_at")
+  updatedAt      DateTime                     @default(now()) @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdByUser User?       @relation("EmployeeEarningAdjustmentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, effectiveDate])
+  @@index([employeeId, effectiveDate])
+  @@map("employee_earning_adjustments")
 }
 
 model EmployeePayComponent {

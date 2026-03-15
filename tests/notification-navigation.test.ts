@@ -63,6 +63,43 @@ describe("notification navigation", () => {
     })
   })
 
+  it("navigates worker bonus notification to money screen using explicit period payload", () => {
+    expect(
+      resolveNotificationNavigationTarget({
+        title: "Начислен бонус",
+        message: "Начислен бонус: 500 CZK. Комментарий: За инициативу",
+        payload: {
+          view: "worker_money",
+          fromDate: "2026-03-01",
+          toDate: "2026-03-15",
+          adjustmentType: "bonus",
+          effectiveDate: "2026-03-15",
+        },
+      }),
+    ).toEqual({
+      view: "worker_money",
+      fromDate: "2026-03-01",
+      toDate: "2026-03-15",
+    })
+  })
+
+  it("falls back to month period for legacy bonus notification payload without typed view", () => {
+    expect(
+      resolveNotificationNavigationTarget({
+        title: "Начислен штраф",
+        message: "Начислен штраф: 300 CZK. Комментарий: За опоздание",
+        payload: {
+          adjustmentType: "penalty",
+          effectiveDate: "2026-03-15",
+        },
+      }),
+    ).toEqual({
+      view: "worker_money",
+      fromDate: "2026-03-01",
+      toDate: "2026-03-31",
+    })
+  })
+
   it("normalizes Date values to yyyy-mm-dd", () => {
     expect(toNotificationDateOnly(new Date("2026-03-08T00:00:00.000Z"))).toBe("2026-03-08")
   })

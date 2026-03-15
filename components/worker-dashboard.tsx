@@ -46,6 +46,9 @@ type WorkerMonthSummary = {
   totalGrossCents: number
   totalSalaryCents: number
   totalTipsCents: number
+  totalBonusCents: number
+  totalPenaltyCents: number
+  totalAdjustmentsCents: number
   totalAccruedCents: number
   totalMinutesWorked: number
   shiftsCount: number
@@ -69,6 +72,11 @@ type PendingWorkerPlannerNavigation = {
   openWeekView?: boolean
 }
 
+type PendingWorkerMoneyNavigation = {
+  fromDate: string
+  toDate: string
+}
+
 const WORKER_TAB_RESET_VERSION_INITIAL: WorkerTabResetVersion = {
   shift: 0,
   planner: 0,
@@ -86,6 +94,9 @@ const EMPTY_MONTH_SUMMARY: WorkerMonthSummary = {
   totalGrossCents: 0,
   totalSalaryCents: 0,
   totalTipsCents: 0,
+  totalBonusCents: 0,
+  totalPenaltyCents: 0,
+  totalAdjustmentsCents: 0,
   totalAccruedCents: 0,
   totalMinutesWorked: 0,
   shiftsCount: 0,
@@ -113,6 +124,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const [tabResetVersion, setTabResetVersion] = useState<WorkerTabResetVersion>(WORKER_TAB_RESET_VERSION_INITIAL)
   const [unreadNotifications, setUnreadNotifications] = useState<number | null>(null)
   const [pendingPlannerNavigation, setPendingPlannerNavigation] = useState<PendingWorkerPlannerNavigation | null>(null)
+  const [pendingMoneyNavigation, setPendingMoneyNavigation] = useState<PendingWorkerMoneyNavigation | null>(null)
   const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false)
   const [isJoinVenueOpen, setIsJoinVenueOpen] = useState(false)
   const [joinInviteCode, setJoinInviteCode] = useState("")
@@ -212,14 +224,22 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
         ? Number(rawSummary.totalSalaryCents)
         : totalGrossCents
       const totalTipsCents = Number.isInteger(rawSummary.totalTipsCents) ? Number(rawSummary.totalTipsCents) : 0
+      const totalBonusCents = Number.isInteger(rawSummary.totalBonusCents) ? Number(rawSummary.totalBonusCents) : 0
+      const totalPenaltyCents = Number.isInteger(rawSummary.totalPenaltyCents) ? Number(rawSummary.totalPenaltyCents) : 0
+      const totalAdjustmentsCents = Number.isInteger(rawSummary.totalAdjustmentsCents)
+        ? Number(rawSummary.totalAdjustmentsCents)
+        : totalBonusCents - totalPenaltyCents
 
       setMonthSummary({
         totalGrossCents,
         totalSalaryCents,
         totalTipsCents,
+        totalBonusCents,
+        totalPenaltyCents,
+        totalAdjustmentsCents,
         totalAccruedCents: Number.isInteger(rawSummary.totalAccruedCents)
           ? Number(rawSummary.totalAccruedCents)
-          : totalSalaryCents + totalTipsCents,
+          : totalSalaryCents + totalTipsCents + totalAdjustmentsCents,
         totalMinutesWorked: Number.isInteger(rawSummary.totalMinutesWorked) ? Number(rawSummary.totalMinutesWorked) : 0,
         shiftsCount: Number.isInteger(rawSummary.shiftsCount) ? Number(rawSummary.shiftsCount) : 0,
         currency:
@@ -679,8 +699,19 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const currentMonthLabel = new Date().toLocaleDateString("ru-RU", { month: "long" })
   const monthHoursText = formatMonthHours(monthSummary.totalMinutesWorked)
   const monthShiftsText = formatShiftCount(monthSummary.shiftsCount)
-  const monthSalaryText = formatMoney(monthSummary.totalSalaryCents, monthSummary.currency ?? organization?.currency)
+  const monthBaseCompensationCents = monthSummary.totalSalaryCents + monthSummary.totalAdjustmentsCents
+  const monthSalaryText = formatMoney(monthBaseCompensationCents, monthSummary.currency ?? organization?.currency)
   const monthTipsText = formatMoney(monthSummary.totalTipsCents, monthSummary.currency ?? organization?.currency)
+  const monthAdjustmentText = formatMoney(
+    monthSummary.totalAdjustmentsCents,
+    monthSummary.currency ?? organization?.currency,
+  )
+  const monthSalaryCaption =
+    monthSummary.totalAdjustmentsCents !== 0
+      ? `+ ${monthTipsText} чаевых • ${
+          monthSummary.totalAdjustmentsCents > 0 ? "+" : ""
+        }${monthAdjustmentText} коррект.`
+      : `+ ${monthTipsText} чаевых`
   const visibleDashboardEvents = dashboardEvents.slice(0, 3)
   const hasMoreDashboardEvents = dashboardEvents.length > 3
 
@@ -725,6 +756,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   const handleNotificationNavigation = (target: NotificationNavigationTarget) => {
     if (target.view === "worker_planner") {
       setAccountView("none")
+      setPendingMoneyNavigation(null)
       setPendingPlannerNavigation({
         workDate: target.workDate,
         openWeekView: target.openWeekView ?? true,
@@ -734,7 +766,20 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
       return
     }
 
+    if (target.view === "worker_money") {
+      setAccountView("none")
+      setPendingPlannerNavigation(null)
+      setPendingMoneyNavigation({
+        fromDate: target.fromDate,
+        toDate: target.toDate,
+      })
+      setActiveTab("money")
+      updateRouteForTab("money")
+      return
+    }
+
     if (target.view === "worker_profile") {
+      setPendingMoneyNavigation(null)
       setPendingPlannerNavigation(null)
       setAccountView("profile")
     }
@@ -776,6 +821,9 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
         <WorkerMoneyView
           key={`worker-money-${tabResetVersion.money}`}
           onBack={() => handleTabChange("shift")}
+          initialFromDate={pendingMoneyNavigation?.fromDate}
+          initialToDate={pendingMoneyNavigation?.toDate}
+          onInitialNavigationHandled={() => setPendingMoneyNavigation(null)}
           hideHeader
         />
       )
@@ -958,7 +1006,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
                 <div className="space-y-1">
                   <p className={DASHBOARD_STAT_VALUE_CLASS}>{isMonthSummaryLoading ? "—" : monthSalaryText}</p>
                   <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                    {isMonthSummaryLoading ? "Загрузка..." : `+ ${monthTipsText} чаевых`}
+                    {isMonthSummaryLoading ? "Загрузка..." : monthSalaryCaption}
                   </p>
                 </div>
               </div>

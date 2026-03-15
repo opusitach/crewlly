@@ -87,6 +87,18 @@ type PendingOwnerCashNavigation = {
   workDate?: string
   selectedShiftId?: string | null
   selectedCashSessionId?: string | null
+  returnToEmployeeEarnings?: {
+    intervalId: string
+    employeeId: string
+    fromDate: string
+    toDate: string
+  } | null
+}
+
+type PendingOwnerReportsNavigation = {
+  employeeId: string
+  employeeFromDate?: string
+  employeeToDate?: string
 }
 
 type CashSummaryFormulaItem = {
@@ -210,6 +222,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const [verificationQueueCount, setVerificationQueueCount] = useState(0)
   const [pendingShiftsNavigation, setPendingShiftsNavigation] = useState<PendingOwnerShiftsNavigation | null>(null)
   const [pendingCashNavigation, setPendingCashNavigation] = useState<PendingOwnerCashNavigation | null>(null)
+  const [pendingReportsNavigation, setPendingReportsNavigation] = useState<PendingOwnerReportsNavigation | null>(null)
   const [todayRevenueAmount, setTodayRevenueAmount] = useState<number | null>(null)
   const [monthRevenueAmount, setMonthRevenueAmount] = useState<number | null>(null)
   const [revenueCurrency, setRevenueCurrency] = useState<string>("CZK")
@@ -915,6 +928,42 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     }
   }
 
+  const handleEmployeeEarningNavigation = (target: {
+    intervalId: string
+    workDate: string
+    employeeId: string
+    fromDate: string
+    toDate: string
+  }) => {
+    setAccountView("none")
+    setPendingShiftsNavigation(null)
+    setPendingCashNavigation({
+      tab: "work_shifts",
+      workDate: target.workDate,
+      selectedShiftId: target.intervalId,
+      selectedCashSessionId: null,
+      returnToEmployeeEarnings: {
+        intervalId: target.intervalId,
+        employeeId: target.employeeId,
+        fromDate: target.fromDate,
+        toDate: target.toDate,
+      },
+    })
+    updateRouteForTab("cash", { cashTab: null })
+  }
+
+  const handleCashShiftBackToEmployeeEarnings = (target: { employeeId: string; fromDate: string; toDate: string }) => {
+    setAccountView("none")
+    setPendingShiftsNavigation(null)
+    setPendingCashNavigation(null)
+    setPendingReportsNavigation({
+      employeeId: target.employeeId,
+      employeeFromDate: target.fromDate,
+      employeeToDate: target.toDate,
+    })
+    updateRouteForTab("reports", { reportsFrom: target.fromDate, reportsTo: target.toDate })
+  }
+
   const renderAccountOverlay = () => {
     if (accountView === "profile") {
       return (
@@ -965,6 +1014,8 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
           initialDate={pendingCashNavigation?.workDate}
           initialSelectedShiftId={pendingCashNavigation?.selectedShiftId ?? null}
           initialSelectedCashSessionId={pendingCashNavigation?.selectedCashSessionId ?? null}
+          initialShiftBackNavigation={pendingCashNavigation?.returnToEmployeeEarnings ?? null}
+          onShiftBackNavigateToEmployeeEarnings={handleCashShiftBackToEmployeeEarnings}
           onInitialNavigationHandled={() => setPendingCashNavigation(null)}
         />
       )
@@ -974,6 +1025,11 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
           key={`owner-reports-${tabResetVersion.reports}`}
           initialFromDate={initialReportsFromDate}
           initialToDate={initialReportsToDate}
+          initialSelectedEmployeeId={pendingReportsNavigation?.employeeId ?? null}
+          initialEmployeeFromDate={pendingReportsNavigation?.employeeFromDate}
+          initialEmployeeToDate={pendingReportsNavigation?.employeeToDate}
+          onInitialEmployeeNavigationHandled={() => setPendingReportsNavigation(null)}
+          onEmployeeEarningSelect={handleEmployeeEarningNavigation}
         />
       )
     if (activeTab === "settings") {

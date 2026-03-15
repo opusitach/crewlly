@@ -1,6 +1,6 @@
 "use client"
 
-import { LayoutDashboard, Calendar, CreditCard, BarChart3, Settings } from "lucide-react"
+import { LayoutDashboard, Calendar, CreditCard, Wallet, Settings } from "lucide-react"
 
 export type OwnerTab = "dashboard" | "shifts" | "cash" | "reports" | "settings"
 
@@ -13,7 +13,7 @@ const OWNER_TABS: { key: OwnerTab; label: string; Icon: typeof LayoutDashboard }
   { key: "dashboard", label: "Главная", Icon: LayoutDashboard },
   { key: "shifts", label: "Смены", Icon: Calendar },
   { key: "cash", label: "Проверка", Icon: CreditCard },
-  { key: "reports", label: "Отчёты", Icon: BarChart3 },
+  { key: "reports", label: "Финансы", Icon: Wallet },
   { key: "settings", label: "Настройки", Icon: Settings },
 ]
 

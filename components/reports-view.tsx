@@ -47,6 +47,10 @@ type ReportEmployee = {
 type EmployeeEarningsSummary = {
   totalSalaryCents: number
   totalTipsCents: number
+  totalBonusCents: number
+  totalPenaltyCents: number
+  totalAdjustmentsCents: number
+  totalAccruedCents: number
   totalMinutesWorked: number
   shiftsCount: number
   currency: string | null
@@ -94,6 +98,10 @@ type SelectedFormula = {
 const EMPTY_EMPLOYEE_SUMMARY: EmployeeEarningsSummary = {
   totalSalaryCents: 0,
   totalTipsCents: 0,
+  totalBonusCents: 0,
+  totalPenaltyCents: 0,
+  totalAdjustmentsCents: 0,
+  totalAccruedCents: 0,
   totalMinutesWorked: 0,
   shiftsCount: 0,
   currency: "CZK",
@@ -162,9 +170,28 @@ const normalizeFormulaSummaryItems = (raw: unknown): FormulaSummaryItem[] => {
 type ReportsViewProps = {
   initialFromDate?: string
   initialToDate?: string
+  initialSelectedEmployeeId?: string | null
+  initialEmployeeFromDate?: string
+  initialEmployeeToDate?: string
+  onInitialEmployeeNavigationHandled?: () => void
+  onEmployeeEarningSelect?: (target: {
+    intervalId: string
+    workDate: string
+    employeeId: string
+    fromDate: string
+    toDate: string
+  }) => void
 }
 
-export default function ReportsView({ initialFromDate, initialToDate }: ReportsViewProps = {}) {
+export default function ReportsView({
+  initialFromDate,
+  initialToDate,
+  initialSelectedEmployeeId,
+  initialEmployeeFromDate,
+  initialEmployeeToDate,
+  onInitialEmployeeNavigationHandled,
+  onEmployeeEarningSelect,
+}: ReportsViewProps = {}) {
   const today = useMemo(() => new Date(), [])
   const defaultFrom = useMemo(() => toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), [today])
   const defaultTo = useMemo(() => toDateInputValue(today), [today])
@@ -186,6 +213,10 @@ export default function ReportsView({ initialFromDate, initialToDate }: ReportsV
   const [employeeSummaries, setEmployeeSummaries] = useState<Record<string, EmployeeEarningsSummary>>({})
   const [isEmployeeSummariesLoading, setIsEmployeeSummariesLoading] = useState(false)
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+  const [selectedEmployeeInitialRange, setSelectedEmployeeInitialRange] = useState<{
+    fromDate?: string
+    toDate?: string
+  } | null>(null)
   const [selectedCashField, setSelectedCashField] = useState<SelectedCashField | null>(null)
   const [selectedFormula, setSelectedFormula] = useState<SelectedFormula | null>(null)
   const [cashSummary, setCashSummary] = useState<CashSummary>(EMPTY_CASH_SUMMARY)
@@ -199,6 +230,21 @@ export default function ReportsView({ initialFromDate, initialToDate }: ReportsV
       prev.fromDate === initialRange.fromDate && prev.toDate === initialRange.toDate ? prev : initialRange,
     )
   }, [initialRange.fromDate, initialRange.toDate])
+
+  useEffect(() => {
+    if (!initialSelectedEmployeeId) return
+    setSelectedEmployeeId((prev) => (prev === initialSelectedEmployeeId ? prev : initialSelectedEmployeeId))
+    setSelectedEmployeeInitialRange({
+      fromDate: initialEmployeeFromDate,
+      toDate: initialEmployeeToDate,
+    })
+    onInitialEmployeeNavigationHandled?.()
+  }, [
+    initialEmployeeFromDate,
+    initialEmployeeToDate,
+    initialSelectedEmployeeId,
+    onInitialEmployeeNavigationHandled,
+  ])
 
   useEffect(() => {
     let active = true
@@ -335,6 +381,16 @@ export default function ReportsView({ initialFromDate, initialToDate }: ReportsV
               {
                 totalSalaryCents: Number.isInteger(rawSummary.totalSalaryCents) ? Number(rawSummary.totalSalaryCents) : 0,
                 totalTipsCents: Number.isInteger(rawSummary.totalTipsCents) ? Number(rawSummary.totalTipsCents) : 0,
+                totalBonusCents: Number.isInteger(rawSummary.totalBonusCents) ? Number(rawSummary.totalBonusCents) : 0,
+                totalPenaltyCents: Number.isInteger(rawSummary.totalPenaltyCents) ? Number(rawSummary.totalPenaltyCents) : 0,
+                totalAdjustmentsCents: Number.isInteger(rawSummary.totalAdjustmentsCents)
+                  ? Number(rawSummary.totalAdjustmentsCents)
+                  : (Number.isInteger(rawSummary.totalBonusCents) ? Number(rawSummary.totalBonusCents) : 0) -
+                    (Number.isInteger(rawSummary.totalPenaltyCents) ? Number(rawSummary.totalPenaltyCents) : 0),
+                totalAccruedCents: Number.isInteger(rawSummary.totalAccruedCents)
+                  ? Number(rawSummary.totalAccruedCents)
+                  : (Number.isInteger(rawSummary.totalSalaryCents) ? Number(rawSummary.totalSalaryCents) : 0) +
+                    (Number.isInteger(rawSummary.totalTipsCents) ? Number(rawSummary.totalTipsCents) : 0),
                 totalMinutesWorked: Number.isInteger(rawSummary.totalMinutesWorked)
                   ? Number(rawSummary.totalMinutesWorked)
                   : 0,
@@ -367,9 +423,15 @@ export default function ReportsView({ initialFromDate, initialToDate }: ReportsV
   if (selectedEmployee) {
     return (
       <EmployeeMoneyView
-        onBack={() => setSelectedEmployeeId(null)}
+        onBack={() => {
+          setSelectedEmployeeId(null)
+          setSelectedEmployeeInitialRange(null)
+        }}
         employeeId={selectedEmployee.id}
         employeeName={selectedEmployee.fullName}
+        initialFromDate={selectedEmployeeInitialRange?.fromDate}
+        initialToDate={selectedEmployeeInitialRange?.toDate}
+        onHistoryItemSelect={onEmployeeEarningSelect}
       />
     )
   }
@@ -627,12 +689,16 @@ export default function ReportsView({ initialFromDate, initialToDate }: ReportsV
                   {employees.map((employee) => {
                     const summary = employeeSummaries[employee.id] ?? EMPTY_EMPLOYEE_SUMMARY
                     const roundedHours = Math.round(summary.totalMinutesWorked / 60)
+                    const hasAdjustments = summary.totalBonusCents > 0 || summary.totalPenaltyCents > 0
                     return (
                       <button
                         key={employee.id}
                         type="button"
                         className="w-full p-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
-                        onClick={() => setSelectedEmployeeId(employee.id)}
+                        onClick={() => {
+                          setSelectedEmployeeInitialRange(null)
+                          setSelectedEmployeeId(employee.id)
+                        }}
                       >
                         <div className="flex items-center gap-2.5">
                           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -648,9 +714,13 @@ export default function ReportsView({ initialFromDate, initialToDate }: ReportsV
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold text-sm">{formatMoney(summary.totalSalaryCents, summary.currency)}</p>
+                          <p className="font-semibold text-sm">{formatMoney(summary.totalAccruedCents, summary.currency)}</p>
                           <p className="text-[10px] text-muted-foreground">
-                            + {formatMoney(summary.totalTipsCents, summary.currency)}
+                            {hasAdjustments
+                              ? `${formatMoney(summary.totalSalaryCents, summary.currency)} + ${formatMoney(summary.totalTipsCents, summary.currency)} ${
+                                  summary.totalAdjustmentsCents >= 0 ? "+" : ""
+                                } ${formatMoney(summary.totalAdjustmentsCents, summary.currency)}`
+                              : `${formatMoney(summary.totalSalaryCents, summary.currency)} + ${formatMoney(summary.totalTipsCents, summary.currency)}`}
                           </p>
                         </div>
                       </button>

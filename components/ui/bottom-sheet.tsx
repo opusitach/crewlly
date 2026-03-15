@@ -42,10 +42,10 @@ export function BottomSheet({ isOpen, onClose, children, className, showCloseBut
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-end bg-black/50" onClick={onClose}>
       <div
         className={cn(
-          "bg-card text-card-foreground relative flex flex-col rounded-xl border py-4 rounded-t-3xl rounded-b-none border-b-0 shadow-2xl max-w-md mx-auto w-full animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-hidden",
+          "bg-card text-card-foreground relative mx-auto flex max-h-[94dvh] w-full max-w-md flex-col overflow-hidden rounded-xl rounded-t-3xl rounded-b-none border border-b-0 py-4 shadow-2xl animate-in slide-in-from-bottom duration-300",
           className,
         )}
         onClick={(e) => e.stopPropagation()}
@@ -64,7 +64,9 @@ export function BottomSheet({ isOpen, onClose, children, className, showCloseBut
             </button>
           </div>
         )}
-        <div className="min-h-0 overflow-auto px-5 pb-4">{children}</div>
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-5 [padding-bottom:max(1rem,env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </div>
     </div>
   )

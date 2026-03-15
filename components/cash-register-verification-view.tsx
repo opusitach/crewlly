@@ -100,6 +100,13 @@ type Props = {
   initialDate?: string
   initialSelectedShiftId?: string | null
   initialSelectedCashSessionId?: string | null
+  initialShiftBackNavigation?: {
+    intervalId: string
+    employeeId: string
+    fromDate: string
+    toDate: string
+  } | null
+  onShiftBackNavigateToEmployeeEarnings?: (target: { employeeId: string; fromDate: string; toDate: string }) => void
   onInitialNavigationHandled?: () => void
 }
 
@@ -334,6 +341,8 @@ export default function CashRegisterVerificationView({
   initialDate,
   initialSelectedShiftId,
   initialSelectedCashSessionId,
+  initialShiftBackNavigation,
+  onShiftBackNavigateToEmployeeEarnings,
   onInitialNavigationHandled,
 }: Props) {
   const [activeTab, setActiveTab] = useState<VerificationTab>(() => initialTab ?? "work_shifts")
@@ -342,6 +351,7 @@ export default function CashRegisterVerificationView({
   )
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null)
   const [selectedCashSessionId, setSelectedCashSessionId] = useState<string | null>(null)
+  const [shiftBackNavigation, setShiftBackNavigation] = useState(initialShiftBackNavigation ?? null)
 
   const [workShifts, setWorkShifts] = useState<VerificationShift[]>([])
   const [isWorkLoading, setIsWorkLoading] = useState(true)
@@ -371,6 +381,22 @@ export default function CashRegisterVerificationView({
     if (!initialDate || !dateOnlyPattern.test(initialDate)) return
     setSelectedDate(initialDate)
   }, [initialDate])
+
+  useEffect(() => {
+    if (!initialShiftBackNavigation) return
+    setShiftBackNavigation((current) => {
+      if (
+        current &&
+        current.intervalId === initialShiftBackNavigation.intervalId &&
+        current.employeeId === initialShiftBackNavigation.employeeId &&
+        current.fromDate === initialShiftBackNavigation.fromDate &&
+        current.toDate === initialShiftBackNavigation.toDate
+      ) {
+        return current
+      }
+      return initialShiftBackNavigation
+    })
+  }, [initialShiftBackNavigation])
 
   useEffect(() => {
     if (initialSelectedShiftId) {
@@ -790,11 +816,35 @@ export default function CashRegisterVerificationView({
     return summaryById
   }, [cashFormulasByLocation, filteredCashSessions])
 
+  useEffect(() => {
+    if (!shiftBackNavigation || !selectedShiftId) return
+    if (selectedShiftId !== shiftBackNavigation.intervalId) {
+      setShiftBackNavigation(null)
+    }
+  }, [selectedShiftId, shiftBackNavigation])
+
+  const handleSelectedShiftBack = () => {
+    if (
+      selectedShift &&
+      shiftBackNavigation &&
+      selectedShift.id === shiftBackNavigation.intervalId &&
+      onShiftBackNavigateToEmployeeEarnings
+    ) {
+      const { employeeId, fromDate, toDate } = shiftBackNavigation
+      setSelectedShiftId(null)
+      setShiftBackNavigation(null)
+      onShiftBackNavigateToEmployeeEarnings({ employeeId, fromDate, toDate })
+      return
+    }
+
+    setSelectedShiftId(null)
+  }
+
   if (selectedShift) {
     return (
       <ShiftDetailsView
         interval={selectedShift}
-        onBack={() => setSelectedShiftId(null)}
+        onBack={handleSelectedShiftBack}
         onMarkReviewed={() => markWorkShiftReviewed(selectedShift)}
         isMarkReviewedLoading={Boolean(publishingWorkdayIds[selectedShift.workdayId])}
       />

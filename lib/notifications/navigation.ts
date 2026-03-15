@@ -29,6 +29,12 @@ const workerPlannerTargetSchema = z.object({
   openWeekView: z.boolean().optional(),
 })
 
+const workerMoneyTargetSchema = z.object({
+  view: z.literal("worker_money"),
+  fromDate: z.string().regex(dateOnlyPattern),
+  toDate: z.string().regex(dateOnlyPattern),
+})
+
 const workerProfileTargetSchema = z.object({
   view: z.literal("worker_profile"),
 })
@@ -37,6 +43,7 @@ export const notificationNavigationTargetSchema = z.discriminatedUnion("view", [
   ownerShiftsTargetSchema,
   ownerCashTargetSchema,
   workerPlannerTargetSchema,
+  workerMoneyTargetSchema,
   workerProfileTargetSchema,
 ])
 
@@ -73,6 +80,52 @@ const extractCancelReasonFromMessage = (message: string): string | undefined => 
   const match = cancelReasonPattern.exec(message)
   const reason = match?.[1]?.trim()
   return reason && reason.length > 0 ? reason : undefined
+}
+
+const isDateOnlyString = (value: unknown): value is string => typeof value === "string" && dateOnlyPattern.test(value)
+
+const toMonthDateRange = (value: string) => {
+  const [yearRaw, monthRaw] = value.split("-")
+  const year = Number.parseInt(yearRaw, 10)
+  const month = Number.parseInt(monthRaw, 10)
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return null
+
+  const fromDate = `${yearRaw}-${monthRaw}-01`
+  const toDate = toNotificationDateOnly(new Date(Date.UTC(year, month, 0)))
+  if (!toDate) return null
+
+  return { fromDate, toDate }
+}
+
+const resolveWorkerMoneyTargetFromPayload = (payload: unknown): NotificationNavigationTarget | null => {
+  if (!payload || typeof payload !== "object") return null
+
+  const record = payload as Record<string, unknown>
+  const fromDate =
+    (isDateOnlyString(record.fromDate) ? record.fromDate : null) ??
+    (isDateOnlyString(record.periodFrom) ? record.periodFrom : null)
+  const toDate =
+    (isDateOnlyString(record.toDate) ? record.toDate : null) ??
+    (isDateOnlyString(record.periodTo) ? record.periodTo : null)
+
+  if (fromDate && toDate) {
+    return {
+      view: "worker_money",
+      fromDate,
+      toDate,
+    }
+  }
+
+  const effectiveDate = isDateOnlyString(record.effectiveDate) ? record.effectiveDate : null
+  if (!effectiveDate) return null
+
+  const monthRange = toMonthDateRange(effectiveDate)
+  if (!monthRange) return null
+
+  return {
+    view: "worker_money",
+    ...monthRange,
+  }
 }
 
 export const resolveNotificationNavigationTarget = (
@@ -124,6 +177,9 @@ export const resolveNotificationNavigationTarget = (
         workDate,
         openWeekView: true,
       }
+    case "Начислен бонус":
+    case "Начислен штраф":
+      return resolveWorkerMoneyTargetFromPayload(notification.payload)
     case "Изменение зарплаты":
       return {
         view: "worker_profile",
