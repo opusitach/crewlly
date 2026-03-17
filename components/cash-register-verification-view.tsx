@@ -20,6 +20,7 @@ import {
 import ShiftDetailsView from "@/components/shift-details-view"
 import CashSessionDetailsView, { type CashSessionDetails } from "@/components/cash-session-details-view"
 import { cn } from "@/lib/utils"
+import { formatIntervalWorkedDuration } from "@/lib/utils/interval-worked-duration"
 import {
   evaluateCashFormulaExpression,
   extractCashFormulaKeys,
@@ -47,6 +48,12 @@ type VerificationShift = {
   endAt: string
   openedAt: string | null
   closedAt: string | null
+  breakMinutes?: number | null
+  calculatedMinutesWorked?: number | null
+  timeEntry?: {
+    clockInAt?: string | null
+    clockOutAt?: string | null
+  } | null
   status: string
   calculatedGrossPayCents: number | null
   currency?: string | null
@@ -736,6 +743,31 @@ export default function CashRegisterVerificationView({
     }
   }
 
+  const editShiftActualHours = async (
+    shift: VerificationShift,
+    input: { openedTime: string; closedTime: string; openedAt: string; closedAt: string; reason: string },
+  ) => {
+    const response = await fetch(`/api/work-intervals/${shift.id}/owner-edit`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(input),
+    })
+    const json = (await response.json().catch(() => null)) as { error?: string } | null
+    if (!response.ok) {
+      throw new Error(json?.error || "Не удалось изменить фактическое время смены")
+    }
+
+    const editedWorkDate = toDateOnlyValue(shift.workday.workDate)
+    await Promise.all([
+      selectedDate === editedWorkDate ? loadWorkShifts(editedWorkDate) : Promise.resolve(),
+      loadReviewQueue(undefined, { silent: true }),
+      loadReviewQueueCount(),
+    ])
+  }
+
   useEffect(() => {
     const controller = new AbortController()
     void loadWorkShifts(selectedDate, controller.signal)
@@ -847,6 +879,8 @@ export default function CashRegisterVerificationView({
         onBack={handleSelectedShiftBack}
         onMarkReviewed={() => markWorkShiftReviewed(selectedShift)}
         isMarkReviewedLoading={Boolean(publishingWorkdayIds[selectedShift.workdayId])}
+        canEditActualHours={!isShiftReviewed(selectedShift)}
+        onEditActualHours={(input) => editShiftActualHours(selectedShift, input)}
       />
     )
   }
@@ -939,73 +973,78 @@ export default function CashRegisterVerificationView({
 
             {!isWorkLoading &&
               !workLoadError &&
-              filteredWorkShifts.map((shift) => (
-                <Card
-                  key={shift.id}
-                  className="p-4 space-y-3 cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setSelectedShiftId(shift.id)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <User className="h-5 w-5 text-primary" strokeWidth={1.5} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold truncate">{shift.employee.fullName || "Сотрудник"}</p>
-                        <p className="text-sm text-muted-foreground truncate">{shift.position?.name || "Без позиции"}</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                  </div>
+              filteredWorkShifts.map((shift) => {
+                const workedDuration = formatIntervalWorkedDuration(shift)
 
-                  <div className="space-y-1 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" strokeWidth={1.5} />
-                      <span>{formatDate(shift.workday.workDate)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4" strokeWidth={1.5} />
-                      <span>
-                        {formatTime(shift.startAt)} - {formatTime(shift.endAt)} ({formatDuration(shift.startAt, shift.endAt)})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4" strokeWidth={1.5} />
-                      <span>
-                        Открыта: {formatTime(shift.openedAt)} • Закрыта: {formatTime(shift.closedAt)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {isShiftReviewed(shift) ? (
-                      <Badge variant="secondary" className="bg-green-500/10 text-green-700 border-green-500/20">
-                        <CheckCircle2 className="h-3 w-3 mr-1" strokeWidth={1.5} />
-                        Проверено
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                        <AlertCircle className="h-3 w-3 mr-1" strokeWidth={1.5} />
-                        Требует проверки
-                      </Badge>
-                    )}
-                    <ShiftSalaryInline shift={shift} />
-                  </div>
-
-                  <Button
-                    type="button"
-                    className="w-full"
-                    size="sm"
-                    disabled={isShiftReviewed(shift) || publishingWorkdayIds[shift.workdayId]}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      void markWorkShiftReviewed(shift)
-                    }}
+                return (
+                  <Card
+                    key={shift.id}
+                    className="p-4 space-y-3 cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => setSelectedShiftId(shift.id)}
                   >
-                    {isShiftReviewed(shift) ? "Проверено" : publishingWorkdayIds[shift.workdayId] ? "Проверяем..." : "Проверено"}
-                  </Button>
-                </Card>
-              ))}
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <User className="h-5 w-5 text-primary" strokeWidth={1.5} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{shift.employee.fullName || "Сотрудник"}</p>
+                          <p className="text-sm text-muted-foreground truncate">{shift.position?.name || "Без позиции"}</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
+                    </div>
+
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" strokeWidth={1.5} />
+                        <span>{formatDate(shift.workday.workDate)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" strokeWidth={1.5} />
+                        <span>
+                          {formatTime(shift.startAt)} - {formatTime(shift.endAt)} ({formatDuration(shift.startAt, shift.endAt)})
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" strokeWidth={1.5} />
+                        <span>
+                          Открыта: {formatTime(shift.openedAt)} • Закрыта: {formatTime(shift.closedAt)}
+                          {workedDuration ? ` • ${workedDuration}` : ""}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isShiftReviewed(shift) ? (
+                        <Badge variant="secondary" className="bg-green-500/10 text-green-700 border-green-500/20">
+                          <CheckCircle2 className="h-3 w-3 mr-1" strokeWidth={1.5} />
+                          Проверено
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                          <AlertCircle className="h-3 w-3 mr-1" strokeWidth={1.5} />
+                          Требует проверки
+                        </Badge>
+                      )}
+                      <ShiftSalaryInline shift={shift} />
+                    </div>
+
+                    <Button
+                      type="button"
+                      className="w-full"
+                      size="sm"
+                      disabled={isShiftReviewed(shift) || publishingWorkdayIds[shift.workdayId]}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void markWorkShiftReviewed(shift)
+                      }}
+                    >
+                      {isShiftReviewed(shift) ? "Проверено" : publishingWorkdayIds[shift.workdayId] ? "Проверяем..." : "Проверено"}
+                    </Button>
+                  </Card>
+                )
+              })}
           </>
         )}
 

@@ -13,6 +13,7 @@ type WorkerShiftPlannerProps = {
   onBack: () => void
   hideHeader?: boolean
   initialDate?: string
+  initialSelectedIntervalId?: string | null
   initialOpenWeekView?: boolean
   onInitialNavigationHandled?: () => void
 }
@@ -21,6 +22,7 @@ export default function WorkerShiftPlanner({
   onBack,
   hideHeader = false,
   initialDate,
+  initialSelectedIntervalId,
   initialOpenWeekView = false,
   onInitialNavigationHandled,
 }: WorkerShiftPlannerProps) {
@@ -81,6 +83,7 @@ export default function WorkerShiftPlanner({
       hideFilters
       lockedEmployeeId={employeeId}
       initialDate={initialDate}
+      initialSelectedIntervalId={initialSelectedIntervalId}
       initialOpenWeekView={initialOpenWeekView}
       onInitialNavigationHandled={onInitialNavigationHandled}
       externalHeader={hideHeader}

@@ -69,6 +69,7 @@ type WorkerTabResetVersion = Record<WorkerBottomTab, number>
 
 type PendingWorkerPlannerNavigation = {
   workDate: string
+  intervalId?: string | null
   openWeekView?: boolean
 }
 
@@ -759,6 +760,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
       setPendingMoneyNavigation(null)
       setPendingPlannerNavigation({
         workDate: target.workDate,
+        intervalId: target.intervalId ?? null,
         openWeekView: target.openWeekView ?? true,
       })
       setActiveTab("planner")
@@ -835,6 +837,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
           key={`worker-planner-${tabResetVersion.planner}`}
           onBack={() => handleTabChange("shift")}
           initialDate={pendingPlannerNavigation?.workDate}
+          initialSelectedIntervalId={pendingPlannerNavigation?.intervalId ?? null}
           initialOpenWeekView={pendingPlannerNavigation?.openWeekView ?? false}
           onInitialNavigationHandled={() => setPendingPlannerNavigation(null)}
           hideHeader

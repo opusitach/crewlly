@@ -22,6 +22,22 @@ describe("notification navigation", () => {
     })
   })
 
+  it("keeps intervalId in typed worker planner payload", () => {
+    expect(
+      parseNotificationNavigationTarget({
+        view: "worker_planner",
+        workDate: "2026-03-19",
+        intervalId: "interval_1",
+        openWeekView: true,
+      }),
+    ).toEqual({
+      view: "worker_planner",
+      workDate: "2026-03-19",
+      intervalId: "interval_1",
+      openWeekView: true,
+    })
+  })
+
   it("falls back to worker planner target from legacy shift notification text", () => {
     expect(
       resolveNotificationNavigationTarget({

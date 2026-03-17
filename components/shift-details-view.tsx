@@ -4,7 +4,19 @@ import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { ImagePreview } from "@/components/ui/image-preview"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { formatIntervalWorkedDuration } from "@/lib/utils/interval-worked-duration"
 import {
   AlertCircle,
   Calendar,
@@ -38,6 +50,12 @@ type VerificationShift = {
   endAt: string
   openedAt: string | null
   closedAt: string | null
+  breakMinutes?: number | null
+  calculatedMinutesWorked?: number | null
+  timeEntry?: {
+    clockInAt?: string | null
+    clockOutAt?: string | null
+  } | null
   status: string
 }
 
@@ -85,6 +103,14 @@ type ShiftDetailsViewProps = {
   onBack: () => void
   onMarkReviewed?: () => void | Promise<void>
   isMarkReviewedLoading?: boolean
+  canEditActualHours?: boolean
+  onEditActualHours?: (input: {
+    openedTime: string
+    closedTime: string
+    openedAt: string
+    closedAt: string
+    reason: string
+  }) => Promise<void>
 }
 
 const RULE_TYPE_LABELS: Record<Exclude<ProcedureRule["type"], "CASH">, string> = {
@@ -95,6 +121,7 @@ const RULE_TYPE_LABELS: Record<Exclude<ProcedureRule["type"], "CASH">, string> =
 
 const integerTokenRegex = /^-?\d+$/
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/
+const timeInputPattern = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 const formatDate = (raw: string) => {
   if (dateOnlyPattern.test(raw)) {
@@ -132,6 +159,40 @@ const formatDuration = (startAt: string, endAt: string) => {
   if (hours === 0) return `${restMinutes} мин`
   if (restMinutes === 0) return `${hours} ч`
   return `${hours} ч ${restMinutes} мин`
+}
+
+const toTimeInputValue = (primary: string | null | undefined, fallback?: string | null) => {
+  const primaryFormatted = formatTime(primary ?? null)
+  if (primaryFormatted !== "-") return primaryFormatted
+
+  const fallbackFormatted = formatTime(fallback ?? null)
+  return fallbackFormatted !== "-" ? fallbackFormatted : "00:00"
+}
+
+const toLocalWorkDate = (raw: string) => {
+  if (dateOnlyPattern.test(raw)) {
+    const [yearRaw, monthRaw, dayRaw] = raw.split("-")
+    const year = Number(yearRaw)
+    const month = Number(monthRaw)
+    const day = Number(dayRaw)
+    if (year && month && day) {
+      return new Date(year, month - 1, day)
+    }
+  }
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+}
+
+const toLocalDateTime = (workDateRaw: string, timeValue: string) => {
+  const match = timeInputPattern.exec(timeValue)
+  const baseDate = toLocalWorkDate(workDateRaw)
+  if (!match || !baseDate) return null
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes, 0, 0)
 }
 
 const formatInteger = (value: string) => {
@@ -206,7 +267,10 @@ export default function ShiftDetailsView({
   onBack,
   onMarkReviewed,
   isMarkReviewedLoading = false,
+  canEditActualHours = false,
+  onEditActualHours,
 }: ShiftDetailsViewProps) {
+  const workedDuration = formatIntervalWorkedDuration(interval)
   const [procedures, setProcedures] = useState<{
     open: ProcedureView | null
     close: ProcedureView | null
@@ -216,6 +280,17 @@ export default function ShiftDetailsView({
   })
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editedOpenedTime, setEditedOpenedTime] = useState(() => toTimeInputValue(interval.openedAt, interval.startAt))
+  const [editedClosedTime, setEditedClosedTime] = useState(() => toTimeInputValue(interval.closedAt, interval.endAt))
+  const [editReason, setEditReason] = useState("")
+  const [editError, setEditError] = useState<string | null>(null)
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false)
+
+  useEffect(() => {
+    setEditedOpenedTime(toTimeInputValue(interval.openedAt, interval.startAt))
+    setEditedClosedTime(toTimeInputValue(interval.closedAt, interval.endAt))
+  }, [interval.closedAt, interval.openedAt, interval.startAt, interval.endAt])
 
   useEffect(() => {
     const load = async () => {
@@ -296,24 +371,28 @@ export default function ShiftDetailsView({
 
         {!isLoading && !error && input.procedure && visibleRules.length > 0 && (
           <div className="space-y-3">
-            {visibleRules.map((rule) => (
-              <Card key={rule.id} className="p-3 space-y-3 border-border/70">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-sm">
-                      {rule.title}
-                      {rule.required && <span className="text-destructive"> *</span>}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{RULE_TYPE_LABELS[rule.type]}</p>
-                  </div>
-                  <Badge variant="outline" className="text-[10px]">
-                    {RULE_TYPE_LABELS[rule.type]}
-                  </Badge>
-                </div>
+            {visibleRules.map((rule) => {
+              const ruleTypeLabel = RULE_TYPE_LABELS[rule.type as Exclude<ProcedureRule["type"], "CASH">]
 
-                <RuleValue rule={rule} />
-              </Card>
-            ))}
+              return (
+                <Card key={rule.id} className="p-3 space-y-3 border-border/70">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-sm">
+                        {rule.title}
+                        {rule.required && <span className="text-destructive"> *</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{ruleTypeLabel}</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">
+                      {ruleTypeLabel}
+                    </Badge>
+                  </div>
+
+                  <RuleValue rule={rule} />
+                </Card>
+              )
+            })}
           </div>
         )}
       </Card>
@@ -321,6 +400,58 @@ export default function ShiftDetailsView({
   }
 
   const isReviewed = interval.workday.status === "published"
+
+  const handleEditDialogOpenChange = (open: boolean) => {
+    if (!open && isEditSubmitting) return
+
+    setIsEditDialogOpen(open)
+    if (open) {
+      setEditedOpenedTime(toTimeInputValue(interval.openedAt, interval.startAt))
+      setEditedClosedTime(toTimeInputValue(interval.closedAt, interval.endAt))
+      setEditReason("")
+      setEditError(null)
+    }
+  }
+
+  const handleEditActualHoursSubmit = async () => {
+    if (!onEditActualHours) return
+
+    const normalizedReason = editReason.trim()
+    if (!normalizedReason) {
+      setEditError("Укажите причину изменения")
+      return
+    }
+
+    const nextOpenedAt = toLocalDateTime(interval.workday.workDate, editedOpenedTime)
+    const nextClosedAt = toLocalDateTime(interval.workday.workDate, editedClosedTime)
+    if (!nextOpenedAt || !nextClosedAt) {
+      setEditError("Укажите корректное время начала и конца")
+      return
+    }
+
+    if (nextClosedAt.getTime() < nextOpenedAt.getTime()) {
+      nextClosedAt.setDate(nextClosedAt.getDate() + 1)
+    }
+
+    setEditError(null)
+    setIsEditSubmitting(true)
+
+    try {
+      await onEditActualHours({
+        openedTime: editedOpenedTime,
+        closedTime: editedClosedTime,
+        openedAt: nextOpenedAt.toISOString(),
+        closedAt: nextClosedAt.toISOString(),
+        reason: normalizedReason,
+      })
+      setIsEditDialogOpen(false)
+      setEditReason("")
+    } catch (submitError) {
+      setEditError(submitError instanceof Error ? submitError.message : "Не удалось изменить фактическое время")
+    } finally {
+      setIsEditSubmitting(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background pb-6 max-w-md mx-auto">
@@ -374,6 +505,7 @@ export default function ShiftDetailsView({
               <Clock className="h-4 w-4" strokeWidth={1.5} />
               <span>
                 Открыта: {formatTime(interval.openedAt)} • Закрыта: {formatTime(interval.closedAt)}
+                {workedDuration ? ` • ${workedDuration}` : ""}
               </span>
             </div>
           </div>
@@ -391,6 +523,18 @@ export default function ShiftDetailsView({
               </Badge>
             )}
           </div>
+
+          {onEditActualHours && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={!canEditActualHours || isEditSubmitting}
+              onClick={() => handleEditDialogOpenChange(true)}
+            >
+              {isEditSubmitting ? "Сохраняем..." : "Изменить часы"}
+            </Button>
+          )}
         </Card>
 
         {renderProcedureCard({
@@ -421,6 +565,72 @@ export default function ShiftDetailsView({
           {isReviewed ? "Проверено" : isMarkReviewedLoading ? "Проверяем..." : "Проверено"}
         </Button>
       </div>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={handleEditDialogOpenChange}>
+        <DialogContent className="max-w-md gap-4">
+          <DialogHeader>
+            <DialogTitle>Изменить фактическое время</DialogTitle>
+            <DialogDescription>
+              Изменится только строка «Открыта / Закрыта». Если время конца раньше времени начала, смена считается
+              завершенной на следующий день.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-shift-opened-time">Начало</Label>
+              <Input
+                id="edit-shift-opened-time"
+                type="time"
+                lang="en-GB"
+                step={60}
+                value={editedOpenedTime}
+                disabled={isEditSubmitting}
+                onChange={(event) => setEditedOpenedTime(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-shift-closed-time">Конец</Label>
+              <Input
+                id="edit-shift-closed-time"
+                type="time"
+                lang="en-GB"
+                step={60}
+                value={editedClosedTime}
+                disabled={isEditSubmitting}
+                onChange={(event) => setEditedClosedTime(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-shift-reason">Причина</Label>
+              <Textarea
+                id="edit-shift-reason"
+                value={editReason}
+                disabled={isEditSubmitting}
+                onChange={(event) => setEditReason(event.target.value)}
+                placeholder="Например: исправляем неверно зафиксированное время"
+              />
+            </div>
+
+            {editError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {editError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="ghost" disabled={isEditSubmitting} onClick={() => handleEditDialogOpenChange(false)}>
+              Отмена
+            </Button>
+            <Button type="button" disabled={isEditSubmitting} onClick={() => void handleEditActualHoursSubmit()}>
+              {isEditSubmitting ? "Сохраняем..." : "Сохранить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
