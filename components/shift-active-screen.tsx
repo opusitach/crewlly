@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { useAuthStore } from "@/lib/store/auth-store"
+import { formatTimeValue } from "@/lib/utils/timezone"
 import { ChevronLeft, Pause, Play, Camera, Upload, MessageSquarePlus, DollarSign } from "lucide-react"
 import {
   Dialog,
@@ -23,6 +25,7 @@ interface ShiftActiveScreenProps {
 }
 
 export default function ShiftActiveScreen({ onBack, onCloseShift, shiftData }: ShiftActiveScreenProps) {
+  const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
   const [isPaused, setIsPaused] = useState(false)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [receipts, setReceipts] = useState<File[]>([])
@@ -72,7 +75,7 @@ export default function ShiftActiveScreen({ onBack, onCloseShift, shiftData }: S
             <p className="text-sm text-muted-foreground">
               Начало в{" "}
               {shiftData.startTime
-                ? new Date(shiftData.startTime).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+                ? formatTimeValue(shiftData.startTime, organizationTimeZone, "14:00")
                 : "14:00"}
             </p>
           </div>

@@ -16,7 +16,9 @@ import { ImagePreview } from "@/components/ui/image-preview"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useAuthStore } from "@/lib/store/auth-store"
 import { formatIntervalWorkedDuration } from "@/lib/utils/interval-worked-duration"
+import { formatTimeValue } from "@/lib/utils/timezone"
 import {
   AlertCircle,
   Calendar,
@@ -107,8 +109,8 @@ type ShiftDetailsViewProps = {
   onEditActualHours?: (input: {
     openedTime: string
     closedTime: string
-    openedAt: string
-    closedAt: string
+    openedAt?: string
+    closedAt?: string
     reason: string
   }) => Promise<void>
 }
@@ -139,14 +141,7 @@ const formatDate = (raw: string) => {
   return parsed.toLocaleDateString("ru-RU")
 }
 
-const formatTime = (raw: string | null) => {
-  if (!raw) return "-"
-  const parsed = new Date(raw)
-  if (Number.isNaN(parsed.getTime())) return "-"
-  const hh = parsed.getHours().toString().padStart(2, "0")
-  const mm = parsed.getMinutes().toString().padStart(2, "0")
-  return `${hh}:${mm}`
-}
+const formatTime = (raw: string | null, timeZone?: string | null) => formatTimeValue(raw, timeZone, "-")
 
 const formatDuration = (startAt: string, endAt: string) => {
   const start = new Date(startAt)
@@ -161,38 +156,12 @@ const formatDuration = (startAt: string, endAt: string) => {
   return `${hours} ч ${restMinutes} мин`
 }
 
-const toTimeInputValue = (primary: string | null | undefined, fallback?: string | null) => {
-  const primaryFormatted = formatTime(primary ?? null)
+const toTimeInputValue = (primary: string | null | undefined, timeZone?: string | null, fallback?: string | null) => {
+  const primaryFormatted = formatTime(primary ?? null, timeZone)
   if (primaryFormatted !== "-") return primaryFormatted
 
-  const fallbackFormatted = formatTime(fallback ?? null)
+  const fallbackFormatted = formatTime(fallback ?? null, timeZone)
   return fallbackFormatted !== "-" ? fallbackFormatted : "00:00"
-}
-
-const toLocalWorkDate = (raw: string) => {
-  if (dateOnlyPattern.test(raw)) {
-    const [yearRaw, monthRaw, dayRaw] = raw.split("-")
-    const year = Number(yearRaw)
-    const month = Number(monthRaw)
-    const day = Number(dayRaw)
-    if (year && month && day) {
-      return new Date(year, month - 1, day)
-    }
-  }
-
-  const parsed = new Date(raw)
-  if (Number.isNaN(parsed.getTime())) return null
-  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
-}
-
-const toLocalDateTime = (workDateRaw: string, timeValue: string) => {
-  const match = timeInputPattern.exec(timeValue)
-  const baseDate = toLocalWorkDate(workDateRaw)
-  if (!match || !baseDate) return null
-
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes, 0, 0)
 }
 
 const formatInteger = (value: string) => {
@@ -270,6 +239,7 @@ export default function ShiftDetailsView({
   canEditActualHours = false,
   onEditActualHours,
 }: ShiftDetailsViewProps) {
+  const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
   const workedDuration = formatIntervalWorkedDuration(interval)
   const [procedures, setProcedures] = useState<{
     open: ProcedureView | null
@@ -281,16 +251,16 @@ export default function ShiftDetailsView({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [editedOpenedTime, setEditedOpenedTime] = useState(() => toTimeInputValue(interval.openedAt, interval.startAt))
-  const [editedClosedTime, setEditedClosedTime] = useState(() => toTimeInputValue(interval.closedAt, interval.endAt))
+  const [editedOpenedTime, setEditedOpenedTime] = useState(() => toTimeInputValue(interval.openedAt, organizationTimeZone, interval.startAt))
+  const [editedClosedTime, setEditedClosedTime] = useState(() => toTimeInputValue(interval.closedAt, organizationTimeZone, interval.endAt))
   const [editReason, setEditReason] = useState("")
   const [editError, setEditError] = useState<string | null>(null)
   const [isEditSubmitting, setIsEditSubmitting] = useState(false)
 
   useEffect(() => {
-    setEditedOpenedTime(toTimeInputValue(interval.openedAt, interval.startAt))
-    setEditedClosedTime(toTimeInputValue(interval.closedAt, interval.endAt))
-  }, [interval.closedAt, interval.openedAt, interval.startAt, interval.endAt])
+    setEditedOpenedTime(toTimeInputValue(interval.openedAt, organizationTimeZone, interval.startAt))
+    setEditedClosedTime(toTimeInputValue(interval.closedAt, organizationTimeZone, interval.endAt))
+  }, [interval.closedAt, interval.endAt, interval.openedAt, interval.startAt, organizationTimeZone])
 
   useEffect(() => {
     const load = async () => {
@@ -406,8 +376,8 @@ export default function ShiftDetailsView({
 
     setIsEditDialogOpen(open)
     if (open) {
-      setEditedOpenedTime(toTimeInputValue(interval.openedAt, interval.startAt))
-      setEditedClosedTime(toTimeInputValue(interval.closedAt, interval.endAt))
+      setEditedOpenedTime(toTimeInputValue(interval.openedAt, organizationTimeZone, interval.startAt))
+      setEditedClosedTime(toTimeInputValue(interval.closedAt, organizationTimeZone, interval.endAt))
       setEditReason("")
       setEditError(null)
     }
@@ -422,15 +392,9 @@ export default function ShiftDetailsView({
       return
     }
 
-    const nextOpenedAt = toLocalDateTime(interval.workday.workDate, editedOpenedTime)
-    const nextClosedAt = toLocalDateTime(interval.workday.workDate, editedClosedTime)
-    if (!nextOpenedAt || !nextClosedAt) {
+    if (!timeInputPattern.test(editedOpenedTime) || !timeInputPattern.test(editedClosedTime)) {
       setEditError("Укажите корректное время начала и конца")
       return
-    }
-
-    if (nextClosedAt.getTime() < nextOpenedAt.getTime()) {
-      nextClosedAt.setDate(nextClosedAt.getDate() + 1)
     }
 
     setEditError(null)
@@ -440,8 +404,6 @@ export default function ShiftDetailsView({
       await onEditActualHours({
         openedTime: editedOpenedTime,
         closedTime: editedClosedTime,
-        openedAt: nextOpenedAt.toISOString(),
-        closedAt: nextClosedAt.toISOString(),
         reason: normalizedReason,
       })
       setIsEditDialogOpen(false)
@@ -498,13 +460,13 @@ export default function ShiftDetailsView({
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" strokeWidth={1.5} />
               <span>
-                {formatTime(interval.startAt)} - {formatTime(interval.endAt)}
+                {formatTime(interval.startAt, organizationTimeZone)} - {formatTime(interval.endAt, organizationTimeZone)}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" strokeWidth={1.5} />
               <span>
-                Открыта: {formatTime(interval.openedAt)} • Закрыта: {formatTime(interval.closedAt)}
+                Открыта: {formatTime(interval.openedAt, organizationTimeZone)} • Закрыта: {formatTime(interval.closedAt, organizationTimeZone)}
                 {workedDuration ? ` • ${workedDuration}` : ""}
               </span>
             </div>

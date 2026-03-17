@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ImagePreview } from "@/components/ui/image-preview"
+import { useAuthStore } from "@/lib/store/auth-store"
+import { formatTimeValue } from "@/lib/utils/timezone"
 import {
   AlertCircle,
   Calculator,
@@ -119,14 +121,7 @@ const formatDate = (raw: string) => {
   return parsed.toLocaleDateString("ru-RU")
 }
 
-const formatTime = (raw: string | null) => {
-  if (!raw) return "-"
-  const parsed = new Date(raw)
-  if (Number.isNaN(parsed.getTime())) return "-"
-  const hh = parsed.getHours().toString().padStart(2, "0")
-  const mm = parsed.getMinutes().toString().padStart(2, "0")
-  return `${hh}:${mm}`
-}
+const formatTime = (raw: string | null, timeZone?: string | null) => formatTimeValue(raw, timeZone, "-")
 
 const formatInteger = (value: number | null | undefined) => {
   if (value == null || !Number.isFinite(value)) return "-"
@@ -243,6 +238,7 @@ export default function CashSessionDetailsView({
   onMarkReviewed,
   isMarkReviewedLoading = false,
 }: Props) {
+  const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
   const [sessionData, setSessionData] = useState<CashSessionDetails>(session)
   const [formulas, setFormulas] = useState<CashFormulaRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -374,7 +370,7 @@ export default function CashSessionDetailsView({
             <div className="flex items-center gap-2">
               <Clock3 className="h-4 w-4" strokeWidth={1.5} />
               <span>
-                Открыта: {formatTime(sessionData.openedAt)} • Закрыта: {formatTime(sessionData.closedAt)}
+                Открыта: {formatTime(sessionData.openedAt, organizationTimeZone)} • Закрыта: {formatTime(sessionData.closedAt, organizationTimeZone)}
               </span>
             </div>
           </div>

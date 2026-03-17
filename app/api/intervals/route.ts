@@ -22,6 +22,7 @@ import {
 import { getDefaultRuleCountsForPosition, isDefaultRulesetConfigured } from "@/lib/procedures/config"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
+import { combineDateAndTimeInTimeZone, formatTimeInTimeZone } from "@/lib/utils/timezone"
 
 const customPayTypeValues = ["hourly", "fixed_shift", "percent_revenue"] as const
 type CustomPayTypeValue = (typeof customPayTypeValues)[number]
@@ -158,7 +159,12 @@ const getActiveEmployeePayComponents = async (tx: PrismaTx, employeeId: string) 
 
 const hhMmPattern = /^([01]\d|2[0-3]):([0-5]\d)$/
 
-const parseDateTimeInput = (value: string, workDate: Date, fieldName: "startAt" | "endAt") => {
+const parseDateTimeInput = (
+  value: string,
+  workDate: Date,
+  timeZone: string | null | undefined,
+  fieldName: "startAt" | "endAt",
+) => {
   if (value.includes("T")) {
     const parsed = new Date(value)
     if (Number.isNaN(parsed.getTime())) {
@@ -172,18 +178,14 @@ const parseDateTimeInput = (value: string, workDate: Date, fieldName: "startAt" 
     return { error: `Некорректный формат ${fieldName}. Ожидается ISO datetime или HH:mm.` as const }
   }
 
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  const parsed = new Date(workDate)
-  parsed.setHours(hours, minutes, 0, 0)
+  const parsed = combineDateAndTimeInTimeZone(workDate, `${match[1]}:${match[2]}`, timeZone)
+  if (!parsed) {
+    return { error: `Некорректный формат ${fieldName}. Ожидается ISO datetime или HH:mm.` as const }
+  }
   return { value: parsed }
 }
 
-const formatTimeLabel = (date: Date) => {
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  return `${hours}:${minutes}`
-}
+const formatTimeLabel = (date: Date, timeZone?: string | null) => formatTimeInTimeZone(date, timeZone, "--:--")
 
 const formatWorkdayDateLabel = (date: Date) =>
   date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })
@@ -315,6 +317,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Недостаточно прав для просмотра смен" }, { status: 403 })
   }
   const canViewSensitiveDetails = readScope.scope === "org"
+  const organizationTimeZone = session.organization.timezone ?? null
 
   const url = new URL(request.url)
   const workdayId = url.searchParams.get("workdayId")
@@ -370,6 +373,7 @@ export async function GET(request: Request) {
     ? await loadIntervalConflictSummariesByIds(prisma, {
         organizationId,
         ids: Array.from(new Set(intervals.flatMap((interval) => interval.conflictWithIntervalIds ?? []))),
+        timeZone: organizationTimeZone,
       })
     : new Map()
 
@@ -397,8 +401,8 @@ export async function GET(request: Request) {
       position: wi.position,
       startAt: wi.startAt.toISOString(),
       endAt: wi.endAt.toISOString(),
-      startTime: wi.startAt.toTimeString().slice(0, 5),
-      endTime: wi.endAt.toTimeString().slice(0, 5),
+      startTime: formatTimeInTimeZone(wi.startAt, organizationTimeZone, "--:--"),
+      endTime: formatTimeInTimeZone(wi.endAt, organizationTimeZone, "--:--"),
       status,
       openedAt: openedAt?.toISOString() ?? null,
       closedAt: closedAt?.toISOString() ?? null,
@@ -497,6 +501,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const organizationId = session.organization.id
+  const organizationTimeZone = session.organization.timezone ?? null
   const actor = auditActorFromSession(session)
   const canCreateIntervals = await hasOrganizationActionAccess(session, {
     permission: "interval:create",
@@ -653,11 +658,11 @@ export async function POST(request: Request) {
       )
     }
 
-    const parsedStartAt = parseDateTimeInput(data.startAt, workday.workDate, "startAt")
+    const parsedStartAt = parseDateTimeInput(data.startAt, workday.workDate, organizationTimeZone, "startAt")
     if ("error" in parsedStartAt) {
       return NextResponse.json({ error: parsedStartAt.error }, { status: 400 })
     }
-    const parsedEndAt = parseDateTimeInput(data.endAt, workday.workDate, "endAt")
+    const parsedEndAt = parseDateTimeInput(data.endAt, workday.workDate, organizationTimeZone, "endAt")
     if ("error" in parsedEndAt) {
       return NextResponse.json({ error: parsedEndAt.error }, { status: 400 })
     }
@@ -694,6 +699,7 @@ export async function POST(request: Request) {
       employeeId: data.employeeId,
       startAt,
       endAt,
+      timeZone: organizationTimeZone,
     })
     if (overlaps.length > 0 && !allowConflictStatus) {
       logAuditEvent(request, {
@@ -795,7 +801,7 @@ export async function POST(request: Request) {
             userId: employee.userId,
             type: "shift",
             title: "Создана смена",
-            message: `Вам назначили смену${positionLabel} на ${formatWorkdayDateLabel(workday.workDate)}, ${formatTimeLabel(startAt)}–${formatTimeLabel(endAt)}.`,
+            message: `Вам назначили смену${positionLabel} на ${formatWorkdayDateLabel(workday.workDate)}, ${formatTimeLabel(startAt, organizationTimeZone)}–${formatTimeLabel(endAt, organizationTimeZone)}.`,
             payload: {
               view: "worker_planner",
               intervalId: created.id,
@@ -826,6 +832,7 @@ export async function POST(request: Request) {
       const conflicts = await loadIntervalConflictSummariesByIds(tx, {
         organizationId,
         ids: interval?.conflictWithIntervalIds ?? [],
+        timeZone: organizationTimeZone,
       })
 
       return { interval, conflicts }
@@ -863,8 +870,8 @@ export async function POST(request: Request) {
         positionId: interval?.positionId,
         startAt: interval?.startAt.toISOString(),
         endAt: interval?.endAt.toISOString(),
-        startTime: interval?.startAt.toTimeString().slice(0, 5),
-        endTime: interval?.endAt.toTimeString().slice(0, 5),
+        startTime: formatTimeInTimeZone(interval?.startAt ?? null, organizationTimeZone, "--:--"),
+        endTime: formatTimeInTimeZone(interval?.endAt ?? null, organizationTimeZone, "--:--"),
         status: interval?.status,
         conflictWithIntervalIds: interval?.conflictWithIntervalIds ?? [],
         conflicts: intervalConflicts,
@@ -925,6 +932,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const organizationId = session.organization.id
+  const organizationTimeZone = session.organization.timezone ?? null
   const actor = auditActorFromSession(session)
   const canEditIntervals = await hasOrganizationActionAccess(session, {
     permission: "interval:edit",
@@ -1068,7 +1076,7 @@ export async function PUT(request: Request) {
     // Parse and validate times
     let nextStartAt = existing.startAt
     if (updateData.startAt !== undefined) {
-      const parsedStartAt = parseDateTimeInput(updateData.startAt, targetWorkday.workDate, "startAt")
+      const parsedStartAt = parseDateTimeInput(updateData.startAt, targetWorkday.workDate, organizationTimeZone, "startAt")
       if ("error" in parsedStartAt) {
         return NextResponse.json({ error: parsedStartAt.error }, { status: 400 })
       }
@@ -1077,7 +1085,7 @@ export async function PUT(request: Request) {
 
     let nextEndAt = existing.endAt
     if (updateData.endAt !== undefined) {
-      const parsedEndAt = parseDateTimeInput(updateData.endAt, targetWorkday.workDate, "endAt")
+      const parsedEndAt = parseDateTimeInput(updateData.endAt, targetWorkday.workDate, organizationTimeZone, "endAt")
       if ("error" in parsedEndAt) {
         return NextResponse.json({ error: parsedEndAt.error }, { status: 400 })
       }
@@ -1155,6 +1163,7 @@ export async function PUT(request: Request) {
         startAt: nextStartAt,
         endAt: nextEndAt,
         excludeIntervalId: id,
+        timeZone: organizationTimeZone,
       })
       if (overlaps.length > 0) {
         logAuditEvent(request, {
@@ -1238,6 +1247,7 @@ export async function PUT(request: Request) {
       const conflicts = await loadIntervalConflictSummariesByIds(tx, {
         organizationId,
         ids: interval?.conflictWithIntervalIds ?? [],
+        timeZone: organizationTimeZone,
       })
 
       return { interval, conflicts }

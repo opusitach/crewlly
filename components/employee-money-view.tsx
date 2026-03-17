@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { useAuthStore } from "@/lib/store/auth-store"
+import { formatTimeValue } from "@/lib/utils/timezone"
 import { Calendar, ChevronLeft, ChevronRight, CircleMinus, CirclePlus, Clock, Gift, ShieldAlert } from "lucide-react"
 
 const dateInputPattern = /^\d{4}-\d{2}-\d{2}$/
@@ -96,12 +98,9 @@ const formatMinutes = (minutes: number) => {
 
 const formatRoundedHours = (minutes: number) => `${Math.round(minutes / 60)} ч`
 
-const formatTimeRange = (startAt: string | null, endAt: string | null) => {
+const formatTimeRange = (startAt: string | null, endAt: string | null, timeZone?: string | null) => {
   if (!startAt || !endAt) return "Вне смены"
-  const start = new Date(startAt)
-  const end = new Date(endAt)
-  const pad = (value: number) => value.toString().padStart(2, "0")
-  return `${pad(start.getHours())}:${pad(start.getMinutes())} — ${pad(end.getHours())}:${pad(end.getMinutes())}`
+  return `${formatTimeValue(startAt, timeZone, "--:--")} — ${formatTimeValue(endAt, timeZone, "--:--")}`
 }
 
 const formatWorkDate = (workDate: string) => {
@@ -207,6 +206,7 @@ export default function EmployeeMoneyView({
   onHistoryItemSelect,
 }: Props) {
   const { toast } = useToast()
+  const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
   const today = useMemo(() => new Date(), [])
   const defaultFrom = useMemo(() => toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), [today])
   const defaultTo = useMemo(() => toDateInputValue(today), [today])
@@ -421,7 +421,7 @@ export default function EmployeeMoneyView({
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Clock className="h-4 w-4" strokeWidth={1.5} />
-            <span>{formatTimeRange(item.actualStartAt, item.actualEndAt)}</span>
+            <span>{formatTimeRange(item.actualStartAt, item.actualEndAt, organizationTimeZone)}</span>
           </div>
           <span className="font-medium">{formatRoundedHours(item.minutesWorked)}</span>
         </div>

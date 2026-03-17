@@ -9,8 +9,9 @@ import { PrismaClient } from "@prisma/client"
  */
 
 const prisma = new PrismaClient()
+const describeIfDatabase = process.env.DATABASE_URL ? describe : describe.skip
 
-describe("Database Integration Tests", () => {
+describeIfDatabase("Database Integration Tests", () => {
   let testOrgId: string
   let testUserId: string
   let testLocationId: string

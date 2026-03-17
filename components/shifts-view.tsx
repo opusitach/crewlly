@@ -50,10 +50,12 @@ import {
 } from "@/components/ui/select"
 import { MonthPicker } from "@/components/shifts/month-picker"
 import { useToast } from "@/hooks/use-toast"
+import { useAuthStore } from "@/lib/store/auth-store"
 import { useShiftStore } from "@/lib/store/shift-store"
 import { TIME_VALUE_PATTERN } from "@/lib/utils/time-utils"
 import { cn } from "@/lib/utils"
 import { formatDate, getMonthCalendarDays, getWeekDays, parseDate } from "@/lib/utils/date-utils"
+import { formatTimeValue } from "@/lib/utils/timezone"
 import type { IntervalConflict, WorkInterval } from "@/lib/types/shift"
 import { decodeCashProcedureValues } from "@/lib/cash/procedure-values"
 
@@ -120,10 +122,8 @@ type ProcedureDetails = {
   formulaCalculations?: CashFormulaCalculations | null
 }
 
-function resolveTime(value?: string) {
-  if (!value) return "--:--"
-  if (value.includes("T")) return value.split("T")[1]?.slice(0, 5) || "--:--"
-  return value.slice(0, 5)
+function resolveTime(value: string | undefined, timeZone?: string | null) {
+  return formatTimeValue(value, timeZone, "--:--")
 }
 
 const integerTokenRegex = /^-?\d+$/
@@ -329,6 +329,7 @@ export default function ShiftsView({
   externalHeader = false,
 }: ShiftsViewProps) {
   const { toast } = useToast()
+  const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
   const {
     workdays,
     intervals,
@@ -1176,8 +1177,8 @@ export default function ShiftsView({
       formValues: {
         employeeId: selectedInterval.employeeId,
         positionId: selectedInterval.positionId,
-        startTime: resolveTime(selectedInterval.startTime || selectedInterval.startAt),
-        endTime: resolveTime(selectedInterval.endTime || selectedInterval.endAt),
+        startTime: resolveTime(selectedInterval.startTime || selectedInterval.startAt, organizationTimeZone),
+        endTime: resolveTime(selectedInterval.endTime || selectedInterval.endAt, organizationTimeZone),
         breakMinutes: selectedInterval.breakMinutes ?? 0,
         notes: selectedInterval.notes ?? "",
         useStandardPay: !selectedInterval.useCustomPay,
@@ -1226,8 +1227,12 @@ export default function ShiftsView({
     : workdayByDate.get(selectedDateStr)
   const selectedWorkdayDate = selectedWorkday ? parseDate(selectedWorkday.workDate) : safeSelectedDate
   const selectedStatus = selectedInterval ? getIntervalStatus(selectedInterval) : null
-  const detailStartTime = selectedInterval ? resolveTime(selectedInterval.startTime || selectedInterval.startAt) : "--:--"
-  const detailEndTime = selectedInterval ? resolveTime(selectedInterval.endTime || selectedInterval.endAt) : "--:--"
+  const detailStartTime = selectedInterval
+    ? resolveTime(selectedInterval.startTime || selectedInterval.startAt, organizationTimeZone)
+    : "--:--"
+  const detailEndTime = selectedInterval
+    ? resolveTime(selectedInterval.endTime || selectedInterval.endAt, organizationTimeZone)
+    : "--:--"
   const detailEmployeeName =
     selectedInterval?.employee?.fullName || selectedInterval?.employee?.name || "Сотрудник"
   const detailPositionName =
@@ -1245,8 +1250,8 @@ export default function ShiftsView({
         : "После закрытия"
   const detailDateText = format(selectedWorkdayDate, "d MMMM yyyy", { locale: ru })
   const detailScheduleText = selectedInterval ? `${detailStartTime} — ${detailEndTime}` : "—"
-  const detailOpenedTimeText = selectedInterval?.openedAt ? resolveTime(selectedInterval.openedAt) : "—"
-  const detailClosedTimeText = selectedInterval?.closedAt ? resolveTime(selectedInterval.closedAt) : "—"
+  const detailOpenedTimeText = selectedInterval?.openedAt ? resolveTime(selectedInterval.openedAt, organizationTimeZone) : "—"
+  const detailClosedTimeText = selectedInterval?.closedAt ? resolveTime(selectedInterval.closedAt, organizationTimeZone) : "—"
   const detailPlannedMinutes =
     selectedInterval != null
       ? Math.max(
@@ -2077,8 +2082,8 @@ export default function ShiftsView({
                               const status = getIntervalStatus(interval)
                               const employeeName = interval.employee?.fullName || interval.employee?.name || "Сотрудник"
                               const positionName = interval.position?.name || interval.employee?.primaryPosition?.name
-                              const startTime = resolveTime(interval.startTime || interval.startAt)
-                              const endTime = resolveTime(interval.endTime || interval.endAt)
+                              const startTime = resolveTime(interval.startTime || interval.startAt, organizationTimeZone)
+                              const endTime = resolveTime(interval.endTime || interval.endAt, organizationTimeZone)
                               const firstConflict = interval.conflicts?.[0]
                               const conflictPreview = firstConflict
                                 ? `${firstConflict.startTime}—${firstConflict.endTime} (${firstConflict.employeeName || "Сотрудник"})`

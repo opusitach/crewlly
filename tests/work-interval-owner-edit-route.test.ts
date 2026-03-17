@@ -45,7 +45,7 @@ describe("PATCH /api/work-intervals/[id]/owner-edit", () => {
     mocked.getAuthorizedInterval.mockResolvedValue({
       session: {
         user: { id: "owner-user-1" },
-        organization: { id: "org-1" },
+        organization: { id: "org-1", timezone: "Europe/Prague" },
       },
       interval: {
         id: "interval-1",
@@ -69,11 +69,11 @@ describe("PATCH /api/work-intervals/[id]/owner-edit", () => {
       interval: {
         id: "interval-1",
         workdayId: "workday-1",
-        openedAt: new Date("2026-03-19T22:10:00.000Z"),
-        closedAt: new Date("2026-03-20T06:05:00.000Z"),
+        openedAt: new Date("2026-03-19T21:10:00.000Z"),
+        closedAt: new Date("2026-03-20T05:05:00.000Z"),
         calculatedMinutesWorked: 475,
         calculatedGrossPayCents: 9800,
-        payCalculatedAt: new Date("2026-03-20T06:06:00.000Z"),
+        payCalculatedAt: new Date("2026-03-20T05:06:00.000Z"),
         workday: {
           id: "workday-1",
           workDate: new Date("2026-03-19T00:00:00.000Z"),
@@ -92,8 +92,8 @@ describe("PATCH /api/work-intervals/[id]/owner-edit", () => {
         },
         timeEntry: {
           id: "time-entry-1",
-          clockInAt: new Date("2026-03-19T22:10:00.000Z"),
-          clockOutAt: new Date("2026-03-20T06:05:00.000Z"),
+          clockInAt: new Date("2026-03-19T21:10:00.000Z"),
+          clockOutAt: new Date("2026-03-20T05:05:00.000Z"),
           clockInPhotoUrl: null,
           clockOutPhotoUrl: null,
         },
@@ -124,7 +124,7 @@ describe("PATCH /api/work-intervals/[id]/owner-edit", () => {
     mocked.getAuthorizedInterval.mockResolvedValueOnce({
       session: {
         user: { id: "manager-user-1" },
-        organization: { id: "org-1" },
+        organization: { id: "org-1", timezone: "Europe/Prague" },
       },
       interval: {
         id: "interval-1",
@@ -186,13 +186,11 @@ describe("PATCH /api/work-intervals/[id]/owner-edit", () => {
         reason: "Исправили ночную смену",
       }),
     )
-    expect(helperInput.openedAt.getHours()).toBe(22)
-    expect(helperInput.openedAt.getMinutes()).toBe(10)
-    expect(helperInput.closedAt.getHours()).toBe(6)
-    expect(helperInput.closedAt.getMinutes()).toBe(5)
+    expect(helperInput.openedAt.toISOString()).toBe("2026-03-19T21:10:00.000Z")
+    expect(helperInput.closedAt.toISOString()).toBe("2026-03-20T05:05:00.000Z")
     expect(helperInput.closedAt.getTime()).toBeGreaterThan(helperInput.openedAt.getTime())
-    expect(body.data?.openedAt).toBe("2026-03-19T22:10:00.000Z")
-    expect(body.data?.closedAt).toBe("2026-03-20T06:05:00.000Z")
+    expect(body.data?.openedAt).toBe("2026-03-19T21:10:00.000Z")
+    expect(body.data?.closedAt).toBe("2026-03-20T05:05:00.000Z")
   })
 
   it("prefers exact ISO timestamps from the client when they are provided", async () => {

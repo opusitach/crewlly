@@ -10,6 +10,7 @@ import {
   resolveEffectiveWorkIntervalStatus,
 } from "@/lib/work-intervals/status"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
+import { formatTimeInTimeZone } from "@/lib/utils/timezone"
 
 const workdayCreateSchema = z.object({
   locationId: z.string().uuid(),
@@ -139,6 +140,7 @@ export async function GET(request: Request) {
   })
 
   const canViewSensitiveDetails = readScope.scope === "org"
+  const organizationTimeZone = session.organization.timezone ?? null
   const conflictMap = canViewSensitiveDetails
     ? await loadIntervalConflictSummariesByIds(prisma, {
         organizationId: session.organization.id,
@@ -147,6 +149,7 @@ export async function GET(request: Request) {
             workdays.flatMap((workday) => workday.workIntervals.flatMap((interval) => interval.conflictWithIntervalIds ?? [])),
           ),
         ),
+        timeZone: organizationTimeZone,
       })
     : new Map()
 
@@ -175,8 +178,8 @@ export async function GET(request: Request) {
         position: wi.position,
         startAt: wi.startAt.toISOString(),
         endAt: wi.endAt.toISOString(),
-        startTime: wi.startAt.toTimeString().slice(0, 5),
-        endTime: wi.endAt.toTimeString().slice(0, 5),
+        startTime: formatTimeInTimeZone(wi.startAt, organizationTimeZone, "--:--"),
+        endTime: formatTimeInTimeZone(wi.endAt, organizationTimeZone, "--:--"),
         status,
         openedAt: openedAt?.toISOString() ?? null,
         closedAt: closedAt?.toISOString() ?? null,

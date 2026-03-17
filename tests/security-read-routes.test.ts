@@ -265,6 +265,8 @@ describe("security read route hardening", () => {
     )
     expect(body.data[0].payComponents).toEqual([])
     expect(body.data[0].conflicts).toEqual([])
+    expect(body.data[0].startTime).toBe("10:00")
+    expect(body.data[0].endTime).toBe("18:00")
     expect(body.data[0].timeEntry).toEqual({
       id: "entry_1",
       clockInAt: "2026-03-10T08:58:00.000Z",

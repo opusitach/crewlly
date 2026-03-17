@@ -5,6 +5,7 @@ import { getAuthorizedInterval } from "@/lib/procedures/access"
 import { applyOwnerEditedWorkIntervalTime, WorkIntervalOwnerEditError } from "@/lib/work-intervals/owner-edit"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
+import { combineDateAndTimeInTimeZone, formatTimeInTimeZone } from "@/lib/utils/timezone"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -18,29 +19,21 @@ const ownerEditPayloadSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 })
 
-const formatTimeLabel = (date: Date) => {
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  return `${hours}:${minutes}`
-}
+const formatTimeLabel = (date: Date, timeZone?: string | null) => formatTimeInTimeZone(date, timeZone, "--:--")
 
 const formatWorkdayDateLabel = (date: Date) =>
   date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })
 
-const parseTimeOnWorkDate = (workDate: Date, value: string) => {
+const parseTimeOnWorkDate = (workDate: Date, value: string, timeZone?: string | null) => {
   const match = hhMmPattern.exec(value)
   if (!match) return null
 
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  const parsed = new Date(workDate)
-  parsed.setHours(hours, minutes, 0, 0)
-  return parsed
+  return combineDateAndTimeInTimeZone(workDate, `${match[1]}:${match[2]}`, timeZone)
 }
 
-const resolveActualRange = (workDate: Date, openedTime: string, closedTime: string) => {
-  const openedAt = parseTimeOnWorkDate(workDate, openedTime)
-  const closedAt = parseTimeOnWorkDate(workDate, closedTime)
+const resolveActualRange = (workDate: Date, openedTime: string, closedTime: string, timeZone?: string | null) => {
+  const openedAt = parseTimeOnWorkDate(workDate, openedTime, timeZone)
+  const closedAt = parseTimeOnWorkDate(workDate, closedTime, timeZone)
   if (!openedAt || !closedAt) return null
 
   if (closedAt.getTime() < openedAt.getTime()) {
@@ -50,7 +43,11 @@ const resolveActualRange = (workDate: Date, openedTime: string, closedTime: stri
   return { openedAt, closedAt }
 }
 
-const resolveActualRangeFromPayload = (payload: z.infer<typeof ownerEditPayloadSchema>, workDate: Date) => {
+const resolveActualRangeFromPayload = (
+  payload: z.infer<typeof ownerEditPayloadSchema>,
+  workDate: Date,
+  timeZone?: string | null,
+) => {
   if (payload.openedAt && payload.closedAt) {
     const openedAt = new Date(payload.openedAt)
     const closedAt = new Date(payload.closedAt)
@@ -59,7 +56,7 @@ const resolveActualRangeFromPayload = (payload: z.infer<typeof ownerEditPayloadS
     }
   }
 
-  return resolveActualRange(workDate, payload.openedTime, payload.closedTime)
+  return resolveActualRange(workDate, payload.openedTime, payload.closedTime, timeZone)
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -67,6 +64,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const authorization = await getAuthorizedInterval(id)
   const session = authorization.session
   const actor = auditActorFromSession(session)
+  const organizationTimeZone = session?.organization?.timezone ?? null
 
   if (authorization.error || !authorization.interval) {
     logAuditEvent(request, {
@@ -150,7 +148,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Изменять фактическое время можно только у закрытой смены" }, { status: 409 })
   }
 
-  const actualRange = resolveActualRangeFromPayload(parsed.data, authorization.interval.workday.workDate)
+  const actualRange = resolveActualRangeFromPayload(parsed.data, authorization.interval.workday.workDate, organizationTimeZone)
   if (!actualRange) {
     logAuditEvent(request, {
       event_type: "interval.owner_edit_time",
@@ -243,8 +241,8 @@ export async function PATCH(request: Request, context: RouteContext) {
         previous_closed_at: previousClosedAt?.toISOString?.() ?? previousClosedAt ?? null,
         next_opened_at: actualRange.openedAt.toISOString(),
         next_closed_at: actualRange.closedAt.toISOString(),
-        next_opened_time: formatTimeLabel(actualRange.openedAt),
-        next_closed_time: formatTimeLabel(actualRange.closedAt),
+        next_opened_time: formatTimeLabel(actualRange.openedAt, organizationTimeZone),
+        next_closed_time: formatTimeLabel(actualRange.closedAt, organizationTimeZone),
         revenue_updated_intervals: result.revenueSync.updatedIntervals,
         recalculated_intervals: result.recalculatedIntervals,
         tips_total_amount_cents: result.tipsSync.totalAmountCents,

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
+import { formatTimeInTimeZone } from "@/lib/utils/timezone"
 
 export const WORK_INTERVAL_OVERLAP_ERROR_CODE = "INTERVAL_OVERLAP" as const
 
@@ -54,7 +55,7 @@ const toSummary = (row: {
   workday: { workDate: Date }
   employee: { user: { fullName: string | null } }
   position: { name: string } | null
-}): IntervalConflictSummary => ({
+}, timeZone?: string | null): IntervalConflictSummary => ({
   id: row.id,
   workdayId: row.workdayId,
   workDate: row.workday.workDate.toISOString().split("T")[0],
@@ -64,8 +65,8 @@ const toSummary = (row: {
   positionName: row.position?.name ?? null,
   startAt: row.startAt.toISOString(),
   endAt: row.endAt.toISOString(),
-  startTime: row.startAt.toTimeString().slice(0, 5),
-  endTime: row.endAt.toTimeString().slice(0, 5),
+  startTime: formatTimeInTimeZone(row.startAt, timeZone, "--:--"),
+  endTime: formatTimeInTimeZone(row.endAt, timeZone, "--:--"),
   status: row.status,
 })
 
@@ -80,9 +81,10 @@ export async function findOverlappingIntervals(
     startAt: Date
     endAt: Date
     excludeIntervalId?: string
+    timeZone?: string | null
   },
 ) {
-  const { organizationId, employeeId, startAt, endAt, excludeIntervalId } = payload
+  const { organizationId, employeeId, startAt, endAt, excludeIntervalId, timeZone } = payload
   const overlaps = await db.workInterval.findMany({
     where: {
       employeeId,
@@ -100,7 +102,7 @@ export async function findOverlappingIntervals(
     orderBy: { startAt: "asc" },
   })
 
-  return overlaps.map(toSummary)
+  return overlaps.map((row) => toSummary(row, timeZone))
 }
 
 export async function loadIntervalConflictSummariesByIds(
@@ -108,6 +110,7 @@ export async function loadIntervalConflictSummariesByIds(
   payload: {
     organizationId: string
     ids: string[]
+    timeZone?: string | null
   },
 ) {
   const ids = Array.from(new Set(payload.ids.filter(Boolean)))
@@ -125,7 +128,7 @@ export async function loadIntervalConflictSummariesByIds(
     },
   })
 
-  return new Map(rows.map((row) => [row.id, toSummary(row)]))
+  return new Map(rows.map((row) => [row.id, toSummary(row, payload.timeZone)]))
 }
 
 export async function recomputeEmployeeConflictStatuses(

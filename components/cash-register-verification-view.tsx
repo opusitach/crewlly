@@ -19,8 +19,10 @@ import {
 } from "lucide-react"
 import ShiftDetailsView from "@/components/shift-details-view"
 import CashSessionDetailsView, { type CashSessionDetails } from "@/components/cash-session-details-view"
+import { useAuthStore } from "@/lib/store/auth-store"
 import { cn } from "@/lib/utils"
 import { formatIntervalWorkedDuration } from "@/lib/utils/interval-worked-duration"
+import { formatTimeValue } from "@/lib/utils/timezone"
 import {
   evaluateCashFormulaExpression,
   extractCashFormulaKeys,
@@ -158,14 +160,7 @@ const formatDate = (raw: string) => {
   return parsed.toLocaleDateString("ru-RU")
 }
 
-const formatTime = (raw: string | null) => {
-  if (!raw) return "-"
-  const parsed = new Date(raw)
-  if (Number.isNaN(parsed.getTime())) return "-"
-  const hh = parsed.getHours().toString().padStart(2, "0")
-  const mm = parsed.getMinutes().toString().padStart(2, "0")
-  return `${hh}:${mm}`
-}
+const formatTime = (raw: string | null, timeZone?: string | null) => formatTimeValue(raw, timeZone, "-")
 
 const formatDuration = (startAt: string, endAt: string) => {
   const start = new Date(startAt)
@@ -352,6 +347,7 @@ export default function CashRegisterVerificationView({
   onShiftBackNavigateToEmployeeEarnings,
   onInitialNavigationHandled,
 }: Props) {
+  const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
   const [activeTab, setActiveTab] = useState<VerificationTab>(() => initialTab ?? "work_shifts")
   const [selectedDate, setSelectedDate] = useState<string>(() =>
     initialDate && dateOnlyPattern.test(initialDate) ? initialDate : getTodayDateInputValue(),
@@ -745,7 +741,7 @@ export default function CashRegisterVerificationView({
 
   const editShiftActualHours = async (
     shift: VerificationShift,
-    input: { openedTime: string; closedTime: string; openedAt: string; closedAt: string; reason: string },
+    input: { openedTime: string; closedTime: string; openedAt?: string; closedAt?: string; reason: string },
   ) => {
     const response = await fetch(`/api/work-intervals/${shift.id}/owner-edit`, {
       method: "PATCH",
@@ -1003,13 +999,13 @@ export default function CashRegisterVerificationView({
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4" strokeWidth={1.5} />
                         <span>
-                          {formatTime(shift.startAt)} - {formatTime(shift.endAt)} ({formatDuration(shift.startAt, shift.endAt)})
+                          {formatTime(shift.startAt, organizationTimeZone)} - {formatTime(shift.endAt, organizationTimeZone)} ({formatDuration(shift.startAt, shift.endAt)})
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4" strokeWidth={1.5} />
                         <span>
-                          Открыта: {formatTime(shift.openedAt)} • Закрыта: {formatTime(shift.closedAt)}
+                          Открыта: {formatTime(shift.openedAt, organizationTimeZone)} • Закрыта: {formatTime(shift.closedAt, organizationTimeZone)}
                           {workedDuration ? ` • ${workedDuration}` : ""}
                         </span>
                       </div>
@@ -1104,7 +1100,7 @@ export default function CashRegisterVerificationView({
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4" strokeWidth={1.5} />
                       <span>
-                        Открыта: {formatTime(session.openedAt)} • Закрыта: {formatTime(session.closedAt)}
+                        Открыта: {formatTime(session.openedAt, organizationTimeZone)} • Закрыта: {formatTime(session.closedAt, organizationTimeZone)}
                       </span>
                     </div>
                   </div>
@@ -1217,7 +1213,7 @@ export default function CashRegisterVerificationView({
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4" strokeWidth={1.5} />
                         <span>
-                          {formatTime(shift.startAt)} - {formatTime(shift.endAt)} ({formatDuration(shift.startAt, shift.endAt)})
+                          {formatTime(shift.startAt, organizationTimeZone)} - {formatTime(shift.endAt, organizationTimeZone)} ({formatDuration(shift.startAt, shift.endAt)})
                         </span>
                       </div>
                     </div>
@@ -1282,7 +1278,7 @@ export default function CashRegisterVerificationView({
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4" strokeWidth={1.5} />
                         <span>
-                          Открыта: {formatTime(session.openedAt)} • Закрыта: {formatTime(session.closedAt)}
+                          Открыта: {formatTime(session.openedAt, organizationTimeZone)} • Закрыта: {formatTime(session.closedAt, organizationTimeZone)}
                         </span>
                       </div>
                     </div>

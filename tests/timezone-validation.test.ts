@@ -13,8 +13,13 @@ describe("timezone validation", () => {
     expect(isValidTimeZone("Invalid/Zone")).toBe(false)
   })
 
-  it("schema enforces IANA format", () => {
+  it("schema normalizes legacy aliases to supported IANA zones", () => {
     expect(timezoneSchema.safeParse(DEFAULT_TIMEZONE).success).toBe(true)
-    expect(timezoneSchema.safeParse("GMT+1").success).toBe(false)
+    expect(timezoneSchema.safeParse("GMT+1")).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: DEFAULT_TIMEZONE,
+      }),
+    )
   })
 })
