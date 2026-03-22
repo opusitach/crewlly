@@ -5,6 +5,7 @@ interface User {
   name?: string
   fullName?: string
   email: string
+  emailVerifiedAt?: string | null
   phone?: string
   avatarUrl?: string
   locale: string
@@ -59,7 +60,20 @@ interface AuthStore {
 
   // Actions
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  register: (fullName: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  register: (
+    fullName: string,
+    email: string,
+    password: string,
+  ) => Promise<{
+    success: boolean
+    error?: string
+    verificationRequired?: boolean
+    pendingRegistration?: {
+      email: string
+      expiresAt: string
+      resendAvailableAt: string
+    }
+  }>
   logout: () => Promise<void>
   fetchMe: () => Promise<void>
   setRole: (primaryMode: "owner" | "worker") => Promise<{ success: boolean; error?: string }>
@@ -76,6 +90,7 @@ const mapUser = (raw: any): User => ({
   name: raw.fullName ?? raw.name ?? "",
   fullName: raw.fullName ?? raw.name ?? "",
   email: raw.email ?? "",
+  emailVerifiedAt: raw.emailVerifiedAt ?? null,
   phone: raw.phone ?? undefined,
   avatarUrl: raw.avatarUrl ?? undefined,
   locale: raw.locale ?? "ru",
@@ -142,6 +157,14 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       if (!res.ok) {
         const errorMsg = typeof json.error === "string" ? json.error : "Ошибка регистрации"
         return { success: false, error: errorMsg }
+      }
+
+      if (json.verificationRequired) {
+        return {
+          success: true,
+          verificationRequired: true,
+          pendingRegistration: json.pendingRegistration,
+        }
       }
 
       const mappedUser = mapUser(json.user)

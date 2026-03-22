@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { hashPassword, createSession, deleteUserSessions } from "@/lib/auth"
 import { Prisma } from "@prisma/client"
 import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
 import { PASSWORD_POLICY_ERROR_MESSAGE, isStrongPassword } from "@/lib/validation/password"
-import { auditActorFromSession, hashAuditIdentifier, logAuditEvent } from "@/lib/observability/audit"
+import { hashAuditIdentifier, logAuditEvent } from "@/lib/observability/audit"
+import { PendingRegistrationError, startPendingRegistration } from "@/lib/auth/pending-registration"
 
 const registerSchema = z
   .object({
@@ -65,44 +65,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email уже используется" }, { status: 409 })
     }
 
-    const passwordHash = await hashPassword(password)
-    const user = await prisma.user.create({
-      data: {
-        fullName: resolvedName,
-        email,
-        phone: resolvedPhone,
-        passwordHash,
-        status: "active",
-        primaryMode: null,
-        onboardingReady: false,
-      },
+    const challenge = await startPendingRegistration({
+      fullName: resolvedName,
+      email,
+      phone: resolvedPhone,
+      password,
     })
 
-    await deleteUserSessions(user.id)
-    const { cookie } = await createSession(user.id)
     const res = NextResponse.json({
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        email: user.email,
-        status: user.status,
-        primaryMode: user.primaryMode,
-        onboardingReady: user.onboardingReady,
+      verificationRequired: true,
+      pendingRegistration: {
+        email: challenge.email,
+        expiresAt: challenge.expiresAt.toISOString(),
+        resendAvailableAt: challenge.resendAvailableAt.toISOString(),
       },
     })
-    res.cookies.set(cookie.name, cookie.value, cookie.options)
     logAuditEvent(request, {
       event_type: "auth.register",
       outcome: "success",
       status: 200,
       route: "/api/auth/register",
-      actor: auditActorFromSession({ user }),
       metadata: {
         email_hash: attemptedEmailHash,
+        verification_required: true,
       },
     })
     return res
   } catch (error: unknown) {
+    if (error instanceof PendingRegistrationError) {
+      logAuditEvent(request, {
+        event_type: "auth.register",
+        outcome: error.status >= 500 ? "failure" : "denied",
+        status: error.status,
+        route: "/api/auth/register",
+        reason: error.code,
+        metadata: {
+          email_hash: attemptedEmailHash,
+        },
+      })
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
+
     console.error("[auth/register] error", error)
     logAuditEvent(request, {
       event_type: "auth.register",

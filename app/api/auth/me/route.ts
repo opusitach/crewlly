@@ -42,6 +42,7 @@ function toUserResponse(user: {
   status: string
   primaryMode: string | null
   onboardingReady: boolean
+  emailVerifiedAt?: Date | null
 }) {
   return {
     id: user.id,
@@ -53,6 +54,7 @@ function toUserResponse(user: {
     status: user.status,
     primaryMode: user.primaryMode,
     onboardingReady: user.onboardingReady,
+    emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
   }
 }
 
@@ -121,6 +123,13 @@ export async function PATCH(request: Request) {
 
     const { fullName, name, email, phone, avatarUrl } = parsed.data
     const resolvedFullName = fullName ?? name
+
+    if (email !== undefined && email.trim() !== user.email) {
+      return NextResponse.json(
+        { error: "Изменение email требует отдельного подтверждения и пока недоступно" },
+        { status: 400 },
+      )
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id: user.id },

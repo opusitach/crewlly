@@ -49,6 +49,10 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
       PORT: 3001
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Set NEXT_PUBLIC_APP_URL in .env.production}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in .env.production}
+      EMAIL_VERIFICATION_SECRET: ${EMAIL_VERIFICATION_SECRET:?Set EMAIL_VERIFICATION_SECRET in .env.production}
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY in .env.production}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-http://minio:9000}
       AWS_S3_PRESIGN_ENDPOINT: ${AWS_S3_PRESIGN_ENDPOINT:?Set AWS_S3_PRESIGN_ENDPOINT in .env.production}
@@ -131,6 +135,10 @@ services:
       PORT: 3000
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Set NEXT_PUBLIC_APP_URL in .env.production}
       API_PROXY_TARGET: ${API_PROXY_TARGET:-http://back:3001}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in .env.production}
+      EMAIL_VERIFICATION_SECRET: ${EMAIL_VERIFICATION_SECRET:?Set EMAIL_VERIFICATION_SECRET in .env.production}
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY in .env.production}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-http://minio:9000}
       AWS_S3_PRESIGN_ENDPOINT: ${AWS_S3_PRESIGN_ENDPOINT:?Set AWS_S3_PRESIGN_ENDPOINT in .env.production}

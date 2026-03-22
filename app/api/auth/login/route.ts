@@ -98,6 +98,7 @@ export async function POST(request: Request) {
         status: user.status,
         primaryMode: user.primaryMode,
         onboardingReady: user.onboardingReady,
+        emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
       },
       organization: membership?.organization ?? null,
       accessRole: membership?.accessRole ?? null,
