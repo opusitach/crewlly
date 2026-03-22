@@ -1,12 +1,18 @@
 import "server-only"
 
-import { createHmac, randomInt, timingSafeEqual } from "node:crypto"
 import { prisma } from "@/lib/prisma"
 import { hashPassword } from "@/lib/auth"
 import { sendEmail } from "@/lib/email/mailer"
 import { buildRegistrationVerificationEmail } from "@/lib/email/templates/auth-verification"
+import {
+  EMAIL_CHALLENGE_CODE_LENGTH,
+  generateEmailChallengeCode,
+  hashEmailChallengeCode,
+  verifyEmailChallengeCodeHash,
+} from "@/lib/auth/email-challenge"
 
-export const REGISTRATION_VERIFICATION_CODE_LENGTH = 6
+const REGISTRATION_CHALLENGE_PURPOSE = "registration"
+export const REGISTRATION_VERIFICATION_CODE_LENGTH = EMAIL_CHALLENGE_CODE_LENGTH
 export const REGISTRATION_VERIFICATION_CODE_TTL_MINUTES = 10
 export const REGISTRATION_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60
 export const REGISTRATION_VERIFICATION_MAX_ATTEMPTS = 5
@@ -41,35 +47,16 @@ function normalizeEmail(email: string) {
   return email.trim()
 }
 
-function resolveVerificationSecret(env: NodeJS.ProcessEnv = process.env) {
-  const configured = env.EMAIL_VERIFICATION_SECRET?.trim() || env.INTERNAL_CRON_SECRET?.trim()
-  if (configured) {
-    return configured
-  }
-
-  if (env.NODE_ENV !== "production") {
-    return "crewlly-dev-email-verification-secret"
-  }
-
-  throw new Error("EMAIL_VERIFICATION_SECRET is required in production")
-}
-
 function hashVerificationCode(email: string, code: string) {
-  return createHmac("sha256", resolveVerificationSecret())
-    .update(`${email.trim().toLowerCase()}:${code}`)
-    .digest("hex")
+  return hashEmailChallengeCode(REGISTRATION_CHALLENGE_PURPOSE, email, code)
 }
 
 function verifyCodeHash(expectedHash: string, email: string, code: string) {
-  const candidate = hashVerificationCode(email, code)
-  return timingSafeEqual(Buffer.from(expectedHash, "utf8"), Buffer.from(candidate, "utf8"))
+  return verifyEmailChallengeCodeHash(expectedHash, REGISTRATION_CHALLENGE_PURPOSE, email, code)
 }
 
 function generateVerificationCode() {
-  return String(randomInt(0, 10 ** REGISTRATION_VERIFICATION_CODE_LENGTH)).padStart(
-    REGISTRATION_VERIFICATION_CODE_LENGTH,
-    "0",
-  )
+  return generateEmailChallengeCode(REGISTRATION_VERIFICATION_CODE_LENGTH)
 }
 
 function buildChallengeMeta(email: string, now: Date, expiresAt: Date): RegistrationChallengeMeta {

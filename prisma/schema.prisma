@@ -167,6 +167,23 @@ model PendingRegistration {
   @@map("pending_registrations")
 }
 
+model PendingPasswordReset {
+  id                        String    @id @default(uuid()) @db.Uuid
+  email                     String    @unique
+  verificationCodeHash      String    @map("verification_code_hash")
+  verificationCodeExpiresAt DateTime  @map("verification_code_expires_at")
+  verificationAttempts      Int       @default(0) @map("verification_attempts")
+  resendCount               Int       @default(0) @map("resend_count")
+  lastSentAt                DateTime  @default(now()) @map("last_sent_at")
+  resetTokenHash            String?   @map("reset_token_hash")
+  resetTokenExpiresAt       DateTime? @map("reset_token_expires_at")
+  verifiedAt                DateTime? @map("verified_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@map("pending_password_resets")
+}
+
 model Session {
   id        String    @id @default(uuid()) @db.Uuid
   token     String    @unique

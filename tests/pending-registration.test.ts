@@ -127,7 +127,7 @@ describe("pending registration flow", () => {
       phone: null,
       passwordHash: "hashed-password",
       verificationCodeHash: createHmac("sha256", "test-email-verification-secret")
-        .update("user@example.com:123456")
+        .update("registration:user@example.com:123456")
         .digest("hex"),
       verificationCodeExpiresAt: new Date("2026-03-22T10:10:00.000Z"),
       verificationAttempts: 0,
@@ -157,7 +157,7 @@ describe("pending registration flow", () => {
       phone: "+420123456789",
       passwordHash: "hashed-password",
       verificationCodeHash: createHmac("sha256", "test-email-verification-secret")
-        .update("user@example.com:123456")
+        .update("registration:user@example.com:123456")
         .digest("hex"),
       verificationCodeExpiresAt: new Date("2026-03-22T10:10:00.000Z"),
       verificationAttempts: 0,
