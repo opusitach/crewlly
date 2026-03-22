@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { AlertCircle, Building2, Calendar, Check, Clock, DollarSign, Plus } from "lucide-react"
+import { AlertCircle, Building2, Calendar, CalendarDays, ChartColumn, Check, Clock, DollarSign, House, Plus, type LucideIcon } from "lucide-react"
 import WorkerMoneyView from "@/components/worker-money-view"
 import WorkerShiftPlanner from "@/components/worker-shift-planner"
 import AppHeader from "@/components/shared/app-header"
@@ -77,6 +77,12 @@ type PendingWorkerMoneyNavigation = {
   fromDate: string
   toDate: string
 }
+
+const WORKER_BOTTOM_NAV_TABS: { key: WorkerBottomTab; label: string; Icon: LucideIcon }[] = [
+  { key: "shift", label: "Главная", Icon: House },
+  { key: "planner", label: "Планнер", Icon: CalendarDays },
+  { key: "money", label: "Финансы", Icon: ChartColumn },
+]
 
 const WORKER_TAB_RESET_VERSION_INITIAL: WorkerTabResetVersion = {
   shift: 0,
@@ -669,6 +675,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   )
   const selectedVenueName = selectedVenue?.name ?? organization?.name ?? "Заведение"
   const navActiveTab: WorkerBottomTab | null = accountView === "profile" ? null : activeTab
+  const navActiveIndex = WORKER_BOTTOM_NAV_TABS.findIndex(({ key }) => key === navActiveTab)
   const showAppHeader = accountView !== "hub"
   const showHeaderVenueSelector = accountView === "none" || accountView === "notifications"
   const shiftDisplayTimeZone = organization?.timezone
@@ -1076,7 +1083,7 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20 max-w-md mx-auto">
+    <div className="min-h-screen bg-background pb-24 max-w-md mx-auto">
       {showAppHeader && (
         <AppHeader
           title={appHeaderTitle}
@@ -1205,61 +1212,52 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
 
       {/* Bottom Navigation */}
       {accountView !== "hub" && !isVenueSelectorOpen && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 max-w-md mx-auto">
-          <div className="glass-card border-t-0 border-x-0 rounded-none">
-            <div className="flex items-center justify-around h-14 px-2 pb-safe">
-              {/* Shift Tab */}
-              <button
-                onClick={() => handleTabChange("shift")}
-                className={`
-                  flex flex-col items-center justify-center gap-0.5 
-                  min-w-[44px] min-h-[44px] flex-1 rounded-lg transition-all
-                  ${
-                    navActiveTab === "shift"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground active:scale-95"
-                  }
-                `}
-              >
-                <Clock className="h-6 w-6" strokeWidth={1.5} />
-                <span className="text-[10px] font-medium leading-none">Смена</span>
-              </button>
-
-              {/* Planner Tab */}
-              <button
-                onClick={() => handleTabChange("planner")}
-                className={`
-                  flex flex-col items-center justify-center gap-0.5 
-                  min-w-[44px] min-h-[44px] flex-1 rounded-lg transition-all
-                  ${
-                    navActiveTab === "planner"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground active:scale-95"
-                  }
-                `}
-              >
-                <Calendar className="h-6 w-6" strokeWidth={1.5} />
-                <span className="text-[10px] font-medium leading-none">Планнер</span>
-              </button>
-
-              {/* Money Tab */}
-              <button
-                onClick={() => handleTabChange("money")}
-                className={`
-                  flex flex-col items-center justify-center gap-0.5 
-                  min-w-[44px] min-h-[44px] flex-1 rounded-lg transition-all
-                  ${
-                    navActiveTab === "money"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground active:scale-95"
-                  }
-                `}
-              >
-                <DollarSign className="h-6 w-6" strokeWidth={1.5} />
-                <span className="text-[10px] font-medium leading-none">Деньги</span>
-              </button>
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-md px-3 pb-safe">
+          <nav
+            aria-label="Нижняя навигация сотрудника"
+            className="pointer-events-auto rounded-full border border-white/15 bg-[rgba(255,255,255,0.50)] p-2 shadow-[0_18px_48px_rgba(15,23,42,0.28)] [backdrop-filter:blur(20px)]"
+          >
+            <div className="relative grid grid-cols-3 items-center gap-2">
+              <div
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-y-0 left-0 rounded-full bg-[#FF914D] shadow-[0_10px_24px_rgba(255,145,77,0.38)] transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                  navActiveIndex === -1 ? "opacity-0" : "opacity-100"
+                }`}
+                style={{
+                  width: "calc((100% - 1rem) / 3)",
+                  transform:
+                    navActiveIndex === -1
+                      ? "translateX(0)"
+                      : `translateX(calc(${navActiveIndex} * (100% + 0.5rem)))`,
+                }}
+              />
+              {WORKER_BOTTOM_NAV_TABS.map(({ key, label, Icon }) => {
+                const isActive = navActiveTab === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-label={label}
+                    onClick={() => handleTabChange(key)}
+                    className={`
+                      relative z-10 flex h-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-[color,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]
+                      ${
+                        isActive
+                          ? "text-white"
+                          : "text-[#887876] hover:bg-white/10 hover:text-[#9A8A88] active:scale-[0.98]"
+                      }
+                    `}
+                  >
+                    <Icon
+                      className={`h-7 w-7 transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${isActive ? "scale-100" : "scale-[0.96]"}`}
+                      strokeWidth={1.9}
+                    />
+                    <span className="sr-only">{label}</span>
+                  </button>
+                )
+              })}
             </div>
-          </div>
+          </nav>
         </div>
       )}
 

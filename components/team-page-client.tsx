@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import EmployeesView from "@/components/employees-view"
-import OwnerBottomNav, { type OwnerTab } from "@/components/shared/owner-bottom-nav"
+import OwnerBottomNav, { type OwnerBottomNavTab } from "@/components/shared/owner-bottom-nav"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { useShiftStore } from "@/lib/store/shift-store"
 
@@ -24,7 +24,7 @@ export default function TeamPageClient() {
     }
   }, [hydrateAuth, isAuthHydrated])
 
-  const handleTabChange = (tab: OwnerTab) => {
+  const handleTabChange = (tab: OwnerBottomNavTab) => {
     const next = tab === "dashboard" ? "/app" : `/app?tab=${tab}`
     router.push(next)
   }

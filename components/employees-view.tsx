@@ -52,7 +52,7 @@ export default function EmployeesView({ onBack }: { onBack: () => void }) {
 
   if (!isHydrated) {
     return (
-      <div className="min-h-screen bg-background pb-4 max-w-md mx-auto flex items-center justify-center">
+      <div className="min-h-screen bg-background pb-24 max-w-md mx-auto flex items-center justify-center">
         <p className="text-muted-foreground">Загрузка...</p>
       </div>
     )
@@ -63,7 +63,7 @@ export default function EmployeesView({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-4 max-w-md mx-auto">
+    <div className="min-h-screen bg-background pb-24 max-w-md mx-auto">
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="p-3 space-y-3">
           <div className="flex items-center justify-between">

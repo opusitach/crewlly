@@ -23,7 +23,7 @@ import ReportsView from "@/components/reports-view"
 import GlobalSettingsView, { type SettingsScreen } from "@/components/global-settings-view"
 import { type CashSettingsTab } from "@/components/cash-settings-view"
 import AppHeader from "@/components/shared/app-header"
-import OwnerBottomNav, { type OwnerTab } from "@/components/shared/owner-bottom-nav"
+import OwnerBottomNav, { type OwnerBottomNavTab, type OwnerTab } from "@/components/shared/owner-bottom-nav"
 import AccountHub from "@/components/account/account-hub"
 import OwnerProfile from "@/components/account/owner-profile"
 import NotificationsPage from "@/components/account/notifications-page"
@@ -382,7 +382,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     return undefined
   }
 
-  const handleBottomTabChange = (nextTab: OwnerTab) => {
+  const handleBottomTabChange = (nextTab: OwnerBottomNavTab) => {
     const isReselect = nextTab === activeTab
     if (!isReselect) {
       setTab(nextTab)
@@ -390,10 +390,6 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     }
 
     setAccountView("none")
-    if (nextTab === "settings") {
-      setSettingsInitialScreen("home")
-      setSettingsInitialCashTab("open")
-    }
     updateRouteForTab(nextTab, getRootContextParams(nextTab))
     bumpTabResetVersion(nextTab)
     scrollTabToTop()
@@ -1296,7 +1292,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-background max-w-md mx-auto pb-20">
+    <div className="min-h-screen bg-background max-w-md mx-auto pb-24">
       {/* Header */}
       <AppHeader
         title="Crewlly"
