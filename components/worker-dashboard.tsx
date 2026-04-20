@@ -1215,14 +1215,18 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-md px-3 pb-safe">
           <nav
             aria-label="Нижняя навигация сотрудника"
-            className="pointer-events-auto rounded-full border border-white/15 bg-[rgba(255,255,255,0.50)] p-2 shadow-[0_18px_48px_rgba(15,23,42,0.28)] [backdrop-filter:blur(20px)]"
+            className="pointer-events-auto rounded-full border border-white/20 dark:border-white/10 glass-card p-2 shadow-elev-3"
           >
             <div className="relative grid grid-cols-3 items-center gap-2">
+              {/* Sliding active pill */}
               <div
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-y-0 left-0 rounded-full bg-[#FF914D] shadow-[0_10px_24px_rgba(255,145,77,0.38)] transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                  navActiveIndex === -1 ? "opacity-0" : "opacity-100"
-                }`}
+                className={[
+                  "pointer-events-none absolute inset-y-0 left-0 rounded-full bg-primary",
+                  "shadow-[0_8px_20px_var(--tw-shadow-color)] [--tw-shadow-color:oklch(from_var(--primary)_l_c_h_/_0.35)]",
+                  "transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                  navActiveIndex === -1 ? "opacity-0" : "opacity-100",
+                ].join(" ")}
                 style={{
                   width: "calc((100% - 1rem) / 3)",
                   transform:
@@ -1238,19 +1242,22 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
                     key={key}
                     type="button"
                     aria-label={label}
+                    aria-current={isActive ? "page" : undefined}
                     onClick={() => handleTabChange(key)}
-                    className={`
-                      relative z-10 flex h-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-[color,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]
-                      ${
-                        isActive
-                          ? "text-white"
-                          : "text-[#887876] hover:bg-white/10 hover:text-[#9A8A88] active:scale-[0.98]"
-                      }
-                    `}
+                    className={[
+                      "relative z-10 flex h-14 min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-full",
+                      "transition-[color,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      isActive
+                        ? "text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground active:scale-[0.96]",
+                    ].join(" ")}
                   >
                     <Icon
-                      className={`h-7 w-7 transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${isActive ? "scale-100" : "scale-[0.96]"}`}
-                      strokeWidth={1.9}
+                      className={[
+                        "transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                        isActive ? "size-6 scale-100" : "size-6 scale-[0.93]",
+                      ].join(" ")}
+                      strokeWidth={isActive ? 2.1 : 1.8}
                     />
                     <span className="sr-only">{label}</span>
                   </button>

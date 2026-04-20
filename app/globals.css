@@ -3,75 +3,256 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   Crewlly Design System — Apple HIG-aligned
+   Single source of truth for tokens. Light + dark.
+   ============================================================ */
+
 :root {
-  /* Warm, light color palette for Crewlly */
-  --background: oklch(0.99 0.005 85);
-  --foreground: oklch(0.35 0.01 30);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.35 0.01 30);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.35 0.01 30);
-  --primary: oklch(0.65 0.15 55);
+  /* — Typography — */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+               "Inter", "Geist", "Geist Fallback", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Geist Mono", "Geist Mono Fallback",
+               "Menlo", monospace;
+
+  /* HIG type ramp (size / line-height / tracking) */
+  --text-large-title: 2.125rem;   --lh-large-title: 2.5625rem;  --tr-large-title: -0.026em;
+  --text-title-1: 1.75rem;        --lh-title-1: 2.125rem;       --tr-title-1: -0.022em;
+  --text-title-2: 1.375rem;       --lh-title-2: 1.75rem;        --tr-title-2: -0.018em;
+  --text-title-3: 1.25rem;        --lh-title-3: 1.5625rem;      --tr-title-3: -0.013em;
+  --text-headline: 1.0625rem;     --lh-headline: 1.375rem;      --tr-headline: -0.025em;
+  --text-body: 1.0625rem;         --lh-body: 1.375rem;          --tr-body: -0.025em;
+  --text-callout: 1rem;           --lh-callout: 1.3125rem;      --tr-callout: -0.020em;
+  --text-subheadline: 0.9375rem;  --lh-subheadline: 1.25rem;    --tr-subheadline: -0.015em;
+  --text-footnote: 0.8125rem;     --lh-footnote: 1.125rem;      --tr-footnote: -0.005em;
+  --text-caption-1: 0.75rem;      --lh-caption-1: 1rem;         --tr-caption-1: 0;
+  --text-caption-2: 0.6875rem;    --lh-caption-2: 0.8125rem;    --tr-caption-2: 0.005em;
+
+  /* — Spacing scale (4pt grid) — */
+  --space-screen-x: 1rem;          /* 16pt — HIG screen edge */
+  --space-screen-y: 1.25rem;
+  --space-section: 2rem;           /* between major sections */
+  --space-card-gap: 0.75rem;       /* between cards */
+  --space-stack: 0.5rem;           /* inside list rows */
+
+  /* — Radius (HIG-soft corners) — */
+  --radius: 1rem;                  /* base for cards */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.75rem;           /* sheets */
+  --radius-full: 9999px;
+
+  /* — Touch — */
+  --tap-min: 2.75rem;              /* 44px HIG minimum */
+
+  /* ===========================================================
+     Color tokens — HIG System Colors (Light)
+     =========================================================== */
+
+  /* Backgrounds & Surfaces */
+  --background: oklch(0.985 0.003 60);
+  --surface-base: oklch(0.965 0.004 60);          /* systemGroupedBackground */
+  --surface-elevated: oklch(1 0 0);                /* secondarySystemGroupedBackground */
+  --surface-tertiary: oklch(0.94 0.005 60);
+
+  /* Labels (text) */
+  --foreground: oklch(0.20 0.008 30);              /* label */
+  --text-secondary: oklch(0.42 0.008 30);          /* secondaryLabel */
+  --text-tertiary: oklch(0.58 0.005 30);           /* tertiaryLabel */
+  --text-quaternary: oklch(0.74 0.004 30);
+
+  /* Separators */
+  --separator: oklch(0.20 0.008 30 / 0.12);
+  --separator-opaque: oklch(0.90 0.005 60);
+
+  /* Fills (HIG quaternary fill scale) */
+  --fill-1: oklch(0.55 0.005 30 / 0.20);
+  --fill-2: oklch(0.55 0.005 30 / 0.16);
+  --fill-3: oklch(0.55 0.005 30 / 0.12);
+  --fill-4: oklch(0.55 0.005 30 / 0.08);
+
+  /* Brand — Crewlly Warm Orange (HIG-grade contrast) */
+  --brand-50:  oklch(0.97 0.025 55);
+  --brand-100: oklch(0.93 0.05 55);
+  --brand-200: oklch(0.88 0.08 55);
+  --brand-300: oklch(0.78 0.13 55);
+  --brand-400: oklch(0.71 0.16 52);
+  --brand-500: oklch(0.65 0.18 50);
+  --brand-600: oklch(0.58 0.19 48);                /* text on light, ≈5.2:1 */
+  --brand-700: oklch(0.50 0.20 45);
+  --brand-800: oklch(0.42 0.18 42);
+
+  --primary: var(--brand-500);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.025 60);
-  --secondary-foreground: oklch(0.35 0.01 30);
-  --muted: oklch(0.96 0.015 70);
-  --muted-foreground: oklch(0.55 0.01 30);
-  --accent: oklch(0.92 0.04 55);
-  --accent-foreground: oklch(0.35 0.01 30);
-  --destructive: oklch(0.6 0.22 25);
+  --primary-text: var(--brand-600);                /* use for text-on-light to meet WCAG AA */
+
+  /* HIG semantic system colors */
+  --success: oklch(0.68 0.17 145);                 /* systemGreen */
+  --success-foreground: oklch(1 0 0);
+  --success-text: oklch(0.50 0.16 150);
+  --success-bg: oklch(0.68 0.17 145 / 0.12);
+
+  --warning: oklch(0.78 0.16 75);                  /* systemOrange */
+  --warning-foreground: oklch(0.20 0.05 60);
+  --warning-text: oklch(0.50 0.14 60);
+  --warning-bg: oklch(0.78 0.16 75 / 0.14);
+
+  --info: oklch(0.66 0.15 245);                    /* systemBlue */
+  --info-foreground: oklch(1 0 0);
+  --info-text: oklch(0.50 0.18 250);
+  --info-bg: oklch(0.66 0.15 245 / 0.12);
+
+  --destructive: oklch(0.62 0.22 25);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.93 0.01 70);
-  --input: oklch(0.96 0.015 70);
-  --ring: oklch(0.65 0.15 55);
-  --chart-1: oklch(0.65 0.15 55);
-  --chart-2: oklch(0.75 0.12 45);
-  --chart-3: oklch(0.85 0.08 60);
-  --chart-4: oklch(0.55 0.1 35);
-  --chart-5: oklch(0.7 0.14 50);
-  --radius: 1.25rem;
-  --glass-bg: oklch(1 0 0 / 0.7);
-  --glass-border: oklch(0.95 0.02 60 / 0.3);
+  --destructive-text: oklch(0.50 0.20 25);
+  --destructive-bg: oklch(0.62 0.22 25 / 0.12);
+
+  /* Status pills (replaces hardcoded #5BDACD etc.) */
+  --status-scheduled: oklch(0.72 0.13 200);        /* systemTeal */
+  --status-scheduled-fg: oklch(1 0 0);
+  --status-in-progress: var(--info);
+  --status-in-progress-fg: oklch(1 0 0);
+  --status-completed: var(--success);
+  --status-completed-fg: oklch(1 0 0);
+  --status-canceled: oklch(0.70 0.005 30);         /* systemGray */
+  --status-canceled-fg: oklch(1 0 0);
+  --status-conflict: var(--destructive);
+  --status-conflict-fg: oklch(1 0 0);
+
+  /* Component aliases */
+  --card: var(--surface-elevated);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--fill-3);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--fill-4);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--fill-3);
+  --accent-foreground: var(--foreground);
+  --border: var(--separator-opaque);
+  --input: oklch(0.96 0.004 60);
+  --ring: var(--brand-500);
+
+  /* Charts (chart-1 = brand, then complementary HIG colors) */
+  --chart-1: var(--brand-500);
+  --chart-2: var(--info);
+  --chart-3: var(--success);
+  --chart-4: var(--warning);
+  --chart-5: oklch(0.66 0.18 305);                 /* systemPurple */
+
+  /* Sidebar (rarely used here, mobile-first) */
+  --sidebar: var(--surface-base);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--brand-500);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: var(--fill-3);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--separator-opaque);
+  --sidebar-ring: var(--brand-500);
+
+  /* Glass / Materials (HIG) */
+  --material-thin: oklch(1 0 0 / 0.55);
+  --material-regular: oklch(1 0 0 / 0.72);
+  --material-thick: oklch(1 0 0 / 0.86);
+  --material-chrome: oklch(0.985 0.003 60 / 0.84);
+  --glass-bg: var(--material-regular);
+  --glass-border: oklch(1 0 0 / 0.30);
+  --glass-blur: 24px;
+
+  /* Elevation (HIG-soft, layered shadows) */
+  --elev-0: 0 0 0 1px var(--separator);
+  --elev-1: 0 1px 2px oklch(0 0 0 / 0.04), 0 1px 1px oklch(0 0 0 / 0.03);
+  --elev-2: 0 4px 12px oklch(0 0 0 / 0.06), 0 2px 4px oklch(0 0 0 / 0.04);
+  --elev-3: 0 12px 32px oklch(0 0 0 / 0.10), 0 4px 8px oklch(0 0 0 / 0.06);
+  --elev-modal: 0 24px 64px oklch(0 0 0 / 0.18);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --background: oklch(0.10 0.005 30);
+  --surface-base: oklch(0.13 0.006 30);
+  --surface-elevated: oklch(0.18 0.006 30);
+  --surface-tertiary: oklch(0.22 0.006 30);
+
+  --foreground: oklch(0.97 0.005 60);
+  --text-secondary: oklch(0.72 0.005 30);
+  --text-tertiary: oklch(0.55 0.005 30);
+  --text-quaternary: oklch(0.40 0.005 30);
+
+  --separator: oklch(0.97 0.005 60 / 0.16);
+  --separator-opaque: oklch(0.27 0.005 30);
+
+  --fill-1: oklch(0.97 0.005 60 / 0.22);
+  --fill-2: oklch(0.97 0.005 60 / 0.18);
+  --fill-3: oklch(0.97 0.005 60 / 0.12);
+  --fill-4: oklch(0.97 0.005 60 / 0.08);
+
+  --primary: oklch(0.74 0.18 55);                  /* brighter for dark surface */
+  --primary-foreground: oklch(0.15 0.005 30);
+  --primary-text: oklch(0.80 0.16 55);
+
+  --success: oklch(0.72 0.17 150);
+  --success-text: oklch(0.78 0.15 150);
+  --success-bg: oklch(0.72 0.17 150 / 0.18);
+  --warning: oklch(0.80 0.17 75);
+  --warning-text: oklch(0.85 0.16 75);
+  --warning-bg: oklch(0.80 0.17 75 / 0.18);
+  --info: oklch(0.72 0.16 245);
+  --info-text: oklch(0.80 0.14 245);
+  --info-bg: oklch(0.72 0.16 245 / 0.18);
+  --destructive: oklch(0.66 0.22 25);
+  --destructive-text: oklch(0.78 0.18 25);
+  --destructive-bg: oklch(0.66 0.22 25 / 0.20);
+
+  --status-scheduled: oklch(0.74 0.13 200);
+  --status-in-progress: var(--info);
+  --status-completed: var(--success);
+  --status-canceled: oklch(0.55 0.005 30);
+  --status-conflict: var(--destructive);
+
+  --card: var(--surface-elevated);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--fill-3);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--fill-4);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--fill-3);
+  --accent-foreground: var(--foreground);
+  --border: var(--separator-opaque);
+  --input: var(--surface-tertiary);
+  --ring: var(--primary);
+
+  --material-thin: oklch(0.18 0.006 30 / 0.55);
+  --material-regular: oklch(0.18 0.006 30 / 0.72);
+  --material-thick: oklch(0.18 0.006 30 / 0.86);
+  --material-chrome: oklch(0.13 0.006 30 / 0.84);
+  --glass-bg: var(--material-regular);
+  --glass-border: oklch(0.97 0.005 60 / 0.10);
+
+  --sidebar: var(--surface-base);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: oklch(0.15 0.005 30);
+  --sidebar-accent: var(--fill-3);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--separator-opaque);
+  --sidebar-ring: var(--primary);
+
+  --elev-1: 0 1px 2px oklch(0 0 0 / 0.30), 0 1px 1px oklch(0 0 0 / 0.20);
+  --elev-2: 0 4px 14px oklch(0 0 0 / 0.40), 0 2px 4px oklch(0 0 0 / 0.20);
+  --elev-3: 0 12px 32px oklch(0 0 0 / 0.50), 0 4px 8px oklch(0 0 0 / 0.30);
+  --elev-modal: 0 24px 64px oklch(0 0 0 / 0.60);
 }
 
 @theme inline {
-  --font-sans: "Geist", "Geist Fallback";
-  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -91,16 +272,60 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* Semantic colors exposed to Tailwind */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-text: var(--success-text);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-text: var(--warning-text);
+  --color-warning-bg: var(--warning-bg);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-text: var(--info-text);
+  --color-info-bg: var(--info-bg);
+
+  /* Status colors */
+  --color-status-scheduled: var(--status-scheduled);
+  --color-status-scheduled-fg: var(--status-scheduled-fg);
+  --color-status-in-progress: var(--status-in-progress);
+  --color-status-in-progress-fg: var(--status-in-progress-fg);
+  --color-status-completed: var(--status-completed);
+  --color-status-completed-fg: var(--status-completed-fg);
+  --color-status-canceled: var(--status-canceled);
+  --color-status-canceled-fg: var(--status-canceled-fg);
+  --color-status-conflict: var(--status-conflict);
+  --color-status-conflict-fg: var(--status-conflict-fg);
+
+  /* Surfaces & fills */
+  --color-surface-base: var(--surface-base);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-tertiary: var(--surface-tertiary);
+  --color-fill-1: var(--fill-1);
+  --color-fill-2: var(--fill-2);
+  --color-fill-3: var(--fill-3);
+  --color-fill-4: var(--fill-4);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-quaternary: var(--text-quaternary);
+  --color-separator: var(--separator);
+  --color-separator-opaque: var(--separator-opaque);
+  --color-primary-text: var(--primary-text);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  /* reduced border radius for more compact feel */
-  --radius-sm: calc(var(--radius) - 6px);
+
+  --radius-sm: calc(var(--radius) - 8px);
   --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 12px);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -115,24 +340,127 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* HIG-style focus ring (visible only for keyboard) */
+  :focus-visible {
+    outline: none;
   }
 }
 
-/* Added safe area support for iOS devices and enhanced glass effect for bottom nav */
-@supports (padding: env(safe-area-inset-bottom)) {
-  .pb-safe {
-    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
-  }
+/* ============================================================
+   Safe-area utilities (iOS notch + home indicator)
+   ============================================================ */
+@supports (padding: env(safe-area-inset-top)) {
+  .pt-safe { padding-top: max(0.5rem, env(safe-area-inset-top)); }
+  .pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+  .pl-safe { padding-left: env(safe-area-inset-left); }
+  .pr-safe { padding-right: env(safe-area-inset-right); }
+  .mt-safe { margin-top: env(safe-area-inset-top); }
+  .mb-safe { margin-bottom: env(safe-area-inset-bottom); }
+  .h-safe-top { height: env(safe-area-inset-top); }
+  .h-safe-bottom { height: env(safe-area-inset-bottom); }
 }
 
-/* iOS-like glass effect utility */
+/* ============================================================
+   Utilities — HIG materials, typography, taps
+   ============================================================ */
 @layer utilities {
+  /* Glass / iOS Materials */
   .glass-card {
     background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
     border: 1px solid var(--glass-border);
+  }
+  .glass-chrome {
+    background: var(--material-chrome);
+    backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  }
+  .glass-thin {
+    background: var(--material-thin);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+  }
+
+  /* HIG Typography utilities */
+  .text-large-title { font-size: var(--text-large-title); line-height: var(--lh-large-title); letter-spacing: var(--tr-large-title); font-weight: 700; }
+  .text-title-1     { font-size: var(--text-title-1);     line-height: var(--lh-title-1);     letter-spacing: var(--tr-title-1);     font-weight: 700; }
+  .text-title-2     { font-size: var(--text-title-2);     line-height: var(--lh-title-2);     letter-spacing: var(--tr-title-2);     font-weight: 700; }
+  .text-title-3     { font-size: var(--text-title-3);     line-height: var(--lh-title-3);     letter-spacing: var(--tr-title-3);     font-weight: 600; }
+  .text-headline    { font-size: var(--text-headline);    line-height: var(--lh-headline);    letter-spacing: var(--tr-headline);    font-weight: 600; }
+  .text-body-hig    { font-size: var(--text-body);        line-height: var(--lh-body);        letter-spacing: var(--tr-body);        font-weight: 400; }
+  .text-callout     { font-size: var(--text-callout);     line-height: var(--lh-callout);     letter-spacing: var(--tr-callout);     font-weight: 400; }
+  .text-subheadline { font-size: var(--text-subheadline); line-height: var(--lh-subheadline); letter-spacing: var(--tr-subheadline); font-weight: 400; }
+  .text-footnote    { font-size: var(--text-footnote);    line-height: var(--lh-footnote);    letter-spacing: var(--tr-footnote);    font-weight: 400; }
+  .text-caption-1   { font-size: var(--text-caption-1);   line-height: var(--lh-caption-1);   letter-spacing: var(--tr-caption-1);   font-weight: 400; }
+  .text-caption-2   { font-size: var(--text-caption-2);   line-height: var(--lh-caption-2);   letter-spacing: var(--tr-caption-2);   font-weight: 500; }
+
+  /* HIG-compliant tap target — adds invisible padding to reach 44pt */
+  .tap-target {
+    position: relative;
+  }
+  .tap-target::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    transform: translate(-50%, -50%);
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--tap-min));
+    height: max(100%, var(--tap-min));
+  }
+
+  /* HIG-style focus ring */
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Inset Grouped List separator */
+  .divide-separator > * + * {
+    border-top: 1px solid var(--separator);
+  }
+
+  /* HIG soft shadows */
+  .shadow-elev-1 { box-shadow: var(--elev-1); }
+  .shadow-elev-2 { box-shadow: var(--elev-2); }
+  .shadow-elev-3 { box-shadow: var(--elev-3); }
+  .shadow-elev-modal { box-shadow: var(--elev-modal); }
+}
+
+/* ============================================================
+   Reduced motion (HIG accessibility)
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   PWA / standalone mode tweaks
+   ============================================================ */
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: none;
   }
 }

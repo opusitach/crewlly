@@ -65,11 +65,11 @@ const INTERVAL_IN_PAST_ERROR_CODE = "INTERVAL_IN_PAST"
 const STATUS_SYNC_INTERVAL_MS = 3000
 
 const STATUS_STYLES = {
-  scheduled: "bg-[#5BDACD] text-white border-0",
-  in_progress: "bg-[#55A1F3] text-white border-0",
-  completed: "bg-[#56E06F] text-white border-0",
-  canceled: "bg-[#9CA3AF] text-white border-0",
-  conflict: "bg-[#EF4444] text-white border-0",
+  scheduled:   "bg-status-scheduled   text-status-scheduled-fg   border-0",
+  in_progress: "bg-status-in-progress text-status-in-progress-fg border-0",
+  completed:   "bg-status-completed   text-status-completed-fg   border-0",
+  canceled:    "bg-status-canceled    text-status-canceled-fg    border-0",
+  conflict:    "bg-status-conflict    text-status-conflict-fg    border-0",
 }
 
 type IntervalUiStatus = {

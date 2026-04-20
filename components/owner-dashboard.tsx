@@ -133,8 +133,9 @@ const capitalize = (value: string) => (value.length > 0 ? value.charAt(0).toUppe
 
 const getCurrentMonthLabel = () => capitalize(new Date().toLocaleDateString("ru-RU", { month: "long" }))
 
+// HIG title-2: 22pt, semibold, tight tracking — readable at any viewport width
 const DASHBOARD_KPI_VALUE_CLASS =
-  "text-[clamp(1.15rem,3.6vw,1.65rem)] font-semibold tracking-tight leading-none tabular-nums whitespace-nowrap"
+  "text-title-2 tabular-nums whitespace-nowrap"
 
 const isDateInputValue = (value: string | null | undefined): value is string =>
   typeof value === "string" && dateInputPattern.test(value)
@@ -1050,177 +1051,195 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
           />
         )}
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <Card
-            className="group relative min-h-[122px] cursor-pointer overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-amber-50/40 p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:to-amber-500/10"
+        {/* KPI Cards — HIG Inset style: clean card, single accent bar, no blur-glow */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* Pending review */}
+          <button
+            type="button"
             onClick={openReviewQueue}
+            className="group flex flex-col gap-3 rounded-xl bg-card border border-border p-4 shadow-elev-1 text-left transition-all duration-150 active:scale-[0.97] hover:shadow-elev-2 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
-            <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-amber-500/80 via-amber-400/70 to-transparent" />
-            <div className="absolute -right-8 -top-8 h-20 w-20 rounded-full bg-amber-500/10 blur-2xl" />
-            <div className="relative flex h-full flex-col justify-between gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">На проверке</p>
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                  <Clock className="h-4 w-4" strokeWidth={1.8} />
-                </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-warning-bg text-warning-text">
+                <Clock className="h-4.5 w-4.5" strokeWidth={2} />
               </div>
-              <div className="space-y-1">
-                <p className={DASHBOARD_KPI_VALUE_CLASS}>{verificationQueueCount}</p>
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Требуют внимания</p>
-              </div>
+              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">На проверке</span>
             </div>
-          </Card>
+            <div className="space-y-0.5">
+              <p className={DASHBOARD_KPI_VALUE_CLASS}>{verificationQueueCount}</p>
+              <p className="text-footnote text-warning-text font-medium">Требуют внимания</p>
+            </div>
+          </button>
 
-          <Card
-            className="group relative min-h-[122px] cursor-pointer overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-emerald-50/40 p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:to-emerald-500/10"
+          {/* Today revenue */}
+          <button
+            type="button"
             onClick={openTodayRevenueReport}
+            className="group flex flex-col gap-3 rounded-xl bg-card border border-border p-4 shadow-elev-1 text-left transition-all duration-150 active:scale-[0.97] hover:shadow-elev-2 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
-            <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-emerald-500/80 via-emerald-400/70 to-transparent" />
-            <div className="absolute -right-8 -top-8 h-20 w-20 rounded-full bg-emerald-500/10 blur-2xl" />
-            <div className="relative flex h-full flex-col justify-between gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Сегодня</p>
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-                  <TrendingUp className="h-4 w-4" strokeWidth={1.8} />
-                </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-success-bg text-success-text">
+                <TrendingUp className="h-4.5 w-4.5" strokeWidth={2} />
               </div>
-              <div className="space-y-1">
-                <p className={DASHBOARD_KPI_VALUE_CLASS}>
-                  {formatRevenueAmount(todayRevenueAmount, revenueCurrency)}
-                </p>
-                <p className="text-xs font-medium text-muted-foreground">Выручка</p>
-              </div>
+              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">Сегодня</span>
             </div>
-          </Card>
+            <div className="space-y-0.5">
+              <p className={DASHBOARD_KPI_VALUE_CLASS}>
+                {formatRevenueAmount(todayRevenueAmount, revenueCurrency)}
+              </p>
+              <p className="text-footnote text-muted-foreground font-medium">Выручка</p>
+            </div>
+          </button>
 
-          <Card
-            className="group relative min-h-[122px] cursor-pointer overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-sky-50/40 p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:to-sky-500/10"
+          {/* Month revenue */}
+          <button
+            type="button"
             onClick={openCurrentMonthRevenueReport}
+            className="group flex flex-col gap-3 rounded-xl bg-card border border-border p-4 shadow-elev-1 text-left transition-all duration-150 active:scale-[0.97] hover:shadow-elev-2 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
-            <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-sky-500/80 via-sky-400/70 to-transparent" />
-            <div className="absolute -right-8 -top-8 h-20 w-20 rounded-full bg-sky-500/10 blur-2xl" />
-            <div className="relative flex h-full flex-col justify-between gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{currentMonthLabel}</p>
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300">
-                  <DollarSign className="h-4 w-4" strokeWidth={1.8} />
-                </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-info-bg text-info-text">
+                <DollarSign className="h-4.5 w-4.5" strokeWidth={2} />
               </div>
-              <div className="space-y-1">
-                <p className={DASHBOARD_KPI_VALUE_CLASS}>
-                  {formatRevenueAmount(monthRevenueAmount, revenueCurrency)}
-                </p>
-                <p className="text-xs font-medium text-muted-foreground">Выручка за месяц</p>
-              </div>
+              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">{currentMonthLabel}</span>
             </div>
-          </Card>
+            <div className="space-y-0.5">
+              <p className={DASHBOARD_KPI_VALUE_CLASS}>
+                {formatRevenueAmount(monthRevenueAmount, revenueCurrency)}
+              </p>
+              <p className="text-footnote text-muted-foreground font-medium">Выручка за месяц</p>
+            </div>
+          </button>
 
-          <Card
-            className="group relative min-h-[122px] cursor-pointer overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-primary/5 p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+          {/* Active shifts */}
+          <button
+            type="button"
             onClick={openShiftsPlanner}
+            className="group flex flex-col gap-3 rounded-xl bg-card border border-border p-4 shadow-elev-1 text-left transition-all duration-150 active:scale-[0.97] hover:shadow-elev-2 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
-            <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary/90 via-primary/70 to-transparent" />
-            <div className="absolute -right-8 -top-8 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
-            <div className="relative flex h-full flex-col justify-between gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Активно</p>
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
-                  <Users className="h-4 w-4" strokeWidth={1.8} />
-                </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary-text">
+                <Users className="h-4.5 w-4.5" strokeWidth={2} />
               </div>
-              <div className="space-y-1">
-                <p className={DASHBOARD_KPI_VALUE_CLASS}>{activeIntervalsCount}</p>
-                <p className="text-xs font-medium text-primary">На сменах</p>
-              </div>
+              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">Активно</span>
             </div>
-          </Card>
+            <div className="space-y-0.5">
+              <p className={DASHBOARD_KPI_VALUE_CLASS}>{activeIntervalsCount}</p>
+              <p className="text-footnote text-primary-text font-medium">На сменах</p>
+            </div>
+          </button>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-2">
-          <Button className="flex-1 h-9 text-sm" onClick={() => setTab("shifts")}>
-            <Plus className="h-4 w-4 mr-1.5" strokeWidth={1.5} />
+        {/* Action Buttons — HIG 44pt */}
+        <div className="flex gap-2.5">
+          <Button className="flex-1" onClick={() => setTab("shifts")}>
+            <Plus className="h-4 w-4" strokeWidth={2} />
             <span className="truncate">Создать смену</span>
           </Button>
-          <Button variant="secondary" className="flex-1 h-9 text-sm" onClick={() => setTab("cash")}>
+          <Button variant="tinted" className="flex-1" onClick={() => setTab("cash")}>
             <span className="truncate">Проверить</span>
           </Button>
         </div>
 
         {/* Activity Feed */}
-        <div className="space-y-3 pt-2.5">
-          <h2 className="text-[17px] leading-none font-semibold">События</h2>
+        <div className="space-y-3 pt-1">
+          <h2 className="text-headline">События</h2>
           {isEventsLoading ? (
-            <Card className="p-4 text-sm text-muted-foreground text-center">Загрузка событий...</Card>
+            <div className="rounded-xl bg-card border border-border divide-y divide-separator overflow-hidden">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-3 p-4 animate-pulse">
+                  <div className="h-9 w-9 rounded-full bg-fill-3 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-3/5 rounded bg-fill-3" />
+                    <div className="h-3 w-4/5 rounded bg-fill-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : dashboardEvents.length === 0 ? (
-            <Card className="p-4">
-              <p className="text-sm text-muted-foreground text-center">Тут пока нет событий</p>
-            </Card>
+            <div className="rounded-xl bg-card border border-border p-8 flex flex-col items-center gap-3 text-center">
+              <div className="h-12 w-12 rounded-full bg-fill-3 flex items-center justify-center text-muted-foreground">
+                <Sparkles className="h-6 w-6" strokeWidth={1.5} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-subheadline font-semibold">Всё спокойно</p>
+                <p className="text-footnote text-muted-foreground">Тут появятся события смен и кассы</p>
+              </div>
+            </div>
           ) : (
-            <div className="space-y-2">
+            <div className="rounded-xl bg-card border border-border divide-y divide-separator overflow-hidden">
               {visibleDashboardEvents.map((event) => {
                 const isCashEvent = event.type === "cash"
                 const Icon = isCashEvent ? DollarSign : Clock
                 return (
-                  <Card
+                  <button
                     key={event.id}
-                    className="p-3 cursor-pointer hover:shadow-md transition-shadow"
+                    type="button"
+                    className="w-full flex items-start gap-3 p-4 text-left transition-colors hover:bg-fill-4 active:bg-fill-3 focus-visible:outline-none focus-visible:bg-fill-3"
                     onClick={() => setAccountView("notifications")}
                   >
-                    <div className="flex items-start gap-2.5">
-                      <div
-                        className={`mt-0.5 h-8 w-8 rounded-full flex items-center justify-center ${
-                          isCashEvent ? "bg-amber-500/10 text-amber-700" : "bg-primary/10 text-primary"
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" strokeWidth={1.5} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium truncate">{event.title}</p>
-                          {event.status === "unread" && (
-                            <AlertCircle className="h-3.5 w-3.5 text-primary flex-shrink-0 mt-0.5" strokeWidth={1.5} />
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{event.message}</p>
-                        <p className="text-[11px] text-muted-foreground mt-1.5">{formatEventTimestamp(event.createdAt)}</p>
-                      </div>
+                    <div
+                      className={`mt-0.5 h-9 w-9 rounded-full flex-shrink-0 flex items-center justify-center ${
+                        isCashEvent ? "bg-warning-bg text-warning-text" : "bg-primary/10 text-primary-text"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" strokeWidth={1.8} />
                     </div>
-                  </Card>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-callout font-semibold truncate">{event.title}</p>
+                        {event.status === "unread" && (
+                          <span className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1.5" aria-label="Непрочитано" />
+                        )}
+                      </div>
+                      <p className="text-footnote text-muted-foreground line-clamp-2 mt-0.5">{event.message}</p>
+                      <p className="text-caption-1 text-text-tertiary mt-1.5">{formatEventTimestamp(event.createdAt)}</p>
+                    </div>
+                  </button>
                 )
               })}
 
               {hasMoreDashboardEvents && (
-                <Button
-                  variant="secondary"
-                  className="w-full h-9 text-sm"
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-center gap-1 p-4 text-callout font-medium text-primary-text transition-colors hover:bg-fill-4 active:bg-fill-3"
                   onClick={() => setAccountView("notifications")}
                 >
-                  Больше
-                </Button>
+                  Показать все
+                  <ChevronRight className="h-4 w-4" strokeWidth={2} />
+                </button>
               )}
             </div>
           )}
         </div>
 
-        {/* Attention */}
-        <div className="space-y-3 pt-2.5">
+        {/* Attention — HIG Inset Grouped List */}
+        <div className="space-y-3 pt-1">
           <div className="flex items-center justify-between">
-            <h2 className="text-[17px] leading-none font-semibold">На что обратить внимание</h2>
+            <h2 className="text-headline">На что обратить внимание</h2>
             <span
-              className={`text-[11px] font-medium ${
-                warningsCount > 0 ? "text-destructive" : "text-emerald-700 dark:text-emerald-300"
+              className={`text-footnote font-semibold ${
+                warningsCount > 0 ? "text-destructive-text" : "text-success-text"
               }`}
             >
-              {warningsCount > 0 ? warningsLabel : "Все настроено"}
+              {warningsCount > 0 ? warningsLabel : "Всё настроено"}
             </span>
           </div>
 
           {isAttentionLoading ? (
-            <Card className="p-4 text-sm text-muted-foreground text-center">Проверяем настройки...</Card>
+            <div className="rounded-xl bg-card border border-border divide-y divide-separator overflow-hidden">
+              {[1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-3 p-4 animate-pulse">
+                  <div className="h-9 w-9 rounded-full bg-fill-3 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-2/5 rounded bg-fill-3" />
+                    <div className="h-3 w-3/5 rounded bg-fill-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
-            <div className="space-y-2">
+            <div className="rounded-xl bg-card border border-border divide-y divide-separator overflow-hidden">
               {attentionItems.map((item) => {
                 const Icon =
                   item.key === "cash"
@@ -1231,56 +1250,32 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
                         ? ShieldCheck
                         : Sparkles
                 const isWarning = item.status === "warning"
-                const cardClassName = isWarning
-                  ? "border-destructive/35 bg-destructive/[0.04] hover:bg-destructive/[0.07]"
-                  : "border-emerald-500/35 bg-emerald-500/[0.05] hover:bg-emerald-500/[0.09]"
-                const iconClassName = isWarning
-                  ? "border-destructive/25 bg-destructive/10 text-destructive"
-                  : "border-emerald-500/25 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
 
                 return (
                   <button
                     key={item.key}
                     type="button"
-                    className="w-full text-left"
+                    className="w-full flex items-center gap-3 p-4 text-left transition-colors hover:bg-fill-4 active:bg-fill-3 focus-visible:outline-none focus-visible:bg-fill-3"
                     onClick={() => {
-                      if (item.key === "cash") {
-                        openSettingsSection("cash", "open")
-                        return
-                      }
-                      if (item.key === "employees") {
-                        openSettingsSection("team")
-                        return
-                      }
-                      if (item.key === "roles") {
-                        openSettingsSection("roles")
-                        return
-                      }
+                      if (item.key === "cash") { openSettingsSection("cash", "open"); return }
+                      if (item.key === "employees") { openSettingsSection("team"); return }
+                      if (item.key === "roles") { openSettingsSection("roles"); return }
                       openSettingsSection("cash", "formula")
                     }}
                   >
-                    <Card className={`p-3 transition-colors ${cardClassName}`}>
-                      <div className="flex items-start gap-2.5">
-                        <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border ${iconClassName}`}>
-                          <Icon className="h-4 w-4" strokeWidth={1.7} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold">{item.title}</p>
-                            <div
-                              className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                                isWarning ? "bg-destructive" : "bg-emerald-500"
-                              }`}
-                            />
-                          </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
-                          <p className={`mt-1 text-[11px] font-medium ${isWarning ? "text-destructive" : "text-emerald-700 dark:text-emerald-300"}`}>
-                            {item.hint}
-                          </p>
-                        </div>
-                        <ChevronRight className="mt-1 h-4 w-4 text-muted-foreground" strokeWidth={1.6} />
-                      </div>
-                    </Card>
+                    <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
+                      isWarning ? "bg-destructive-bg text-destructive-text" : "bg-success-bg text-success-text"
+                    }`}>
+                      <Icon className="h-4.5 w-4.5" strokeWidth={2} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-callout font-semibold">{item.title}</p>
+                      <p className="text-footnote text-muted-foreground line-clamp-1 mt-0.5">{item.description}</p>
+                      <p className={`text-caption-1 font-medium mt-0.5 ${isWarning ? "text-destructive-text" : "text-success-text"}`}>
+                        {item.hint}
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={2} />
                   </button>
                 )
               })}
