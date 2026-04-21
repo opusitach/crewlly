@@ -14,7 +14,7 @@ import {
   subMonths,
 } from "date-fns"
 import { ru } from "date-fns/locale"
-import { ArrowLeft, Calculator, ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react"
+import { ArrowLeft, Calculator, ChevronLeft, Plus, RotateCcw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -48,6 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { GlassCalendar, type GlassCalendarDay, type GlassCalendarView } from "@/components/ui/glass-calendar"
 import { MonthPicker } from "@/components/shifts/month-picker"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthStore } from "@/lib/store/auth-store"
@@ -63,6 +64,17 @@ const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 const INTERVAL_OVERLAP_ERROR_CODE = "INTERVAL_OVERLAP"
 const INTERVAL_IN_PAST_ERROR_CODE = "INTERVAL_IN_PAST"
 const STATUS_SYNC_INTERVAL_MS = 3000
+
+const capitalizeLabel = (value: string) => (value.length > 0 ? value.charAt(0).toUpperCase() + value.slice(1) : value)
+
+const formatShiftWord = (count: number) => {
+  const mod10 = count % 10
+  const mod100 = count % 100
+
+  if (mod10 === 1 && mod100 !== 11) return "смена"
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "смены"
+  return "смен"
+}
 
 const STATUS_STYLES = {
   scheduled:   "bg-status-scheduled   text-status-scheduled-fg   border-0",
@@ -1218,7 +1230,290 @@ export default function ShiftsView({
 
   const calendarDays = useMemo(() => getMonthCalendarDays(safeDisplayDate), [safeDisplayDate])
   const weekDays = useMemo(() => getWeekDays(safeSelectedDate), [safeSelectedDate])
-  const today = new Date()
+  const today = useMemo(() => new Date(), [])
+  const calendarViewMode: GlassCalendarView = panelExpanded ? "week" : "month"
+
+  const handleCalendarViewChange = (nextView: GlassCalendarView) => {
+    if (nextView === "week") {
+      setPanelExpanded(true)
+      setPanelView("list")
+      return
+    }
+
+    setPanelExpanded(false)
+    setPanelView("list")
+    if (isBulkMode) {
+      setIsBulkMode(false)
+      setBulkSelectedDates([])
+      setBulkCreateDates([])
+    }
+  }
+
+  const handleCalendarDateSelect = (date: Date) => {
+    const dateStr = formatDate(date)
+
+    if (!panelExpanded && isBulkMode) {
+      handleSelectDate(date)
+      handleToggleBulkDate(dateStr)
+      return
+    }
+
+    handleSelectDate(date)
+  }
+
+  const monthCalendarItems = useMemo<GlassCalendarDay[]>(
+    () =>
+      calendarDays.map((day, index) => {
+        const dateStr = formatDate(day)
+        const isCurrentMonth = isSameMonth(day, safeDisplayDate)
+        const dayCount = intervalsByDate.get(dateStr)?.length ?? 0
+        const hasConflict = conflictDates.has(dateStr)
+        const isBulkSelected = isBulkMode && bulkSelectedDates.includes(dateStr)
+        const col = index % 7
+        const prevDay = index > 0 ? calendarDays[index - 1] : null
+        const nextDay = index < calendarDays.length - 1 ? calendarDays[index + 1] : null
+        const continuesRangeFromPrev =
+          isBulkSelected &&
+          col > 0 &&
+          prevDay != null &&
+          isSameMonth(prevDay, safeDisplayDate) &&
+          bulkSelectedDates.includes(formatDate(prevDay))
+        const continuesRangeToNext =
+          isBulkSelected &&
+          col < 6 &&
+          nextDay != null &&
+          isSameMonth(nextDay, safeDisplayDate) &&
+          bulkSelectedDates.includes(formatDate(nextDay))
+
+        return {
+          date: day,
+          isToday: isSameDay(day, today),
+          isSelected: !isBulkMode && isSameDay(day, safeSelectedDate),
+          isCurrentMonth,
+          hasEvent: dayCount > 0,
+          hasConflict,
+          eventCount: dayCount,
+          isRangeHighlight: isBulkSelected,
+          continuesRangeFromPrev,
+          continuesRangeToNext,
+          onDoubleClick: !isBulkMode ? () => handleOpenWeekView(day) : undefined,
+        }
+      }),
+    [bulkSelectedDates, calendarDays, conflictDates, intervalsByDate, isBulkMode, safeDisplayDate, safeSelectedDate, today],
+  )
+
+  const weekCalendarItems = useMemo<GlassCalendarDay[]>(
+    () =>
+      weekDays.map((day) => {
+        const dateStr = formatDate(day)
+        const dayCount = intervalsByDate.get(dateStr)?.length ?? 0
+
+        return {
+          date: day,
+          isToday: isSameDay(day, today),
+          isSelected: isSameDay(day, safeSelectedDate),
+          isCurrentMonth: isSameMonth(day, safeDisplayDate),
+          hasEvent: dayCount > 0,
+          hasConflict: conflictDates.has(dateStr),
+          eventCount: dayCount,
+          helperText: dayCount > 0 ? `${dayCount} ${formatShiftWord(dayCount)}` : "Нет смен",
+        }
+      }),
+    [conflictDates, intervalsByDate, safeDisplayDate, safeSelectedDate, today, weekDays],
+  )
+
+  const calendarTitle = capitalizeLabel(
+    format(calendarViewMode === "week" ? safeSelectedDate : safeDisplayDate, "LLLL", { locale: ru }),
+  )
+  const calendarSubtitle =
+    calendarViewMode === "week"
+      ? `${capitalizeLabel(format(weekDays[0] ?? safeSelectedDate, "d MMM", { locale: ru }))} - ${capitalizeLabel(
+          format(weekDays[weekDays.length - 1] ?? safeSelectedDate, "d MMM yyyy", { locale: ru }),
+        )}`
+      : `${format(safeDisplayDate, "yyyy")} • ${
+          isBulkMode ? "Массовое создание" : readOnly ? "Мой график" : "План команды"
+        }`
+  const selectedDateSummary = capitalizeLabel(format(safeSelectedDate, "d MMMM", { locale: ru }))
+  const selectedIntervalsSummary =
+    selectedIntervals.length > 0 ? `${selectedIntervals.length} ${formatShiftWord(selectedIntervals.length)}` : "Без смен"
+  const selectedConflictSummary = conflictDates.has(selectedDateStr) ? "Есть конфликт" : null
+
+  const calendarToolbar = (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <MonthPicker currentDate={safeDisplayDate} onChange={handleMonthChange} showIcon={false} />
+        {!readOnly && calendarViewMode === "month" ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant={isBulkMode ? "secondary" : "outline"}
+              size="sm"
+              className={cn(
+                "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
+                isBulkMode && "border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+              )}
+              onClick={handleToggleBulkMode}
+            >
+              Массово
+            </Button>
+            {isBulkMode ? (
+              <Button
+                size="icon"
+                className="size-9 rounded-full bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
+                onClick={handleBulkCreate}
+                aria-label="Создать смены"
+              >
+                <Plus className="size-4" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {!filtersHidden ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <DropdownMenu
+            open={activeFilter === "employee"}
+            onOpenChange={handleFilterOpenChange("employee")}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={selectedEmployeeIds.length > 0 ? "secondary" : "outline"}
+                size="sm"
+                className={cn(
+                  "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
+                  selectedEmployeeIds.length > 0 && "bg-secondary text-secondary-foreground",
+                )}
+              >
+                <span className="truncate">
+                  Сотрудники: {selectedEmployeeIds.length > 0 ? selectedEmployeeIds.length : "Все"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="rounded-xl border-border shadow-lg">
+              {employees.length === 0 ? (
+                <DropdownMenuItem disabled>Нет сотрудников</DropdownMenuItem>
+              ) : (
+                employees.map((employee) => (
+                  <DropdownMenuCheckboxItem
+                    key={employee.id}
+                    checked={selectedEmployeeIds.includes(employee.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedEmployeeIds((prev) =>
+                        checked
+                          ? [...prev, employee.id]
+                          : prev.filter((id) => id !== employee.id),
+                      )
+                    }}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    {employee.fullName || employee.name || "Сотрудник"}
+                  </DropdownMenuCheckboxItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu
+            open={activeFilter === "position"}
+            onOpenChange={handleFilterOpenChange("position")}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={selectedPositionIds.length > 0 ? "secondary" : "outline"}
+                size="sm"
+                className={cn(
+                  "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
+                  selectedPositionIds.length > 0 && "bg-secondary text-secondary-foreground",
+                )}
+              >
+                <span className="truncate">
+                  Должности: {selectedPositionIds.length > 0 ? selectedPositionIds.length : "Все"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="rounded-xl border-border shadow-lg">
+              {positions.length === 0 ? (
+                <DropdownMenuItem disabled>Нет должностей</DropdownMenuItem>
+              ) : (
+                positions.map((position) => (
+                  <DropdownMenuCheckboxItem
+                    key={position.id}
+                    checked={selectedPositionIds.includes(position.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedPositionIds((prev) =>
+                        checked
+                          ? [...prev, position.id]
+                          : prev.filter((id) => id !== position.id),
+                      )
+                    }}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    {position.name}
+                  </DropdownMenuCheckboxItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu
+            open={activeFilter === "status"}
+            onOpenChange={handleFilterOpenChange("status")}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={selectedStatusKeys.length > 0 ? "secondary" : "outline"}
+                size="sm"
+                className={cn(
+                  "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
+                  selectedStatusKeys.length > 0 && "bg-secondary text-secondary-foreground",
+                )}
+              >
+                <span className="truncate">
+                  Статус: {selectedStatusKeys.length > 0 ? selectedStatusKeys.length : "Все"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="rounded-xl border-border shadow-lg">
+              {STATUS_FILTERS.map((status) => (
+                <DropdownMenuCheckboxItem
+                  key={status.key}
+                  checked={selectedStatusKeys.includes(status.key)}
+                  onCheckedChange={(checked) => {
+                    setSelectedStatusKeys((prev) =>
+                      checked ? [...prev, status.key] : prev.filter((key) => key !== status.key),
+                    )
+                  }}
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  {status.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            onClick={handleResetFilters}
+            aria-label="Сбросить фильтры"
+          >
+            <RotateCcw className="size-4" />
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
+
+  const calendarFooter = (
+    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+      <span className="truncate">{selectedDateSummary}</span>
+      <span className="shrink-0">
+        {selectedIntervalsSummary}
+        {selectedConflictSummary ? ` • ${selectedConflictSummary}` : ""}
+      </span>
+    </div>
+  )
 
   const showCollapseIcon = panelView === "list" && panelExpanded
 
@@ -1551,44 +1846,6 @@ export default function ShiftsView({
     </AccordionItem>
   )
 
-  const renderWeekDay = (day: Date) => {
-    const dateStr = formatDate(day)
-    const isSelected = isSameDay(day, safeSelectedDate)
-    const isToday = isSameDay(day, today)
-    const dayCount = intervalsByDate.get(dateStr)?.length ?? 0
-    const hasConflict = conflictDates.has(dateStr)
-
-    return (
-      <div key={dateStr} className="flex min-w-0 flex-col items-center gap-1">
-        <button
-          onClick={() => handleSelectDate(day)}
-          onDoubleClick={() => handleOpenWeekView(day)}
-          className={cn(
-            "w-full min-w-0 rounded-xl border bg-card px-1 py-2 text-center sm:px-2 sm:py-3",
-            "transition-all hover:bg-accent/40",
-            isSelected && "ring-2 ring-primary bg-primary/10",
-          )}
-        >
-          <div className={cn("text-[9px] uppercase sm:text-[10px]", isToday && "text-primary")}>
-            {format(day, "EEE", { locale: ru }).toUpperCase()}
-          </div>
-          <div className={cn("text-base font-semibold sm:text-lg", isToday && "text-primary")}>{format(day, "d")}</div>
-          {dayCount > 0 && (
-            <div
-              className={cn(
-                "mx-auto mt-1 h-2 w-2 rounded-full",
-                hasConflict ? "bg-[#EF4444]" : "bg-[#F28A2E]",
-              )}
-            />
-          )}
-        </button>
-        <div className="w-full min-w-0 text-center text-[10px] leading-tight text-muted-foreground">
-          {dayCount > 0 ? `${dayCount} смен` : "Нет смен"}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="relative flex flex-col h-screen bg-background max-w-md mx-auto overflow-hidden">
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
@@ -1609,136 +1866,6 @@ export default function ShiftsView({
               </div>
               <Button variant="outline" size="sm" className="rounded-full bg-transparent text-xs" onClick={handleToday}>
                 Сегодня
-              </Button>
-            </div>
-          )}
-          {!filtersHidden && (
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
-              <DropdownMenu
-                open={activeFilter === "employee"}
-                onOpenChange={handleFilterOpenChange("employee")}
-              >
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full min-w-0 justify-start rounded-full bg-transparent px-2 text-[11px] sm:w-auto sm:px-3 sm:text-xs"
-                  >
-                    <span className="truncate sm:hidden">
-                      Сотр.: {selectedEmployeeIds.length > 0 ? selectedEmployeeIds.length : "Все"}
-                    </span>
-                    <span className="hidden sm:inline">
-                      Сотрудники: {selectedEmployeeIds.length > 0 ? selectedEmployeeIds.length : "Все"}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {employees.length === 0 ? (
-                    <DropdownMenuItem disabled>Нет сотрудников</DropdownMenuItem>
-                  ) : (
-                    employees.map((employee) => (
-                      <DropdownMenuCheckboxItem
-                        key={employee.id}
-                        checked={selectedEmployeeIds.includes(employee.id)}
-                        onCheckedChange={(checked) => {
-                          setSelectedEmployeeIds((prev) =>
-                            checked
-                              ? [...prev, employee.id]
-                              : prev.filter((id) => id !== employee.id),
-                          )
-                        }}
-                        onSelect={(event) => event.preventDefault()}
-                      >
-                        {employee.fullName || employee.name || "Сотрудник"}
-                      </DropdownMenuCheckboxItem>
-                    ))
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu
-                open={activeFilter === "position"}
-                onOpenChange={handleFilterOpenChange("position")}
-              >
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full min-w-0 justify-start rounded-full bg-transparent px-2 text-[11px] sm:w-auto sm:px-3 sm:text-xs"
-                  >
-                    <span className="truncate sm:hidden">
-                      Должн.: {selectedPositionIds.length > 0 ? selectedPositionIds.length : "Все"}
-                    </span>
-                    <span className="hidden sm:inline">
-                      Должности: {selectedPositionIds.length > 0 ? selectedPositionIds.length : "Все"}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {positions.length === 0 ? (
-                    <DropdownMenuItem disabled>Нет должностей</DropdownMenuItem>
-                  ) : (
-                    positions.map((position) => (
-                      <DropdownMenuCheckboxItem
-                        key={position.id}
-                        checked={selectedPositionIds.includes(position.id)}
-                        onCheckedChange={(checked) => {
-                          setSelectedPositionIds((prev) =>
-                            checked
-                              ? [...prev, position.id]
-                              : prev.filter((id) => id !== position.id),
-                          )
-                        }}
-                        onSelect={(event) => event.preventDefault()}
-                      >
-                        {position.name}
-                      </DropdownMenuCheckboxItem>
-                    ))
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu
-                open={activeFilter === "status"}
-                onOpenChange={handleFilterOpenChange("status")}
-              >
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full min-w-0 justify-start rounded-full bg-transparent px-2 text-[11px] sm:w-auto sm:px-3 sm:text-xs"
-                  >
-                    <span className="truncate">
-                      Статус: {selectedStatusKeys.length > 0 ? selectedStatusKeys.length : "Все"}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {STATUS_FILTERS.map((status) => (
-                    <DropdownMenuCheckboxItem
-                      key={status.key}
-                      checked={selectedStatusKeys.includes(status.key)}
-                      onCheckedChange={(checked) => {
-                        setSelectedStatusKeys((prev) =>
-                          checked ? [...prev, status.key] : prev.filter((key) => key !== status.key),
-                        )
-                      }}
-                      onSelect={(event) => event.preventDefault()}
-                    >
-                      {status.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 rounded-full self-center sm:size-8"
-                onClick={handleResetFilters}
-                aria-label="Сбросить фильтры"
-              >
-                <RotateCcw className="size-3.5 sm:size-4" />
               </Button>
             </div>
           )}
@@ -1765,144 +1892,22 @@ export default function ShiftsView({
               aria-hidden={panelExpanded}
             >
               <div ref={monthViewRef} className="p-4 pb-0">
-                <div
-                  className={cn(
-                    "bg-white rounded-[28px] border",
-                    isBulkMode ? "border-[#F28A2E]" : "border-slate-200",
-                  )}
-                >
-                  <div className="flex items-center justify-between px-5 pt-5 pb-3">
-                    <div className="flex items-center gap-2">
-                      <MonthPicker currentDate={safeDisplayDate} onChange={handleMonthChange} showIcon={false} />
-                      {!readOnly && (
-                        <>
-                          <Button
-                            variant={isBulkMode ? "default" : "outline"}
-                            size="sm"
-                            className={cn("rounded-full text-xs", !isBulkMode && "bg-transparent")}
-                            onClick={handleToggleBulkMode}
-                          >
-                            Массово
-                          </Button>
-                          {isBulkMode && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-8 rounded-full bg-white text-orange-600 hover:bg-white/90"
-                              onClick={handleBulkCreate}
-                              aria-label="Создать смены"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-full h-8 w-8"
-                        onClick={() => handleMonthChange(subMonths(safeDisplayDate, 1))}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-full h-8 w-8"
-                        onClick={() => handleMonthChange(addMonths(safeDisplayDate, 1))}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-7 gap-y-3 px-5 pb-5 text-center">
-                    {WEEK_DAYS.map((day) => (
-                      <div key={day} className="text-[11px] font-medium text-slate-400">
-                        {day}
-                      </div>
-                    ))}
-                    {calendarDays.map((day, index) => {
-                      const dateStr = formatDate(day)
-                      const isCurrentMonth = isSameMonth(day, safeDisplayDate)
-                      const isSelected = !isBulkMode && isSameDay(day, safeSelectedDate)
-                      const isToday = isSameDay(day, today)
-                      const hasMatch = (intervalsByDate.get(dateStr) || []).length > 0
-                      const hasConflict = conflictDates.has(dateStr)
-                      const isBulkSelected = isBulkMode && bulkSelectedDates.includes(dateStr)
-                      const col = index % 7
-                      const prevDay = index > 0 ? calendarDays[index - 1] : null
-                      const nextDay = index < calendarDays.length - 1 ? calendarDays[index + 1] : null
-                      const hasPrev =
-                        isBulkSelected &&
-                        col > 0 &&
-                        prevDay &&
-                        isSameMonth(prevDay, safeDisplayDate) &&
-                        bulkSelectedDates.includes(formatDate(prevDay))
-                      const hasNext =
-                        isBulkSelected &&
-                        col < 6 &&
-                        nextDay &&
-                        isSameMonth(nextDay, safeDisplayDate) &&
-                        bulkSelectedDates.includes(formatDate(nextDay))
-
-                      if (!isCurrentMonth) {
-                        return <div key={dateStr} className="h-8" aria-hidden />
-                      }
-
-                      return (
-                        <div key={dateStr} className="relative flex items-center justify-center">
-                          {isBulkSelected && (
-                            <div
-                              className={cn(
-                                "absolute inset-y-1 left-0 right-0 border-2 border-[#F28A2E] pointer-events-none",
-                                hasPrev && "border-l-0",
-                                hasNext && "border-r-0",
-                                hasPrev && hasNext
-                                  ? "rounded-none"
-                                  : hasPrev
-                                    ? "rounded-r-full"
-                                    : hasNext
-                                      ? "rounded-l-full"
-                                      : "rounded-full",
-                              )}
-                            />
-                          )}
-                          <button
-                            onClick={() => {
-                              if (isBulkMode) {
-                                handleSelectDate(day)
-                                handleToggleBulkDate(dateStr)
-                                return
-                              }
-                              handleSelectDate(day)
-                            }}
-                            onDoubleClick={!isBulkMode ? () => handleOpenWeekView(day) : undefined}
-                            className={cn(
-                              "h-12 w-12 mx-auto flex items-center justify-center rounded-full text-sm text-slate-700",
-                              "transition-colors hover:bg-slate-100",
-                              isSelected && "border-2 border-[#F28A2E]",
-                              isToday && "text-[#F28A2E]",
-                            )}
-                          >
-                            <div className="flex flex-col items-center gap-1">
-                              <span>{format(day, "d")}</span>
-                              {hasMatch && (
-                                <span
-                                  className={cn(
-                                    "h-2 w-2 rounded-full",
-                                    hasConflict ? "bg-[#EF4444]" : "bg-[#F28A2E]",
-                                  )}
-                                />
-                              )}
-                            </div>
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                <GlassCalendar
+                  view="month"
+                  showSettings={false}
+                  title={calendarTitle}
+                  subtitle={calendarSubtitle}
+                  weekdayLabels={WEEK_DAYS}
+                  days={monthCalendarItems}
+                  selectedDate={safeSelectedDate}
+                  onDateSelect={handleCalendarDateSelect}
+                  onViewChange={handleCalendarViewChange}
+                  onPrev={() => handleMonthChange(subMonths(safeDisplayDate, 1))}
+                  onNext={() => handleMonthChange(addMonths(safeDisplayDate, 1))}
+                  toolbar={calendarToolbar}
+                  footer={calendarFooter}
+                  className={cn(isBulkMode && "ring-2 ring-primary/15")}
+                />
               </div>
             </div>
             <div
@@ -1913,26 +1918,22 @@ export default function ShiftsView({
               )}
               aria-hidden={!panelExpanded}
             >
-              <div ref={weekViewRef} className="px-2 pb-0 pt-4 sm:p-4 sm:pb-0">
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 rounded-full text-slate-500 shrink-0 sm:h-8 sm:w-8"
-                    onClick={() => handleWeekShift(-7)}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <div className="grid min-w-0 flex-1 grid-cols-7 gap-1 sm:gap-2">{weekDays.map(renderWeekDay)}</div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 rounded-full text-slate-500 shrink-0 sm:h-8 sm:w-8"
-                    onClick={() => handleWeekShift(7)}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+              <div ref={weekViewRef} className="p-4 pb-0">
+                <GlassCalendar
+                  view="week"
+                  showSettings={false}
+                  title={calendarTitle}
+                  subtitle={calendarSubtitle}
+                  weekdayLabels={WEEK_DAYS}
+                  days={weekCalendarItems}
+                  selectedDate={safeSelectedDate}
+                  onDateSelect={handleCalendarDateSelect}
+                  onViewChange={handleCalendarViewChange}
+                  onPrev={() => handleWeekShift(-7)}
+                  onNext={() => handleWeekShift(7)}
+                  toolbar={calendarToolbar}
+                  footer={calendarFooter}
+                />
               </div>
             </div>
           </div>
