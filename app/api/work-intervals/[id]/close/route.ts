@@ -11,12 +11,14 @@ import { getCloseCashSkipEligibility } from "@/lib/cash/close-skip"
 import { toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import { finalizeWorkIntervalClose, isProceduresSchemaMissing } from "@/lib/work-intervals/close"
+import { HANDOFF_NOTE_MAX_LENGTH, upsertHandoffNote } from "@/lib/work-intervals/handoff-notes"
 
 type RouteContext = { params: Promise<{ id: string }> }
 const forceSchema = z.object({
   force: z.boolean().optional().default(false),
   skipCash: z.boolean().optional().default(false),
   reason: z.string().trim().min(1).max(500).optional().nullable(),
+  handoffNote: z.string().max(HANDOFF_NOTE_MAX_LENGTH).optional().nullable(),
 })
 
 export async function POST(request: Request, context: RouteContext) {
@@ -41,8 +43,9 @@ export async function POST(request: Request, context: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
-  const { force, skipCash, reason } = parsed.data
+  const { force, skipCash, reason, handoffNote } = parsed.data
   const normalizedReason = typeof reason === "string" ? reason.trim() : undefined
+  const normalizedHandoffNote = typeof handoffNote === "string" ? handoffNote.trim() : ""
   if (force && !hasManagementAccess) {
     return NextResponse.json({ error: "Только владелец или менеджер может принудительно закрыть смену" }, { status: 403 })
   }
@@ -84,7 +87,7 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Shift is not opened" }, { status: 409 })
     }
     const result = await prisma.$transaction(async (tx) => {
-      return finalizeWorkIntervalClose(tx, {
+      const closed = await finalizeWorkIntervalClose(tx, {
         intervalId: interval.id,
         workdayId: interval.workday.id,
         locationId: interval.workday.locationId,
@@ -94,6 +97,17 @@ export async function POST(request: Request, context: RouteContext) {
         notification,
         syncWorkday: false,
       })
+      if (normalizedHandoffNote) {
+        await upsertHandoffNote(tx, {
+          authorIntervalId: interval.id,
+          locationId: interval.workday.locationId,
+          authorEmployeeId: interval.employeeId,
+          authorUserId: session?.user.id ?? null,
+          text: normalizedHandoffNote,
+          authorClosedAt: closed.closedAt,
+        })
+      }
+      return closed
     })
     return NextResponse.json({
       data: result.interval,
@@ -208,6 +222,17 @@ export async function POST(request: Request, context: RouteContext) {
         closeOverrideReason: force ? normalizedReason ?? null : null,
         notification,
       })
+
+      if (normalizedHandoffNote) {
+        await upsertHandoffNote(tx, {
+          authorIntervalId: interval.id,
+          locationId: interval.workday.locationId,
+          authorEmployeeId: interval.employeeId,
+          authorUserId: session?.user.id ?? null,
+          text: normalizedHandoffNote,
+          authorClosedAt: result.closedAt,
+        })
+      }
 
       return {
         ok: true,

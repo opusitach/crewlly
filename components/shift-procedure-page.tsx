@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { MessageSquareText } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useToast } from "@/hooks/use-toast"
 import { roundPayrollHourlyMinutes } from "@/lib/payroll/interval-compensation"
@@ -124,6 +126,14 @@ type ProcedureDraftPayload = {
 
 const PROCEDURE_DRAFT_STORAGE_PREFIX = "crewlly:shift-procedure-draft:v1"
 const PROCEDURE_DRAFT_TTL_MS = 1000 * 60 * 60 * 12
+const HANDOFF_NOTE_MAX_LENGTH = 500
+
+type HandoffNote = {
+  id: string
+  text: string
+  authorClosedAt: string
+  authorFullName: string | null
+}
 
 const getProcedureDraftStorageKey = (intervalId: string, when: ProcedureWhen) =>
   `${PROCEDURE_DRAFT_STORAGE_PREFIX}:${intervalId}:${when}`
@@ -419,6 +429,12 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   const [uploadingPhotoKey, setUploadingPhotoKey] = useState<string | null>(null)
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now())
   const lastDraftSnapshotRef = useRef<string | null>(null)
+
+  const [handoffDialogOpen, setHandoffDialogOpen] = useState(false)
+  const [handoffNoteText, setHandoffNoteText] = useState("")
+  const [isSubmittingHandoff, setIsSubmittingHandoff] = useState(false)
+  const [incomingHandoffNotes, setIncomingHandoffNotes] = useState<HandoffNote[]>([])
+  const [isAcknowledgingHandoff, setIsAcknowledgingHandoff] = useState(false)
 
   const toPhotoUploadKey = (ruleId: string, cashFieldKey?: string) => (cashFieldKey ? `${ruleId}:${cashFieldKey}` : ruleId)
 
@@ -737,6 +753,14 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
         description: "Статус смены обновлён",
       })
       clearDraftCache()
+
+      const isEmployeeActor = interval ? !interval.canForce : true
+      if (whenParam === "CLOSE" && isEmployeeActor) {
+        setHandoffNoteText("")
+        setHandoffDialogOpen(true)
+        return
+      }
+
       if (
         shouldRedirectToAppAfterProcedureAction({
           when: whenParam,
@@ -757,6 +781,102 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       setIsSubmitting(false)
     }
   }
+
+  const closeHandoffDialogAndRedirect = () => {
+    setHandoffDialogOpen(false)
+    if (
+      shouldRedirectToAppAfterProcedureAction({
+        when: "CLOSE",
+        hasManagementAccess: Boolean(interval?.canForce),
+      })
+    ) {
+      router.replace("/app")
+      return
+    }
+    void refreshData()
+  }
+
+  const submitHandoffNote = async () => {
+    const trimmed = handoffNoteText.trim()
+    if (!trimmed) {
+      closeHandoffDialogAndRedirect()
+      return
+    }
+    setIsSubmittingHandoff(true)
+    try {
+      const res = await fetch(`/api/work-intervals/${intervalId}/handoff-notes`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: trimmed.slice(0, HANDOFF_NOTE_MAX_LENGTH) }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(json?.error || "Не удалось сохранить комментарий")
+      }
+      toast({ title: "Комментарий сохранён", description: "Следующая смена его увидит" })
+      closeHandoffDialogAndRedirect()
+    } catch (err: any) {
+      toast({
+        title: "Ошибка",
+        description: err?.message || "Не удалось сохранить комментарий",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmittingHandoff(false)
+    }
+  }
+
+  const skipHandoffNote = () => {
+    closeHandoffDialogAndRedirect()
+  }
+
+  const loadIncomingHandoffNotes = async () => {
+    try {
+      const res = await fetch(`/api/work-intervals/${intervalId}/handoff-notes`, {
+        credentials: "include",
+        cache: "no-store",
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) return
+      const notes = (json?.data?.notes ?? []) as HandoffNote[]
+      setIncomingHandoffNotes(notes)
+    } catch {
+      // silent — a failed fetch should not block the open flow
+    }
+  }
+
+  const acknowledgeIncomingHandoffNotes = async () => {
+    if (incomingHandoffNotes.length === 0) return
+    const noteIds = incomingHandoffNotes.map((note) => note.id)
+    setIsAcknowledgingHandoff(true)
+    try {
+      await fetch(`/api/work-intervals/${intervalId}/handoff-notes/acknowledge`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ noteIds }),
+      })
+    } catch {
+      // swallow — user already saw the notes
+    } finally {
+      setIsAcknowledgingHandoff(false)
+      setIncomingHandoffNotes([])
+    }
+  }
+
+  useEffect(() => {
+    if (whenParam !== "OPEN") {
+      setIncomingHandoffNotes([])
+      return
+    }
+    if (!interval || interval.status !== "scheduled") {
+      setIncomingHandoffNotes([])
+      return
+    }
+    void loadIncomingHandoffNotes()
+
+  }, [whenParam, interval?.status, intervalId])
 
   const attemptForceAction = async () => {
     const reason = window.prompt("Укажите причину принудительного действия")
@@ -1280,6 +1400,83 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
           <Card className="p-4 text-sm text-muted-foreground">Правила для этой смены не настроены.</Card>
         )}
       </div>
+
+      {whenParam === "OPEN" && incomingHandoffNotes.length > 0 && (
+        <div className="p-4 space-y-3">
+          {incomingHandoffNotes.map((note) => (
+            <Card key={note.id} className="p-4 space-y-3 border-primary/30 bg-primary/5">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-primary/10 p-2">
+                  <MessageSquareText className="h-5 w-5 text-primary" strokeWidth={1.5} />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="text-sm font-semibold">Комментарий от предыдущей смены</div>
+                  {note.authorFullName && (
+                    <div className="text-xs text-muted-foreground">От: {note.authorFullName}</div>
+                  )}
+                </div>
+              </div>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{note.text}</p>
+            </Card>
+          ))}
+          <Button
+            className="w-full"
+            onClick={() => void acknowledgeIncomingHandoffNotes()}
+            disabled={isAcknowledgingHandoff}
+          >
+            {isAcknowledgingHandoff ? "Сохраняем..." : "Понятно"}
+          </Button>
+        </div>
+      )}
+
+      <Dialog
+        open={handoffDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !isSubmittingHandoff) {
+            skipHandoffNote()
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquareText className="h-5 w-5 text-primary" strokeWidth={1.5} />
+              Комментарий для следующей смены
+            </DialogTitle>
+            <DialogDescription>
+              Если нужно — оставьте заметку для следующего сотрудника, который откроет смену в этой локации. Поле не обязательное.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Например: в холодильнике остался салат, нужно переставить"
+            value={handoffNoteText}
+            onChange={(event) => setHandoffNoteText(event.target.value.slice(0, HANDOFF_NOTE_MAX_LENGTH))}
+            rows={5}
+            maxLength={HANDOFF_NOTE_MAX_LENGTH}
+            disabled={isSubmittingHandoff}
+          />
+          <div className="text-xs text-muted-foreground text-right">
+            {handoffNoteText.length}/{HANDOFF_NOTE_MAX_LENGTH}
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button
+              className="w-full"
+              onClick={() => void submitHandoffNote()}
+              disabled={isSubmittingHandoff || !handoffNoteText.trim()}
+            >
+              {isSubmittingHandoff ? "Сохраняем..." : "Сохранить"}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={skipHandoffNote}
+              disabled={isSubmittingHandoff}
+            >
+              Пропустить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <CameraCaptureDialog
         open={!!cameraTarget}
