@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocked = vi.hoisted(() => {
   const prisma = {
     $transaction: vi.fn(),
+    employee: {
+      findUnique: vi.fn(),
+    },
   }
 
   return {
     prisma,
-    getSessionUserWithOrg: vi.fn(),
-    isOwnerRole: vi.fn(),
+    getSessionUser: vi.fn(),
+    resolveOrganizationAccess: vi.fn(),
+    isOwnerEffectiveRole: vi.fn(),
     ensureDefaultRolesAndPermissions: vi.fn(),
   }
 })
@@ -18,8 +22,12 @@ vi.mock("@/lib/prisma", () => ({
 }))
 
 vi.mock("@/lib/auth", () => ({
-  getSessionUserWithOrg: mocked.getSessionUserWithOrg,
-  isOwnerRole: mocked.isOwnerRole,
+  getSessionUser: mocked.getSessionUser,
+}))
+
+vi.mock("@/lib/organization-access", () => ({
+  resolveOrganizationAccess: mocked.resolveOrganizationAccess,
+  isOwnerEffectiveRole: mocked.isOwnerEffectiveRole,
 }))
 
 vi.mock("@/lib/rbac/default-role-permissions", () => ({
@@ -36,12 +44,14 @@ const EMPLOYEE_USER_ID = "44444444-4444-4444-8444-444444444444"
 describe("employee manager route", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocked.getSessionUserWithOrg.mockResolvedValue({
-      user: { id: OWNER_ID },
-      organization: { id: ORG_ID },
-      membership: { role: "owner" },
+    mocked.getSessionUser.mockResolvedValue({ id: OWNER_ID })
+    mocked.prisma.employee.findUnique.mockResolvedValue({ organizationId: ORG_ID })
+    mocked.resolveOrganizationAccess.mockResolvedValue({
+      organizationId: ORG_ID,
+      effectiveRoleKey: "owner",
+      permissions: [],
     })
-    mocked.isOwnerRole.mockReturnValue(true)
+    mocked.isOwnerEffectiveRole.mockReturnValue(true)
   })
 
   it("promotes an employee to manager inside the current organization", async () => {
@@ -134,7 +144,7 @@ describe("employee manager route", () => {
   })
 
   it("rejects promotion when requester is not an owner", async () => {
-    mocked.isOwnerRole.mockReturnValue(false)
+    mocked.isOwnerEffectiveRole.mockReturnValue(false)
 
     const response = await PUT_MANAGER(
       new Request(`http://localhost/api/employees/${EMPLOYEE_ID}/manager`, { method: "PUT" }),

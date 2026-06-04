@@ -1,9 +1,11 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
+import { useState } from "react"
 import { Card } from "@/components/ui/card"
-import { User, Settings, Globe, HelpCircle, ChevronRight, Crown, Briefcase } from "lucide-react"
+import { User, Settings, Globe, HelpCircle, ChevronRight, Crown, Briefcase, Check, ChevronDown } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
+import { useTranslation } from "@/lib/i18n/context"
+import type { Language } from "@/lib/i18n/translations"
 
 interface AccountHubProps {
   isOpen: boolean
@@ -14,6 +16,11 @@ interface AccountHubProps {
   onNavigate: (screen: "profile" | "settings" | "language" | "help" | "team") => void
 }
 
+const LANGUAGES: { value: Language; label: string; flag: string }[] = [
+  { value: "ru", label: "Русский", flag: "🇷🇺" },
+  { value: "en", label: "English", flag: "🇬🇧" },
+]
+
 export default function AccountHub({
   isOpen,
   onClose,
@@ -22,18 +29,20 @@ export default function AccountHub({
   avatarUrl,
   onNavigate,
 }: AccountHubProps) {
+  const { t, language, setLanguage } = useTranslation()
+  const [langOpen, setLangOpen] = useState(false)
+
   if (!isOpen) return null
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2)
-  }
+  const getInitials = (name: string) =>
+    name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
 
-  const roleLabel = userRole === "owner" ? "Владелец" : userRole === "manager" ? "Менеджер" : "Сотрудник"
+  const roleLabel =
+    userRole === "owner" ? t("role_owner") :
+    userRole === "manager" ? t("role_manager") :
+    t("role_worker")
+
+  const currentLang = LANGUAGES.find((l) => l.value === language)!
 
   return (
     <>
@@ -46,6 +55,7 @@ export default function AccountHub({
           </div>
 
           <div className="p-4 space-y-4">
+            {/* User info */}
             <div className="flex items-center gap-3 pb-3 border-b border-border">
               {avatarUrl ? (
                 <ImagePreview
@@ -73,20 +83,22 @@ export default function AccountHub({
             </div>
 
             <div className="space-y-1">
+              {/* Profile */}
               <button
                 onClick={() => onNavigate("profile")}
                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left"
               >
                 <User className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">Профиль</p>
+                  <p className="font-medium truncate">{t("hub_profile")}</p>
                   <p className="text-[10px] text-muted-foreground truncate">
-                    {userRole !== "worker" ? "Личная информация" : "Личные данные и контакты"}
+                    {userRole !== "worker" ? t("hub_profile_desc_owner") : t("hub_profile_desc_worker")}
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
               </button>
 
+              {/* Settings (non-worker) */}
               {userRole !== "worker" && (
                 <button
                   onClick={() => onNavigate("settings")}
@@ -94,33 +106,64 @@ export default function AccountHub({
                 >
                   <Settings className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">Настройки</p>
-                    <p className="text-[10px] text-muted-foreground truncate">Уведомления и правила</p>
+                    <p className="font-medium truncate">{t("hub_settings")}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{t("hub_settings_desc")}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
                 </button>
               )}
 
-              <button
-                onClick={() => onNavigate("language")}
-                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left"
-              >
-                <Globe className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">Язык</p>
-                  <p className="text-[10px] text-muted-foreground truncate">Русский</p>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-              </button>
+              {/* Language — inline picker */}
+              <div className="rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setLangOpen((v) => !v)}
+                  className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left"
+                >
+                  <Globe className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{t("hub_language")}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">
+                      {currentLang.flag} {currentLang.label}
+                    </p>
+                  </div>
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${langOpen ? "rotate-180" : ""}`}
+                    strokeWidth={1.5}
+                  />
+                </button>
 
+                {langOpen && (
+                  <div className="px-3 pb-2 space-y-0.5">
+                    {LANGUAGES.map((lang) => (
+                      <button
+                        key={lang.value}
+                        onClick={() => { setLanguage(lang.value); setLangOpen(false) }}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
+                          language === lang.value
+                            ? "bg-primary/10 text-primary"
+                            : "hover:bg-muted/50"
+                        }`}
+                      >
+                        <span className="text-lg leading-none select-none">{lang.flag}</span>
+                        <span className="flex-1 text-sm font-medium">{lang.label}</span>
+                        {language === lang.value && (
+                          <Check className="h-4 w-4 flex-shrink-0" strokeWidth={2} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Help */}
               <button
                 onClick={() => onNavigate("help")}
                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left"
               >
                 <HelpCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">Помощь</p>
-                  <p className="text-[10px] text-muted-foreground truncate">Поддержка и FAQ</p>
+                  <p className="font-medium truncate">{t("hub_help")}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{t("hub_help_desc")}</p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
               </button>

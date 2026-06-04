@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { formatDistanceToNow } from "date-fns"
-import { ru } from "date-fns/locale"
+import { ru, enUS } from "date-fns/locale"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ChevronLeft, CheckCircle2, AlertCircle, Clock, DollarSign, Check, Trash2 } from "lucide-react"
@@ -10,6 +10,8 @@ import {
   resolveNotificationNavigationTarget,
   type NotificationNavigationTarget,
 } from "@/lib/notifications/navigation"
+import { translateNotificationMessage, translateNotificationText } from "@/lib/notifications/display"
+import { useTranslation } from "@/lib/i18n/context"
 
 type NotificationType = "shift" | "cash" | "receipt" | "system"
 type NotificationStatus = "read" | "unread"
@@ -38,6 +40,8 @@ export default function NotificationsPage({
   onNotificationNavigate,
   onUnreadCountChange,
 }: NotificationsPageProps) {
+  const { t, language } = useTranslation()
+  const dateLocale = language === "en" ? enUS : ru
   const [filter, setFilter] = useState<"all" | "unread">("unread")
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -149,7 +153,7 @@ export default function NotificationsPage({
   }, [isLoading, onUnreadCountChange, unreadCount])
 
   const formatTimestamp = (value: string) =>
-    formatDistanceToNow(new Date(value), { addSuffix: true, locale: ru })
+    formatDistanceToNow(new Date(value), { addSuffix: true, locale: dateLocale })
 
   const handleNotificationClick = async (notification: Notification) => {
     if (isUpdating || !onNotificationNavigate) return
@@ -166,15 +170,14 @@ export default function NotificationsPage({
   return (
     <div className="min-h-screen bg-background pb-4 max-w-md mx-auto">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background">
         <div className="p-3 space-y-3">
           {!hideHeader && (
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full h-9 w-9">
                 <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
               </Button>
-              <h1 className="text-lg font-semibold">Уведомления</h1>
-              <div className="w-9" />
+              <h1 className="text-lg font-semibold">{t("notifications_title")}</h1>
             </div>
           )}
 
@@ -185,7 +188,7 @@ export default function NotificationsPage({
               className="flex-1 h-9 text-sm"
               onClick={() => setFilter("unread")}
             >
-              Не прочитано
+              {t("notifications_unread")}
               {unreadCount > 0 && <span className="ml-1.5 opacity-70">({unreadCount})</span>}
             </Button>
             <Button
@@ -193,7 +196,7 @@ export default function NotificationsPage({
               className="flex-1 h-9 text-sm"
               onClick={() => setFilter("all")}
             >
-              Все
+              {t("notifications_all")}
             </Button>
           </div>
 
@@ -201,7 +204,7 @@ export default function NotificationsPage({
           {unreadCount > 0 && (
             <Button variant="ghost" className="w-full h-8 text-xs text-primary" onClick={markAllAsRead}>
               <Check className="h-3.5 w-3.5 mr-1.5" strokeWidth={1.5} />
-              Отметить всё прочитанным
+              {t("notifications_mark_all_read")}
             </Button>
           )}
         </div>
@@ -215,16 +218,16 @@ export default function NotificationsPage({
               <CheckCircle2 className="h-6 w-6 text-muted-foreground" strokeWidth={1.5} />
             </div>
             <h3 className="font-medium text-sm mb-1">
-              {filter === "unread" ? "Нет непрочитанных уведомлений" : "Пока нет уведомлений"}
+              {filter === "unread" ? t("notifications_empty_unread") : t("notifications_empty_all")}
             </h3>
             <p className="text-xs text-muted-foreground">
-              {filter === "unread" ? "Все уведомления прочитаны" : "Здесь появятся важные события по вашим сменам"}
+              {filter === "unread" ? t("notifications_all_read") : t("notifications_hint")}
             </p>
           </Card>
         )}
 
         {isLoading && (
-          <Card className="p-4 text-sm text-muted-foreground">Загрузка уведомлений...</Card>
+          <Card className="p-4 text-sm text-muted-foreground">{t("notifications_loading")}</Card>
         )}
 
         {!isLoading && filteredNotifications.map((notification) => {
@@ -263,13 +266,15 @@ export default function NotificationsPage({
                       <h3
                         className={`text-sm ${notification.status === "unread" ? "font-semibold" : "font-medium"} truncate`}
                       >
-                        {notification.title}
+                        {translateNotificationText(notification.title, language)}
                       </h3>
                       {notification.status === "unread" && (
                         <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1" />
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{notification.message}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                      {translateNotificationMessage(notification.message, notification.title, language)}
+                    </p>
                   </div>
                 </div>
 

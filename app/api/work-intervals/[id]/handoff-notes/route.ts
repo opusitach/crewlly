@@ -47,7 +47,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { session, interval, effectiveStatus, effectiveClosedAt, error, status } = await getAuthorizedInterval(id)
+  const { access, interval, effectiveStatus, effectiveClosedAt, error, status } = await getAuthorizedInterval(id)
   if (error || !interval) {
     return NextResponse.json({ error }, { status })
   }
@@ -69,7 +69,7 @@ export async function POST(request: Request, context: RouteContext) {
       authorIntervalId: interval.id,
       locationId: interval.workday.locationId,
       authorEmployeeId: interval.employeeId,
-      authorUserId: session?.user.id ?? null,
+      authorUserId: access?.user.id ?? null,
       text: parsed.data.text,
       authorClosedAt: resolvedClosedAt,
     })

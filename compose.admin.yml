@@ -1,0 +1,61 @@
+services:
+  # admin.crewlly.com — separate Next.js container for the read-only internal
+  # admin panel. Shares the database, Prisma schema, and session table with the
+  # main crewlly.com app. Auth is read from a parent-domain cookie scoped to
+  # .crewlly.com (set via SESSION_COOKIE_DOMAIN in the main app).
+  #
+  # This service is OPTIONAL — bring it up only with:
+  #   docker compose -f compose.data.yml -f compose.app.yml -f compose.admin.yml up -d
+  internal_admin:
+    build:
+      context: .
+      dockerfile: internal-admin/Dockerfile
+    command: npm run start
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      APP_SERVICE_NAME: crewlly-internal-admin
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
+      PORT: 3002
+      # Public-facing URLs of the two apps. The admin shell uses MAIN_APP_URL
+      # for login redirects and logout calls.
+      MAIN_APP_URL: ${MAIN_APP_URL:-https://crewlly.com}
+      ADMIN_APP_URL: ${ADMIN_APP_URL:-https://admin.crewlly.com}
+      NEXT_PUBLIC_MAIN_APP_URL: ${MAIN_APP_URL:-https://crewlly.com}
+      # Shared parent-domain session cookie. MUST match the value used by the
+      # main app so the admin container sees the same session.
+      SESSION_COOKIE_DOMAIN: ${SESSION_COOKIE_DOMAIN:-.crewlly.com}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Feature gate so we can build the image without enabling it in production.
+      INTERNAL_ADMIN_ENABLED: ${INTERNAL_ADMIN_ENABLED:-true}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "3002"
+    # No `ports:` block — the container is only reachable from inside app_net.
+    # External traffic hits Caddy which reverse-proxies admin.crewlly.com here.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3002/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      app_net:
+        aliases:
+          - internal-admin
+
+networks:
+  app_net:
+    external: true
+    name: app_net

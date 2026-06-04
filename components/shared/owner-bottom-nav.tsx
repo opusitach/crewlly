@@ -1,6 +1,8 @@
 "use client"
 
 import { CalendarDays, ChartColumn, House, Shield, type LucideIcon } from "lucide-react"
+import { useTranslation } from "@/lib/i18n/context"
+import type { TranslationKey } from "@/lib/i18n/translations"
 
 export type OwnerBottomNavTab = "dashboard" | "shifts" | "cash" | "reports"
 export type OwnerTab = OwnerBottomNavTab | "settings"
@@ -10,20 +12,21 @@ type OwnerBottomNavProps = {
   onTabChange?: (tab: OwnerBottomNavTab) => void
 }
 
-const OWNER_BOTTOM_NAV_TABS: { key: OwnerBottomNavTab; label: string; Icon: LucideIcon }[] = [
-  { key: "dashboard", label: "Главная",  Icon: House },
-  { key: "shifts",    label: "Смены",    Icon: CalendarDays },
-  { key: "cash",      label: "Проверка", Icon: Shield },
-  { key: "reports",   label: "Финансы",  Icon: ChartColumn },
+const OWNER_BOTTOM_NAV_TABS: { key: OwnerBottomNavTab; labelKey: TranslationKey; Icon: LucideIcon }[] = [
+  { key: "dashboard", labelKey: "owner_tab_dashboard", Icon: House },
+  { key: "shifts", labelKey: "owner_tab_shifts", Icon: CalendarDays },
+  { key: "cash", labelKey: "owner_action_review", Icon: Shield },
+  { key: "reports", labelKey: "tab_money", Icon: ChartColumn },
 ]
 
 export default function OwnerBottomNav({ activeTab, onTabChange }: OwnerBottomNavProps) {
+  const { t } = useTranslation()
   const activeIndex = OWNER_BOTTOM_NAV_TABS.findIndex(({ key }) => key === activeTab)
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-md px-3 pb-safe">
       <nav
-        aria-label="Нижняя навигация владельца"
+        aria-label={t("owner_nav_aria")}
         className="pointer-events-auto rounded-full border border-white/20 dark:border-white/10 glass-card p-2 shadow-elev-3"
       >
         <div className="relative grid grid-cols-4 items-center gap-2">
@@ -44,8 +47,9 @@ export default function OwnerBottomNav({ activeTab, onTabChange }: OwnerBottomNa
             }}
           />
 
-          {OWNER_BOTTOM_NAV_TABS.map(({ key, label, Icon }) => {
+          {OWNER_BOTTOM_NAV_TABS.map(({ key, labelKey, Icon }) => {
             const isActive = activeTab === key
+            const label = t(labelKey)
             return (
               <button
                 key={key}

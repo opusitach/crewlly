@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslation } from "@/lib/i18n/context"
 import { useShiftStore } from "@/lib/store/shift-store"
 import { Camera, ChevronLeft, GripVertical, ListChecks, Pencil, Plus, ReceiptText, Sparkles, Trash2, Type } from "lucide-react"
 
@@ -38,57 +39,10 @@ type Position = {
   needsRulesSetup?: boolean
 }
 
-const DAY_FILTER_OPTIONS = [
-  { value: "default", label: "По умолчанию" },
-  { value: "MON", label: "Понедельник" },
-  { value: "TUE", label: "Вторник" },
-  { value: "WED", label: "Среда" },
-  { value: "THU", label: "Четверг" },
-  { value: "FRI", label: "Пятница" },
-  { value: "SAT", label: "Суббота" },
-  { value: "SUN", label: "Воскресенье" },
-] as const satisfies ReadonlyArray<{ value: ListDayFilterValue; label: string }>
-
-const WEEKDAY_OPTIONS = [
-  { value: "MON", label: "Понедельник" },
-  { value: "TUE", label: "Вторник" },
-  { value: "WED", label: "Среда" },
-  { value: "THU", label: "Четверг" },
-  { value: "FRI", label: "Пятница" },
-  { value: "SAT", label: "Суббота" },
-  { value: "SUN", label: "Воскресенье" },
-] as const satisfies ReadonlyArray<{ value: WeekdayValue; label: string }>
-
-const DAY_LABELS: Record<ListDayFilterValue, string> = Object.fromEntries(
-  DAY_FILTER_OPTIONS.map((item) => [item.value, item.label]),
-) as Record<ListDayFilterValue, string>
-
-const SHORT_DAY_LABELS: Record<ListDayFilterValue, string> = {
-  default: "По умолчанию",
-  MON: "Пн",
-  TUE: "Вт",
-  WED: "Ср",
-  THU: "Чт",
-  FRI: "Пт",
-  SAT: "Сб",
-  SUN: "Вс",
-}
-
-const WHEN_LABELS: Record<RuleTemplate["when"], string> = {
-  OPEN: "Открытие",
-  CLOSE: "Закрытие",
-}
-
-const RULE_TYPE_LABELS: Record<RuleTemplate["type"], string> = {
-  CHECKLIST: "Чек-лист",
-  INPUT: "Поле ввода",
-  PHOTO: "Фото",
-  CASH: "Касса",
-}
+const DAY_FILTER_VALUES = ["default", "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const satisfies ReadonlyArray<ListDayFilterValue>
+const WEEKDAY_VALUES = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const satisfies ReadonlyArray<WeekdayValue>
 
 const CASH_RULE_TITLE = "Касса"
-const CHECKLIST_FIRST_ITEM_PLACEHOLDER = "Пункт"
-const CHECKLIST_NEW_ITEM_PLACEHOLDER = "Новый пункт"
 
 const emptyForm = {
   id: null as string | null,
@@ -96,10 +50,11 @@ const emptyForm = {
   type: "CHECKLIST" as RuleTemplate["type"],
   required: true,
   order: 0,
-  checklistItems: [{ title: "", order: 0, placeholder: CHECKLIST_FIRST_ITEM_PLACEHOLDER }],
+  checklistItems: [{ title: "", order: 0, placeholder: "" }],
 }
 
 export default function PositionRulesView({ onBack }: { onBack?: () => void } = {}) {
+  const { t } = useTranslation()
   const router = useRouter()
   const { toast } = useToast()
   const refreshShiftPositions = useShiftStore((state) => state.refreshPositions)
@@ -165,11 +120,65 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
     setTouchDropTargetRule(null)
   }, [setTouchDraggingRule, setTouchDropTargetRule])
 
+  const dayLabel = useCallback(
+    (value: ListDayFilterValue) => {
+      const labels: Record<ListDayFilterValue, string> = {
+        default: t("position_rules_default"),
+        MON: t("position_rules_day_monday"),
+        TUE: t("position_rules_day_tuesday"),
+        WED: t("position_rules_day_wednesday"),
+        THU: t("position_rules_day_thursday"),
+        FRI: t("position_rules_day_friday"),
+        SAT: t("position_rules_day_saturday"),
+        SUN: t("position_rules_day_sunday"),
+      }
+      return labels[value]
+    },
+    [t],
+  )
+
+  const shortDayLabel = useCallback(
+    (value: ListDayFilterValue) => {
+      const labels: Record<ListDayFilterValue, string> = {
+        default: t("position_rules_default"),
+        MON: t("position_rules_short_monday"),
+        TUE: t("position_rules_short_tuesday"),
+        WED: t("position_rules_short_wednesday"),
+        THU: t("position_rules_short_thursday"),
+        FRI: t("position_rules_short_friday"),
+        SAT: t("position_rules_short_saturday"),
+        SUN: t("position_rules_short_sunday"),
+      }
+      return labels[value]
+    },
+    [t],
+  )
+
+  const whenLabel = useCallback(
+    (value: RuleTemplate["when"]) => (value === "OPEN" ? t("position_rules_when_open") : t("position_rules_when_close")),
+    [t],
+  )
+
+  const ruleTypeLabel = useCallback(
+    (value: RuleTemplate["type"]) => {
+      if (value === "CHECKLIST") return t("position_rules_type_checklist")
+      if (value === "INPUT") return t("position_rules_type_input")
+      if (value === "PHOTO") return t("position_rules_type_photo")
+      return t("position_rules_type_cash")
+    },
+    [t],
+  )
+
+  const displayRuleTitle = useCallback(
+    (rule: Pick<RuleTemplate, "type" | "title">) => (rule.type === "CASH" ? t("position_rules_type_cash") : rule.title),
+    [t],
+  )
+
   const loadPositions = useCallback(async () => {
     const res = await fetch("/api/positions", { credentials: "include", cache: "no-store" })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
-      toast({ title: "Ошибка", description: json?.error || "Не удалось загрузить позиции", variant: "destructive" })
+      toast({ title: t("common_error"), description: json?.error || t("position_rules_load_positions_error"), variant: "destructive" })
       return
     }
 
@@ -187,7 +196,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       const firstNeedsSetup = data.find((position) => position.needsRulesSetup)
       return firstNeedsSetup?.id ?? data[0].id
     })
-  }, [toast])
+  }, [t, toast])
 
   const loadRules = useCallback(
     async (positionId: string) => {
@@ -196,7 +205,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       const res = await fetch(`/api/positions/${positionId}/rules`, { credentials: "include", cache: "no-store" })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        toast({ title: "Ошибка", description: json?.error || "Не удалось загрузить правила", variant: "destructive" })
+        toast({ title: t("common_error"), description: json?.error || t("position_rules_load_rules_error"), variant: "destructive" })
         setRules([])
         setIsRulesLoading(false)
         return
@@ -204,7 +213,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       setRules((json?.data ?? []) as RuleTemplate[])
       setIsRulesLoading(false)
     },
-    [toast],
+    [t, toast],
   )
 
   useEffect(() => {
@@ -275,7 +284,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
   const handleCreateRole = async () => {
     const normalizedName = newRoleName.trim()
     if (!normalizedName) {
-      toast({ title: "Название обязательно", variant: "destructive" })
+      toast({ title: t("position_rules_name_required"), variant: "destructive" })
       return
     }
 
@@ -300,7 +309,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось создать роль")
+        throw new Error(json?.error || t("position_rules_create_role_error"))
       }
 
       const createdPositionId = typeof json?.data?.id === "string" ? json.data.id : null
@@ -312,9 +321,9 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
         setSelectedPositionId(createdPositionId)
       }
 
-      toast({ title: "Роль создана", description: `Роль «${normalizedName}» добавлена в список` })
+      toast({ title: t("position_rules_role_created"), description: t("position_rules_role_created_desc", { name: normalizedName }) })
     } catch (err: any) {
-      toast({ title: "Ошибка", description: err?.message || "Не удалось создать роль", variant: "destructive" })
+      toast({ title: t("common_error"), description: err?.message || t("position_rules_create_role_error"), variant: "destructive" })
     } finally {
       setIsCreatingRole(false)
     }
@@ -335,7 +344,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
   }
 
   const startEdit = (rule: RuleTemplate) => {
-    const normalizedTitle = rule.type === "CASH" ? CASH_RULE_TITLE : rule.title
+    const normalizedTitle = rule.type === "CASH" ? t("position_rules_type_cash") : rule.title
     if (rule.dayOfWeek == null) {
       applyFormScope({ default: true })
     } else {
@@ -350,7 +359,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       checklistItems: rule.checklistItems.map((item, index) => ({
         title: item.title,
         order: item.order,
-        placeholder: index === 0 ? CHECKLIST_FIRST_ITEM_PLACEHOLDER : CHECKLIST_NEW_ITEM_PLACEHOLDER,
+        placeholder: "",
       })),
     })
   }
@@ -363,9 +372,9 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       } else {
         nextSet.add(day)
       }
-      const nextDays = WEEKDAY_OPTIONS.map((item) => item.value).filter((value) => nextSet.has(value))
+      const nextDays = WEEKDAY_VALUES.filter((value) => nextSet.has(value))
 
-      if (nextDays.length === WEEKDAY_OPTIONS.length) {
+      if (nextDays.length === WEEKDAY_VALUES.length) {
         setIsDefaultFormScope(true)
         return []
       }
@@ -376,11 +385,11 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
   }, [isDefaultFormScope])
 
   const formScopeSummary = useMemo(() => {
-    if (isDefaultFormScope) return "По умолчанию (общий набор правил для дня без отдельной настройки)"
-    if (selectedFormDays.length === 0) return "Выберите хотя бы один день недели"
-    if (selectedFormDays.length === 1) return `Только ${DAY_LABELS[selectedFormDays[0]].toLowerCase()}`
-    return `Выбрано дней: ${selectedFormDays.length}`
-  }, [isDefaultFormScope, selectedFormDays])
+    if (isDefaultFormScope) return t("position_rules_default_scope_summary")
+    if (selectedFormDays.length === 0) return t("position_rules_select_weekday")
+    if (selectedFormDays.length === 1) return t("position_rules_only_day", { day: dayLabel(selectedFormDays[0]).toLowerCase() })
+    return t("position_rules_days_selected", { count: selectedFormDays.length })
+  }, [dayLabel, isDefaultFormScope, selectedFormDays, t])
 
   const formScopeTargetCount = isDefaultFormScope ? 1 : selectedFormDays.length
   const isFormScopeValid = isDefaultFormScope || selectedFormDays.length > 0
@@ -391,15 +400,15 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
     const normalizedTitle = formState.type === "CASH" ? CASH_RULE_TITLE : formState.title.trim()
 
     if (!normalizedTitle) {
-      toast({ title: "Название обязательно", variant: "destructive" })
+      toast({ title: t("position_rules_name_required"), variant: "destructive" })
       return
     }
     if (formState.type === "CHECKLIST" && formState.checklistItems.length === 0) {
-      toast({ title: "Нужны пункты чек-листа", variant: "destructive" })
+      toast({ title: t("position_rules_checklist_required"), variant: "destructive" })
       return
     }
     if (!isFormScopeValid) {
-      toast({ title: "Выберите день недели или «По умолчанию»", variant: "destructive" })
+      toast({ title: t("position_rules_save_scope_required"), variant: "destructive" })
       return
     }
 
@@ -439,14 +448,14 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось сохранить правило")
+        throw new Error(json?.error || t("position_rules_save_rule_error"))
       }
 
-      toast({ title: "Сохранено" })
+      toast({ title: t("position_rules_saved") })
       resetFormFields()
       await Promise.all([loadPositions(), loadRules(selectedPositionId)])
     } catch (err: any) {
-      toast({ title: "Ошибка", description: err?.message || "Не удалось сохранить", variant: "destructive" })
+      toast({ title: t("common_error"), description: err?.message || t("position_rules_save_error"), variant: "destructive" })
     } finally {
       setIsSaving(false)
     }
@@ -459,7 +468,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       credentials: "include",
     })
     if (!res.ok) {
-      toast({ title: "Ошибка", description: "Не удалось удалить", variant: "destructive" })
+      toast({ title: t("common_error"), description: t("position_rules_delete_error"), variant: "destructive" })
       return
     }
     setRules((prev) => prev.filter((rule) => rule.id !== ruleId))
@@ -505,14 +514,14 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
           })
           const json = await res.json().catch(() => null)
           if (!res.ok) {
-            throw new Error(json?.error || "Не удалось сохранить новый порядок")
+            throw new Error(json?.error || t("position_rules_reorder_save_error"))
           }
         }
         await loadPositions()
       } catch (err: any) {
         toast({
-          title: "Ошибка",
-          description: err?.message || "Не удалось изменить порядок правил",
+          title: t("common_error"),
+          description: err?.message || t("position_rules_reorder_error"),
           variant: "destructive",
         })
         await loadRules(selectedPositionId)
@@ -520,7 +529,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
         setIsReordering(false)
       }
     },
-    [filteredRules, loadPositions, loadRules, selectedPositionId, toast],
+    [filteredRules, loadPositions, loadRules, selectedPositionId, t, toast],
   )
 
   const resolveRuleIdFromPoint = useCallback((clientX: number, clientY: number) => {
@@ -540,21 +549,20 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
 
   return (
     <div className="min-h-screen bg-background pb-10 max-w-3xl mx-auto">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="p-4 flex items-center justify-between">
+      <div className="sticky top-0 z-10 bg-background">
+        <div className="p-4 flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={() => (onBack ? onBack() : router.back())} className="rounded-full">
             <ChevronLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold">Роли и правила</h1>
-          <div className="w-8" />
+          <h1 className="text-xl font-semibold">{t("position_rules_title")}</h1>
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="px-4 pb-4 space-y-4">
         <Card className="p-4 space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label>Роли заведения</Label>
+              <Label>{t("position_rules_venue_roles")}</Label>
               <Button
                 type="button"
                 size="sm"
@@ -564,7 +572,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                 disabled={isCreatingRole}
               >
                 <Plus className="h-4 w-4" />
-                Создать роль
+                {t("position_rules_create_role")}
               </Button>
             </div>
             <div className="grid gap-2">
@@ -592,7 +600,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                       <div className="font-medium text-sm">{position.name}</div>
                       <div className="flex items-center gap-2">
                         <div className="text-[11px] text-muted-foreground">
-                          {WHEN_LABELS.OPEN} {position.defaultOpenRulesCount ?? 0} • {WHEN_LABELS.CLOSE}{" "}
+                          {whenLabel("OPEN")} {position.defaultOpenRulesCount ?? 0} • {whenLabel("CLOSE")}{" "}
                           {position.defaultCloseRulesCount ?? 0}
                         </div>
                         <Button
@@ -609,17 +617,17 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                       </div>
                     </div>
                     {needsSetup && (
-                      <div className="mt-1 text-xs text-destructive font-medium">Настройте правила для роли</div>
+                      <div className="mt-1 text-xs text-destructive font-medium">{t("position_rules_setup_needed")}</div>
                     )}
                   </div>
                 )
               })}
             </div>
             {positions.length === 0 && (
-              <div className="text-xs text-muted-foreground">Добавьте должности, чтобы настроить роли и правила.</div>
+              <div className="text-xs text-muted-foreground">{t("position_rules_no_positions")}</div>
             )}
             {selectedPosition && !selectedPosition.needsRulesSetup && (
-              <div className="text-xs text-emerald-700">Наборы по умолчанию для открытия и закрытия настроены.</div>
+              <div className="text-xs text-emerald-700">{t("position_rules_defaults_ready")}</div>
             )}
           </div>
         </Card>
@@ -640,22 +648,20 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                 <Sparkles className="h-5 w-5" />
               </div>
               <DialogHeader className="gap-1 text-left">
-                <DialogTitle className="text-lg">Создать роль</DialogTitle>
-                <DialogDescription className="text-xs">
-                  Укажите название роли, и она сразу появится в настройках и карточках сотрудников.
-                </DialogDescription>
+                <DialogTitle className="text-lg">{t("position_rules_create_role")}</DialogTitle>
+                <DialogDescription className="text-xs">{t("position_rules_create_role_desc")}</DialogDescription>
               </DialogHeader>
             </div>
           </div>
 
           <div className="space-y-4 p-5">
             <div className="space-y-2">
-              <Label htmlFor="create-role-name">Название роли</Label>
+              <Label htmlFor="create-role-name">{t("position_rules_role_name")}</Label>
               <Input
                 id="create-role-name"
                 value={newRoleName}
                 onChange={(event) => setNewRoleName(event.target.value)}
-                placeholder="Например: Старший бариста"
+                placeholder={t("position_rules_role_placeholder")}
                 className="h-11"
                 autoFocus
                 onKeyDown={(event) => {
@@ -678,10 +684,10 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                 }}
                 disabled={isCreatingRole}
               >
-                Отмена
+                {t("common_cancel")}
               </Button>
               <Button type="button" className="flex-1" onClick={() => void handleCreateRole()} disabled={isCreatingRole || !newRoleName.trim()}>
-                {isCreatingRole ? "Создание..." : "Создать роль"}
+                {isCreatingRole ? t("position_rules_creating") : t("position_rules_create_role")}
               </Button>
             </div>
           </div>
@@ -700,7 +706,9 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
       >
         <DialogContent className="max-w-2xl h-[90vh] z-[60] pointer-events-auto">
           <DialogHeader>
-            <DialogTitle>{selectedPosition ? `Правила для роли: ${selectedPosition.name}` : "Правила роли"}</DialogTitle>
+            <DialogTitle>
+              {selectedPosition ? t("position_rules_for_role", { name: selectedPosition.name }) : t("position_rules_role_rules")}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y pr-1 pointer-events-auto">
@@ -716,37 +724,37 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                     resetFormDraft()
                   }}
                 >
-                  {WHEN_LABELS[item]}
+                  {whenLabel(item)}
                 </Button>
               ))}
             </div>
 
             <Card className="p-4 space-y-3">
-              <div className="text-sm font-semibold">{formState.id ? "Редактировать правило" : "Новое правило"}</div>
+              <div className="text-sm font-semibold">{formState.id ? t("position_rules_edit_rule") : t("position_rules_new_rule")}</div>
 
               <div className="space-y-2">
-                <Label>Название</Label>
+                <Label>{t("position_rules_name")}</Label>
                 <Input
                   value={formState.title}
                   onChange={(event) => setFormState((prev) => ({ ...prev, title: event.target.value }))}
                   disabled={formState.type === "CASH"}
-                  placeholder="Введите название правила"
+                  placeholder={t("position_rules_name_placeholder")}
                   className="placeholder:opacity-60"
                 />
               </div>
 
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                 <div className="space-y-2">
-                  <Label>Тип</Label>
+                  <Label>{t("position_rules_type")}</Label>
                   <Select
                     value={formState.type}
                     onValueChange={(value) =>
                       setFormState((prev) => {
                         const nextType = value as RuleTemplate["type"]
                         if (nextType === "CASH") {
-                          return { ...prev, type: nextType, title: CASH_RULE_TITLE }
+                          return { ...prev, type: nextType, title: t("position_rules_type_cash") }
                         }
-                        if (prev.type === "CASH" && prev.title === CASH_RULE_TITLE) {
+                        if (prev.type === "CASH") {
                           return { ...prev, type: nextType, title: "" }
                         }
                         return { ...prev, type: nextType }
@@ -757,10 +765,10 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="z-[80]">
-                      <SelectItem value="CHECKLIST">{RULE_TYPE_LABELS.CHECKLIST}</SelectItem>
-                      <SelectItem value="INPUT">{RULE_TYPE_LABELS.INPUT}</SelectItem>
-                      <SelectItem value="PHOTO">{RULE_TYPE_LABELS.PHOTO}</SelectItem>
-                      <SelectItem value="CASH">{RULE_TYPE_LABELS.CASH}</SelectItem>
+                      <SelectItem value="CHECKLIST">{ruleTypeLabel("CHECKLIST")}</SelectItem>
+                      <SelectItem value="INPUT">{ruleTypeLabel("INPUT")}</SelectItem>
+                      <SelectItem value="PHOTO">{ruleTypeLabel("PHOTO")}</SelectItem>
+                      <SelectItem value="CASH">{ruleTypeLabel("CASH")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -771,19 +779,21 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                     onCheckedChange={(checked) => setFormState((prev) => ({ ...prev, required: checked }))}
                     disabled={selectedWhen === "CLOSE"}
                   />
-                  <Label>{selectedWhen === "CLOSE" ? "Обязательное (для закрытия всегда включено)" : "Обязательное"}</Label>
+                  <Label>{selectedWhen === "CLOSE" ? t("position_rules_required_close") : t("position_rules_required")}</Label>
                 </div>
               </div>
 
               {formState.type === "CHECKLIST" && (
                 <div className="space-y-2">
-                  <Label>Пункты чек-листа</Label>
+                  <Label>{t("position_rules_checklist_items")}</Label>
                   <div className="space-y-2">
                     {formState.checklistItems.map((item, index) => (
                       <div key={index} className="flex items-center gap-2">
                         <Input
                           value={item.title}
-                          placeholder={item.placeholder ?? (index === 0 ? CHECKLIST_FIRST_ITEM_PLACEHOLDER : CHECKLIST_NEW_ITEM_PLACEHOLDER)}
+                          placeholder={
+                            item.placeholder || (index === 0 ? t("position_rules_checklist_first_placeholder") : t("position_rules_checklist_new_placeholder"))
+                          }
                           className="placeholder:opacity-60"
                           onChange={(event) => {
                             const nextTitle = event.target.value
@@ -821,13 +831,13 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                             {
                               title: "",
                               order: prev.checklistItems.length + 1,
-                              placeholder: CHECKLIST_NEW_ITEM_PLACEHOLDER,
+                              placeholder: "",
                             },
                           ],
                         }))
                       }
                     >
-                      Добавить пункт
+                      {t("position_rules_add_item")}
                     </Button>
                   </div>
                 </div>
@@ -835,11 +845,11 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Label>Область действия правила</Label>
+                  <Label>{t("position_rules_scope")}</Label>
                   {formState.id ? (
-                    <Badge variant="outline">Редактирование / копирование</Badge>
+                    <Badge variant="outline">{t("position_rules_edit_copying")}</Badge>
                   ) : (
-                    <Badge variant="outline">Новое правило</Badge>
+                    <Badge variant="outline">{t("position_rules_new_rule")}</Badge>
                   )}
                 </div>
 
@@ -858,28 +868,28 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                         onClick={() => applyFormScope({ default: true })}
                         disabled={isSaving || isReordering || isFormScopeLockedByCash}
                       >
-                        По умолчанию
+                        {t("position_rules_default")}
                       </Button>
                     </div>
 
                     <div className="space-y-2">
                       <div className="text-xs text-muted-foreground">
-                        Или выберите один или несколько дней недели. При выборе дней правило сохранится отдельно для каждого дня.
+                        {t("position_rules_choose_days_hint")}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {WEEKDAY_OPTIONS.map((day) => {
-                          const isSelected = !isDefaultFormScope && selectedFormDays.includes(day.value)
+                        {WEEKDAY_VALUES.map((day) => {
+                          const isSelected = !isDefaultFormScope && selectedFormDays.includes(day)
                           return (
                             <Button
-                              key={day.value}
+                              key={day}
                               type="button"
                               size="sm"
                               variant={isSelected ? "default" : "outline"}
-                              onClick={() => toggleFormDay(day.value)}
+                              onClick={() => toggleFormDay(day)}
                               disabled={isSaving || isReordering || isFormScopeLockedByCash}
                               className="min-w-[108px] justify-start"
                             >
-                              {day.label}
+                              {dayLabel(day)}
                             </Button>
                           )
                         })}
@@ -889,7 +899,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                     <div className={`text-xs ${isFormScopeValid ? "text-muted-foreground" : "text-destructive"}`}>
                       {formScopeSummary}
                       {!isDefaultFormScope && selectedFormDays.length > 1 && (
-                        <span> • Будет создано/обновлено правил: {formScopeTargetCount}</span>
+                        <span> • {t("position_rules_will_update_count", { count: formScopeTargetCount })}</span>
                       )}
                     </div>
                   </div>
@@ -897,7 +907,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                   {isFormScopeLockedByCash && (
                     <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/35 backdrop-blur-[1px] px-4 text-center">
                       <div className="rounded-md border border-border/70 bg-background/90 px-3 py-2 text-xs font-medium text-foreground shadow-sm">
-                        Правило касса задается по-умолчанию для всех дней
+                        {t("position_rules_cash_locked")}
                       </div>
                     </div>
                   )}
@@ -906,11 +916,11 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
 
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={handleSave} disabled={isSaving || isReordering}>
-                  {isSaving ? "Сохранение..." : formState.id ? "Сохранить изменения" : "Добавить правило"}
+                  {isSaving ? t("position_rules_saving") : formState.id ? t("position_rules_save_changes") : t("position_rules_add_rule")}
                 </Button>
                 {formState.id && (
                   <Button variant="outline" onClick={resetFormDraft} className="flex-1" disabled={isSaving || isReordering}>
-                    Отмена
+                    {t("common_cancel")}
                   </Button>
                 )}
               </div>
@@ -918,31 +928,31 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
 
             <div className="space-y-3">
               <div className="space-y-2">
-                <div className="text-sm font-semibold">Созданные правила</div>
+                <div className="text-sm font-semibold">{t("position_rules_created_rules")}</div>
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-2">
-                  <Label className="text-xs">Фильтр списка (какие правила показывать ниже)</Label>
+                  <Label className="text-xs">{t("position_rules_filter_label")}</Label>
                   <div className="flex flex-wrap gap-2">
-                    {DAY_FILTER_OPTIONS.map((day) => (
+                    {DAY_FILTER_VALUES.map((day) => (
                       <Button
-                        key={day.value}
+                        key={day}
                         type="button"
                         size="sm"
-                        variant={selectedListDay === day.value ? "default" : "outline"}
-                        onClick={() => setSelectedListDay(day.value)}
+                        variant={selectedListDay === day ? "default" : "outline"}
+                        onClick={() => setSelectedListDay(day)}
                         disabled={isSaving || isReordering}
                       >
-                        {day.label}
+                        {dayLabel(day)}
                       </Button>
                     ))}
                   </div>
                 </div>
               </div>
 
-              {isRulesLoading && <Card className="p-4 text-sm text-muted-foreground">Загрузка правил...</Card>}
+              {isRulesLoading && <Card className="p-4 text-sm text-muted-foreground">{t("position_rules_loading_rules")}</Card>}
 
               {!isRulesLoading && filteredRules.length === 0 && (
                 <Card className="p-4 text-sm text-muted-foreground">
-                  Для выбранного этапа и фильтра ({DAY_LABELS[selectedListDay].toLowerCase()}) правила пока не созданы.
+                  {t("position_rules_empty_rules", { filter: dayLabel(selectedListDay).toLowerCase() })}
                 </Card>
               )}
 
@@ -966,7 +976,7 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                       <div className="flex items-start gap-2 min-w-0">
                         <button
                           type="button"
-                          aria-label="Изменить порядок"
+                          aria-label={t("position_rules_reorder_aria")}
                           className="pt-0.5 text-muted-foreground touch-none cursor-grab active:cursor-grabbing"
                           draggable={!isReordering && !isCoarsePointer}
                           onDragStart={() => setDraggingRuleId(rule.id)}
@@ -1006,22 +1016,22 @@ export default function PositionRulesView({ onBack }: { onBack?: () => void } = 
                         <div className="pt-0.5 text-muted-foreground">{typeIconByRule[rule.type]}</div>
                         <div>
                           <div className="font-medium text-sm">
-                            {rule.type === "CASH" ? CASH_RULE_TITLE : rule.title}{" "}
+                            {displayRuleTitle(rule)}{" "}
                             {rule.required && <span className="text-destructive">*</span>}
                           </div>
                           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                             <span>
-                              {RULE_TYPE_LABELS[rule.type]} • Порядок {rule.order}
+                              {ruleTypeLabel(rule.type)} • {t("position_rules_order", { order: rule.order })}
                             </span>
                             <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-                              {SHORT_DAY_LABELS[rule.dayOfWeek ?? "default"]}
+                              {shortDayLabel(rule.dayOfWeek ?? "default")}
                             </Badge>
                           </div>
                         </div>
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" onClick={() => startEdit(rule)}>
-                          Изменить
+                          {t("position_rules_edit")}
                         </Button>
                         <Button size="icon" variant="ghost" onClick={() => handleDelete(rule.id)}>
                           <Trash2 className="h-4 w-4" />

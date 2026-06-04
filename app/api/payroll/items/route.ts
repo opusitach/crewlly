@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, getUserEmployee, isOwnerOrManagerRole } from "@/lib/auth"
+import { getSessionUser, getUserEmployee } from "@/lib/auth"
+import { resolveOrganizationAccess, isOwnerOrManagerEffectiveRole } from "@/lib/organization-access"
 
 const querySchema = z.object({
   employeeId: z.string().uuid().optional(),
@@ -9,9 +10,19 @@ const querySchema = z.object({
 })
 
 export async function GET(request: Request) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const organizationId = user.activeOrganizationId
+  if (!organizationId) {
+    return NextResponse.json({ error: "Organization not selected" }, { status: 400 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const url = new URL(request.url)
@@ -22,7 +33,7 @@ export async function GET(request: Request) {
 
   let employeeId = parsed.data.employeeId
   if (!employeeId) {
-    const employee = await getUserEmployee(session.user.id, session.organization.id)
+    const employee = await getUserEmployee(user.id, organizationId)
     employeeId = employee?.id
   }
 
@@ -30,8 +41,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ data: [] })
   }
 
-  if (!isOwnerOrManagerRole(session.membership)) {
-    const employee = await getUserEmployee(session.user.id, session.organization.id)
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    const employee = await getUserEmployee(user.id, organizationId)
     if (!employee || employee.id !== employeeId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
@@ -40,7 +51,7 @@ export async function GET(request: Request) {
   const items = await prisma.payrollItem.findMany({
     where: {
       employeeId,
-      payrollRun: { organizationId: session.organization.id },
+      payrollRun: { organizationId: access.organizationId },
     },
     include: {
       payrollRun: true,

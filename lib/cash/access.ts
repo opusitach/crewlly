@@ -1,5 +1,12 @@
-import { getSessionUserWithOrg, getUserEmployee, hasPermission, isOwnerOrManagerRole, isOwnerRole } from "@/lib/auth"
+import { getSessionUser, getUserEmployee } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import {
+  resolveOrganizationAccess,
+  isOwnerEffectiveRole,
+  isOwnerOrManagerEffectiveRole,
+  hasEffectivePermission,
+  type OrganizationAccessContext,
+} from "@/lib/organization-access"
 
 type CashAuthFailure = {
   ok: false
@@ -15,13 +22,18 @@ type CashAuthSuccess = {
   isOwner: boolean
   isManagementRole: boolean
   canManageCash: boolean
+  /** Full access context — use for logInternalAction when isInternalAccess is true */
+  access: OrganizationAccessContext
 }
 
 export type CashAuthResult = CashAuthFailure | CashAuthSuccess
 
-export async function getCashAuthContext(options?: { requireManage?: boolean }): Promise<CashAuthResult> {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+export async function getCashAuthContext(options?: {
+  requireManage?: boolean
+  organizationId?: string
+}): Promise<CashAuthResult> {
+  const user = await getSessionUser()
+  if (!user) {
     return {
       ok: false,
       status: 401,
@@ -29,11 +41,26 @@ export async function getCashAuthContext(options?: { requireManage?: boolean }):
     }
   }
 
-  const organizationId = session.organization.id
-  const userId = session.user.id
-  const owner = isOwnerRole(session.membership)
-  const managementRole = isOwnerOrManagerRole(session.membership)
-  const canManageCash = managementRole || (await hasPermission(userId, organizationId, "cash:manage"))
+  const organizationId = options?.organizationId ?? user.activeOrganizationId
+  if (!organizationId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Organization not selected",
+    }
+  }
+
+  const access = await resolveOrganizationAccess(user.id, organizationId)
+  if (!access) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Forbidden",
+    }
+  }
+
+  const managementRole = isOwnerOrManagerEffectiveRole(access)
+  const canManageCash = managementRole || hasEffectivePermission(access, "cash:manage")
 
   if (options?.requireManage && !canManageCash) {
     return {
@@ -43,16 +70,17 @@ export async function getCashAuthContext(options?: { requireManage?: boolean }):
     }
   }
 
-  const employee = await getUserEmployee(userId, organizationId)
+  const employee = await getUserEmployee(user.id, organizationId)
 
   return {
     ok: true,
     organizationId,
-    userId,
+    userId: user.id,
     employeeId: employee?.id ?? null,
-    isOwner: owner,
+    isOwner: isOwnerEffectiveRole(access),
     isManagementRole: managementRole,
     canManageCash,
+    access,
   }
 }
 

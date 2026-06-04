@@ -43,6 +43,7 @@ interface Venue {
   timezone?: string
   currency?: string
   locations?: { id: string; name: string; addressText?: string | null }[]
+  role?: string | null
 }
 
 interface AuthStore {

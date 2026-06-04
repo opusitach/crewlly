@@ -2,7 +2,9 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getSessionUser } from "@/lib/auth"
+import { resolveOrganizationAccess } from "@/lib/organization-access"
 import { auditActorFromSession, logAuditEvent } from "@/lib/observability/audit"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 const selectVenueSchema = z.object({
   organizationId: z.string().uuid(),
@@ -37,30 +39,8 @@ export async function POST(request: Request) {
 
   const { organizationId } = parsed.data
 
-  const membership = await prisma.organizationMember.findFirst({
-    where: {
-      organizationId,
-      userId: user.id,
-      isActive: true,
-      ...(user.primaryMode === "owner"
-        ? {
-            OR: [{ accessRole: { key: "owner" } }, { legacyRole: "owner" }],
-          }
-        : {}),
-      organization: { status: "active" },
-    },
-    include: {
-      accessRole: {
-        select: {
-          id: true,
-          key: true,
-          name: true,
-        },
-      },
-    },
-  })
-
-  if (!membership) {
+  const access = await resolveOrganizationAccess(user.id, organizationId)
+  if (!access) {
     logAuditEvent(request, {
       event_type: "organization.switch",
       outcome: "denied",
@@ -72,7 +52,7 @@ export async function POST(request: Request) {
         id: organizationId,
         organization_id: organizationId,
       },
-      reason: "membership_required",
+      reason: "access_denied",
     })
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
@@ -82,30 +62,10 @@ export async function POST(request: Request) {
     data: { activeOrganizationId: organizationId },
   })
 
-  const [organization, defaultLocation] = await Promise.all([
-    prisma.organization.findUnique({ where: { id: organizationId } }),
-    prisma.location.findFirst({
-      where: { organizationId, isActive: true },
-      orderBy: { createdAt: "asc" },
-    }),
-  ])
-
-  if (!organization) {
-    logAuditEvent(request, {
-      event_type: "organization.switch",
-      outcome: "failure",
-      status: 404,
-      route: "/api/venues/select",
-      actor: auditActorFromSession({ user }),
-      target: {
-        type: "organization",
-        id: organizationId,
-        organization_id: organizationId,
-      },
-      reason: "organization_not_found",
-    })
-    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-  }
+  const defaultLocation = await prisma.location.findFirst({
+    where: { organizationId, isActive: true },
+    orderBy: { createdAt: "asc" },
+  })
 
   logAuditEvent(request, {
     event_type: "organization.switch",
@@ -114,11 +74,9 @@ export async function POST(request: Request) {
     route: "/api/venues/select",
     actor: auditActorFromSession({
       user,
-      organization,
-      accessRole: membership.accessRole,
-      membership: {
-        legacyRole: membership.legacyRole,
-      },
+      organization: access.organization,
+      accessRole: access.membership?.accessRole ?? null,
+      membership: access.membership ? { legacyRole: access.membership.legacyRole } : null,
     }),
     target: {
       type: "organization",
@@ -127,21 +85,28 @@ export async function POST(request: Request) {
       location_id: defaultLocation?.id ?? null,
     },
   })
+
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.ORGANIZATION_OPEN,
+    entityType: "organization",
+    entityId: organizationId,
+  })
+
   return NextResponse.json({
     organization: {
-      id: organization.id,
-      name: organization.name,
-      timezone: organization.timezone,
-      currency: organization.currency,
+      id: access.organization.id,
+      name: access.organization.name,
+      timezone: access.organization.timezone,
+      currency: access.organization.currency,
     },
-    accessRole: membership.accessRole
+    accessRole: access.membership?.accessRole
       ? {
-          id: membership.accessRole.id,
-          key: membership.accessRole.key,
-          name: membership.accessRole.name,
+          id: access.membership.accessRole.id,
+          key: access.membership.accessRole.key,
+          name: access.membership.accessRole.name,
         }
       : null,
-    legacyRole: membership.legacyRole ?? null,
+    legacyRole: access.membership?.legacyRole ?? access.effectiveRoleKey,
     defaultLocation: defaultLocation
       ? {
           id: defaultLocation.id,

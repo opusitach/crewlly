@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { MoneyHistorySkeleton, MoneySummarySkeleton } from "@/components/ui/page-skeletons"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { formatTimeValue } from "@/lib/utils/timezone"
 import { Calendar, ChevronLeft, Clock, Gift, ShieldAlert } from "lucide-react"
+import { useTranslation } from "@/lib/i18n/context"
 
 const dateInputPattern = /^\d{4}-\d{2}-\d{2}$/
 
@@ -71,10 +73,10 @@ const toDateInputValue = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-const formatMoney = (valueCents: number, currency: string | null | undefined) => {
+const formatMoney = (valueCents: number, currency: string | null | undefined, locale: string) => {
   const safeCurrency = currency || "CZK"
   try {
-    return new Intl.NumberFormat("ru-RU", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: safeCurrency,
       maximumFractionDigits: 0,
@@ -84,28 +86,13 @@ const formatMoney = (valueCents: number, currency: string | null | undefined) =>
   }
 }
 
-const formatMinutes = (minutes: number) => {
-  const hours = Math.floor(minutes / 60)
-  const rest = minutes % 60
-  if (hours === 0) return `${rest} мин`
-  if (rest === 0) return `${hours} ч`
-  return `${hours} ч ${rest} мин`
-}
-
-const formatRoundedHours = (minutes: number) => `${Math.round(minutes / 60)} ч`
-
-const formatTimeRange = (startAt: string | null, endAt: string | null, timeZone?: string | null) => {
-  if (!startAt || !endAt) return "Вне смены"
-  return `${formatTimeValue(startAt, timeZone, "--:--")} — ${formatTimeValue(endAt, timeZone, "--:--")}`
-}
-
-const formatWorkDate = (workDate: string) => {
+const formatWorkDate = (workDate: string, locale: string) => {
   const [yearRaw, monthRaw, dayRaw] = workDate.split("-")
   const year = Number(yearRaw)
   const month = Number(monthRaw)
   const day = Number(dayRaw)
   if (!year || !month || !day) return workDate
-  return new Date(year, month - 1, day).toLocaleDateString("ru-RU")
+  return new Date(year, month - 1, day).toLocaleDateString(locale)
 }
 
 const formatPeriodDate = (value: string) => {
@@ -115,11 +102,6 @@ const formatPeriodDate = (value: string) => {
   const day = Number(dayRaw)
   if (!year || !month || !day) return value
   return `${dayRaw.padStart(2, "0")}-${monthRaw.padStart(2, "0")}-${yearRaw}`
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  completed: "Завершена",
-  canceled: "Отменена",
 }
 
 const normalizeItem = (item: Partial<EarningsItem>): EarningsItem => ({
@@ -192,6 +174,7 @@ export default function WorkerMoneyView({
   initialToDate,
   onInitialNavigationHandled,
 }: WorkerMoneyViewProps) {
+  const { t, language } = useTranslation()
   const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
   const today = useMemo(() => new Date(), [])
   const defaultFrom = useMemo(() => toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), [today])
@@ -211,6 +194,31 @@ export default function WorkerMoneyView({
   const [items, setItems] = useState<EarningsItem[]>([])
   const [summary, setSummary] = useState<EarningsSummary>(EMPTY_SUMMARY)
   const [isLoading, setIsLoading] = useState(true)
+
+  const dateLocale = language === "en" ? "en-US" : "ru-RU"
+
+  const formatMinutes = (minutes: number) => {
+    const hours = Math.floor(minutes / 60)
+    const rest = minutes % 60
+    const h = t("hours_suffix")
+    const m = t("minutes_suffix")
+    if (hours === 0) return `${rest} ${m}`
+    if (rest === 0) return `${hours} ${h}`
+    return `${hours} ${h} ${rest} ${m}`
+  }
+
+  const formatRoundedHours = (minutes: number) => `${Math.round(minutes / 60)} ${t("hours_suffix")}`
+
+  const formatTimeRange = (startAt: string | null, endAt: string | null) => {
+    if (!startAt || !endAt) return t("reports_outside_shift")
+    return `${formatTimeValue(startAt, organizationTimeZone, "--:--")} — ${formatTimeValue(endAt, organizationTimeZone, "--:--")}`
+  }
+
+  const getStatusLabel = (status: string) => {
+    if (status === "completed") return t("reports_status_completed")
+    if (status === "canceled") return t("reports_status_canceled")
+    return status
+  }
 
   useEffect(() => {
     setFromDate((prev) => (prev === initialRange.fromDate ? prev : initialRange.fromDate))
@@ -264,23 +272,23 @@ export default function WorkerMoneyView({
       <Card key={item.id} className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-2">
-            <p className="font-semibold">{formatWorkDate(item.workDate)}</p>
+            <p className="font-semibold">{formatWorkDate(item.workDate, dateLocale)}</p>
             <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${badgeClass}`}>
               <Icon className="h-3.5 w-3.5" strokeWidth={1.6} />
-              {isBonus ? "Бонус" : "Штраф"}
+              {isBonus ? t("money_bonus_badge") : t("money_penalty_badge")}
             </span>
           </div>
           <div className="text-right">
             <p className={`text-lg font-semibold ${isBonus ? "text-emerald-700" : "text-rose-700"}`}>
-              {formatMoney(isBonus ? amountCents : -amountCents, summary.currency)}
+              {formatMoney(isBonus ? amountCents : -amountCents, summary.currency, dateLocale)}
             </p>
-            <p className="text-[11px] text-muted-foreground">ручная корректировка</p>
+            <p className="text-[11px] text-muted-foreground">{t("money_manual_adjustment")}</p>
           </div>
         </div>
 
         <div className={`rounded-xl border px-3 py-3 ${isBonus ? "border-emerald-200/80 bg-emerald-50/60" : "border-rose-200/80 bg-rose-50/60"}`}>
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Комментарий</p>
-          <p className="mt-1.5 text-sm leading-6">{item.adjustmentComment || "Без комментария"}</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("money_comment_label")}</p>
+          <p className="mt-1.5 text-sm leading-6">{item.adjustmentComment || t("money_no_comment")}</p>
         </div>
       </Card>
     )
@@ -290,35 +298,35 @@ export default function WorkerMoneyView({
     <Card key={item.id} className="p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="font-semibold">{formatWorkDate(item.workDate)}</p>
+          <p className="font-semibold">{formatWorkDate(item.workDate, dateLocale)}</p>
           <p className="text-sm text-muted-foreground">
-            {item.positionName || "Без позиции"} • {STATUS_LABELS[item.status] || item.status}
+            {item.positionName || t("money_no_position")} • {getStatusLabel(item.status)}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-lg font-semibold">{formatMoney(item.totalAccruedCents, summary.currency)}</p>
-          <p className="text-[11px] text-muted-foreground">зарплата + чаевые</p>
+          <p className="text-lg font-semibold">{formatMoney(item.totalAccruedCents, summary.currency, dateLocale)}</p>
+          <p className="text-[11px] text-muted-foreground">{t("reports_salary_plus_tips")}</p>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-sm">
         <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2">
-          <p className="text-[11px] text-muted-foreground">Зарплата</p>
-          <p className="mt-0.5 font-medium">{formatMoney(item.grossPayCents, summary.currency)}</p>
+          <p className="text-[11px] text-muted-foreground">{t("employee_profile_salary")}</p>
+          <p className="mt-0.5 font-medium">{formatMoney(item.grossPayCents, summary.currency, dateLocale)}</p>
         </div>
         <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2">
-          <p className="text-[11px] text-muted-foreground">Чаевые</p>
-          <p className="mt-0.5 font-medium">{formatMoney(item.tipsCents, summary.currency)}</p>
+          <p className="text-[11px] text-muted-foreground">{t("verification_tips")}</p>
+          <p className="mt-0.5 font-medium">{formatMoney(item.tipsCents, summary.currency, dateLocale)}</p>
         </div>
       </div>
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Clock className="h-4 w-4" strokeWidth={1.5} />
-          <span>{formatTimeRange(item.actualStartAt, item.actualEndAt, organizationTimeZone)}</span>
+          <span>{formatTimeRange(item.actualStartAt, item.actualEndAt)}</span>
         </div>
         <span className="font-medium">{formatRoundedHours(item.minutesWorked)}</span>
       </div>
       {!item.usedActualTime && (
-        <p className="text-xs text-muted-foreground">Фактические отметки отсутствуют, расчет по графику</p>
+        <p className="text-xs text-muted-foreground">{t("money_no_actual_time")}</p>
       )}
     </Card>
   )
@@ -326,24 +334,27 @@ export default function WorkerMoneyView({
   return (
     <div className="min-h-screen bg-background pb-24 max-w-md mx-auto">
       {!hideHeader && (
-        <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="sticky top-0 z-10 bg-background">
           <div className="p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
                 <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
               </Button>
-              <h1 className="text-xl font-semibold">Деньги</h1>
-              <div className="w-10" />
+              <h1 className="text-xl font-semibold">{t("money_title")}</h1>
             </div>
           </div>
         </div>
       )}
 
       <div className="p-4 space-y-4">
+        {hideHeader && (
+          <h1 className="text-xl font-semibold">{t("money_title")}</h1>
+        )}
+
         <Card className="p-4 space-y-3">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Calendar className="h-4 w-4" strokeWidth={1.5} />
-            Период
+            {t("reports_period")}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
@@ -354,16 +365,16 @@ export default function WorkerMoneyView({
             onClick={() => setAppliedRange({ fromDate, toDate })}
             disabled={Boolean(fromDate && toDate && toDate < fromDate)}
           >
-            Применить период
+            {t("reports_apply_period")}
           </Button>
           {fromDate && toDate && toDate < fromDate && (
-            <p className="text-xs text-destructive">Конечная дата должна быть не раньше начальной</p>
+            <p className="text-xs text-destructive">{t("reports_invalid_period")}</p>
           )}
         </Card>
 
         <Card className="p-4 space-y-3 sm:p-5">
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Загрузка выплат...</p>
+            <MoneySummarySkeleton />
           ) : (
             <>
               <div className="space-y-1.5 text-center">
@@ -371,34 +382,34 @@ export default function WorkerMoneyView({
                   {formatPeriodDate(appliedRange.fromDate)} — {formatPeriodDate(appliedRange.toDate)}
                 </p>
                 <div className="text-3xl font-bold leading-none tracking-tight sm:text-[2.125rem]">
-                  {formatMoney(summary.totalAccruedCents, summary.currency)}
+                  {formatMoney(summary.totalAccruedCents, summary.currency, dateLocale)}
                 </div>
-                <p className="text-xs text-muted-foreground">Начислено за выбранный период</p>
+                <p className="text-xs text-muted-foreground">{t("money_accrued_period")}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div className={summaryTileClass}>
-                  <p className="text-xs text-muted-foreground">Зарплата</p>
+                  <p className="text-xs text-muted-foreground">{t("employee_profile_salary")}</p>
                   <p className="mt-1 text-[1.05rem] font-semibold leading-tight">
-                    {formatMoney(summary.totalSalaryCents, summary.currency)}
+                    {formatMoney(summary.totalSalaryCents, summary.currency, dateLocale)}
                   </p>
                 </div>
                 <div className={summaryTileClass}>
-                  <p className="text-xs text-muted-foreground">Чаевые</p>
+                  <p className="text-xs text-muted-foreground">{t("verification_tips")}</p>
                   <p className="mt-1 text-[1.05rem] font-semibold leading-tight">
-                    {formatMoney(summary.totalTipsCents, summary.currency)}
+                    {formatMoney(summary.totalTipsCents, summary.currency, dateLocale)}
                   </p>
                 </div>
                 <div className={`${summaryTileClass} border-emerald-200/80 bg-emerald-50/60`}>
-                  <p className="text-xs text-emerald-700/80">Бонусы</p>
+                  <p className="text-xs text-emerald-700/80">{t("money_bonuses")}</p>
                   <p className="mt-1 text-[1.05rem] font-semibold leading-tight text-emerald-700">
-                    {formatMoney(summary.totalBonusCents, summary.currency)}
+                    {formatMoney(summary.totalBonusCents, summary.currency, dateLocale)}
                   </p>
                 </div>
                 <div className={`${summaryTileClass} border-rose-200/80 bg-rose-50/60`}>
-                  <p className="text-xs text-rose-700/80">Штрафы</p>
+                  <p className="text-xs text-rose-700/80">{t("money_penalties")}</p>
                   <p className="mt-1 text-[1.05rem] font-semibold leading-tight text-rose-700">
-                    {formatMoney(summary.totalPenaltyCents === 0 ? 0 : -summary.totalPenaltyCents, summary.currency)}
+                    {formatMoney(summary.totalPenaltyCents === 0 ? 0 : -summary.totalPenaltyCents, summary.currency, dateLocale)}
                   </p>
                 </div>
               </div>
@@ -406,11 +417,11 @@ export default function WorkerMoneyView({
               <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
                 <div className="text-center">
                   <p className="text-xl font-bold leading-none sm:text-2xl">{summary.shiftsCount}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Смен</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t("money_shifts_label")}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-xl font-bold leading-none sm:text-2xl">{formatMinutes(summary.totalMinutesWorked)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Отработано</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t("money_worked")}</p>
                 </div>
               </div>
             </>
@@ -418,9 +429,11 @@ export default function WorkerMoneyView({
         </Card>
 
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">История начислений</h2>
-          {isLoading && <Card className="p-4 text-sm text-muted-foreground">Загрузка истории...</Card>}
-          {!isLoading && items.length === 0 && <Card className="p-4 text-sm text-muted-foreground">История пока пустая</Card>}
+          <h2 className="text-lg font-semibold">{t("money_history_title")}</h2>
+          {isLoading && <MoneyHistorySkeleton />}
+          {!isLoading && items.length === 0 && (
+            <Card className="p-4 text-sm text-muted-foreground">{t("money_history_empty")}</Card>
+          )}
           {!isLoading && items.length > 0 && (
             <div className="space-y-3">
               {items.map((item) => (item.itemType === "adjustment" ? renderAdjustmentHistoryCard(item) : renderShiftHistoryCard(item)))}

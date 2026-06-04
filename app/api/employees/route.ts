@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg } from "@/lib/auth"
+import { getSessionUser } from "@/lib/auth"
+import { resolveOrganizationAccess, isOwnerOrManagerEffectiveRole } from "@/lib/organization-access"
 import { PAY_COMPONENT_TYPES, normalizePayComponentsInput, type PayComponentInput } from "@/lib/pay-components"
 import { ensurePercentRevenueCashBasis } from "@/lib/cash/revenue-basis"
 import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 const payComponentSchema = z.object({
   componentType: z.enum(PAY_COMPONENT_TYPES),
@@ -67,22 +69,22 @@ const validatePayComponents = (components: Array<{ componentType: string; amount
 }
 
 export async function GET(request: Request) {
-  const session = await getSessionUserWithOrg()
-  if (!session) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const url = new URL(request.url)
-  const organizationId = url.searchParams.get("organizationId") || session.organization?.id
+  const organizationId = url.searchParams.get("organizationId") ?? user.activeOrganizationId
   const locationId = url.searchParams.get("locationId")
 
   if (!organizationId) {
     return NextResponse.json({ error: "organizationId is required" }, { status: 400 })
   }
 
-  // Verify user has access to this organization
-  if (session.organization?.id !== organizationId) {
-    return NextResponse.json({ error: "Access denied" }, { status: 403 })
+  const access = await resolveOrganizationAccess(user.id, organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const whereClause: { organizationId: string; employeeLocations?: { some: { locationId: string } } } = {
@@ -199,8 +201,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await getSessionUserWithOrg()
-  if (!session) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -223,6 +225,15 @@ export async function POST(request: Request) {
     percentRevenueBp,
     payComponents,
   } = parsed.data
+
+  const access = await resolveOrganizationAccess(user.id, organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
 
   const normalizedComponents = normalizePayComponentsInput(payComponents)
   const componentsToCreate: PayComponentInput[] = normalizedComponents.length > 0
@@ -247,11 +258,6 @@ export async function POST(request: Request) {
     if (!basisCheck.ok) {
       return NextResponse.json({ error: basisCheck.error }, { status: 409 })
     }
-  }
-
-  // Verify user has access to this organization
-  if (session.organization?.id !== organizationId) {
-    return NextResponse.json({ error: "Access denied" }, { status: 403 })
   }
 
   // Check if user with email already exists
@@ -353,6 +359,13 @@ export async function POST(request: Request) {
       createdVia: "manual",
     },
     update: {},
+  })
+
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.EMPLOYEE_CREATE,
+    entityType: "employee",
+    entityId: employee.id,
+    metadata: { organizationId, fullName, payType },
   })
 
   return NextResponse.json({

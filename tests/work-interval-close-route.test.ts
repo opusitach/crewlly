@@ -74,8 +74,10 @@ describe("POST /api/work-intervals/[id]/close", () => {
       snapshot: null,
     })
     mocked.getAuthorizedInterval.mockResolvedValue({
-      session: {
+      access: {
         user: { id: "user-1", fullName: "Иван Петров", email: "ivan@example.com" },
+        organizationId: "org-1",
+        organization: { id: "org-1" },
       },
       interval: {
         id: "interval-1",

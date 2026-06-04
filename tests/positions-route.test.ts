@@ -11,8 +11,9 @@ const mocked = vi.hoisted(() => {
 
   return {
     prisma,
-    getSessionUserWithOrg: vi.fn(),
-    isOwnerOrManagerRole: vi.fn(),
+    getSessionUser: vi.fn(),
+    resolveOrganizationAccess: vi.fn(),
+    isOwnerOrManagerEffectiveRole: vi.fn(),
     getDefaultRuleSetupByPosition: vi.fn(),
     isDefaultRulesetConfigured: vi.fn(),
   }
@@ -23,8 +24,12 @@ vi.mock("@/lib/prisma", () => ({
 }))
 
 vi.mock("@/lib/auth", () => ({
-  getSessionUserWithOrg: mocked.getSessionUserWithOrg,
-  isOwnerOrManagerRole: mocked.isOwnerOrManagerRole,
+  getSessionUser: mocked.getSessionUser,
+}))
+
+vi.mock("@/lib/organization-access", () => ({
+  resolveOrganizationAccess: mocked.resolveOrganizationAccess,
+  isOwnerOrManagerEffectiveRole: mocked.isOwnerOrManagerEffectiveRole,
 }))
 
 vi.mock("@/lib/procedures/config", () => ({
@@ -37,11 +42,13 @@ import { POST as POST_POSITION } from "../app/api/positions/route"
 describe("positions route", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocked.getSessionUserWithOrg.mockResolvedValue({
-      organization: { id: "org_1" },
-      membership: { role: "owner" },
+    mocked.getSessionUser.mockResolvedValue({ id: "user_1", activeOrganizationId: "org_1" })
+    mocked.resolveOrganizationAccess.mockResolvedValue({
+      organizationId: "org_1",
+      effectiveRoleKey: "owner",
+      permissions: [],
     })
-    mocked.isOwnerOrManagerRole.mockReturnValue(true)
+    mocked.isOwnerOrManagerEffectiveRole.mockReturnValue(true)
   })
 
   it("creates a role in current organization when organizationId is omitted", async () => {

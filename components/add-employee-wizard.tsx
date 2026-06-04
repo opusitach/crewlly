@@ -128,7 +128,7 @@ export default function AddEmployeeWizard({
 
   return (
     <div className={isPage ? "min-h-screen bg-background pb-6 max-w-md mx-auto" : "bg-background"}>
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
         <div className="p-4 flex items-center justify-between">
           <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
             <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />

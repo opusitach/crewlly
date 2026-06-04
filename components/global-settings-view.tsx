@@ -9,11 +9,13 @@ import CashSettingsView, { type CashSettingsTab } from "@/components/cash-settin
 import EmployeesView from "@/components/employees-view"
 import PositionRulesView from "@/components/position-rules-view"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslation } from "@/lib/i18n/context"
 
 type TipsDistributionMethod = "equal" | "by_hours"
 export type SettingsScreen = "home" | "cash" | "team" | "roles" | "tips"
 
 function TipsDistributionSettingsView({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const [selectedMethod, setSelectedMethod] = useState<TipsDistributionMethod>("equal")
   const [loading, setLoading] = useState(true)
@@ -29,14 +31,14 @@ function TipsDistributionSettingsView({ onBack }: { onBack: () => void }) {
       const res = await fetch("/api/tips/settings", { credentials: "include" })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось загрузить настройки чаевых")
+        throw new Error(json?.error || t("venue_settings_load_tips_error"))
       }
       const method = json?.data?.splitMethod
       setSelectedMethod(method === "by_hours" ? "by_hours" : "equal")
     } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: error?.message || "Не удалось загрузить настройки чаевых",
+        title: t("common_error"),
+        description: error?.message || t("venue_settings_load_tips_error"),
         variant: "destructive",
       })
     } finally {
@@ -56,20 +58,20 @@ function TipsDistributionSettingsView({ onBack }: { onBack: () => void }) {
 
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось сохранить настройки чаевых")
+        throw new Error(json?.error || t("venue_settings_save_tips_error"))
       }
 
       toast({
-        title: "Сохранено",
+        title: t("venue_settings_saved"),
         description:
           selectedMethod === "equal"
-            ? "Чаевые будут распределяться поровну между сотрудниками."
-            : "Чаевые будут распределяться пропорционально отработанному времени.",
+            ? t("venue_settings_tips_equal_saved")
+            : t("venue_settings_tips_by_hours_saved"),
       })
     } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: error?.message || "Не удалось сохранить настройки чаевых",
+        title: t("common_error"),
+        description: error?.message || t("venue_settings_save_tips_error"),
         variant: "destructive",
       })
     } finally {
@@ -79,21 +81,20 @@ function TipsDistributionSettingsView({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="min-h-screen bg-background pb-6 max-w-md mx-auto">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background">
         <div className="p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
               <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
             </Button>
-            <h1 className="text-lg font-semibold">Распределение чаевых</h1>
-            <div className="w-10" />
+            <h1 className="text-lg font-semibold">{t("venue_settings_tips_title")}</h1>
           </div>
         </div>
       </div>
 
       <div className="p-4 space-y-6">
         <div className="space-y-3">
-          <h3 className="font-semibold">Метод распределения</h3>
+          <h3 className="font-semibold">{t("venue_settings_tips_method")}</h3>
 
           <Card
             className={`p-4 cursor-pointer transition-all ${
@@ -105,10 +106,10 @@ function TipsDistributionSettingsView({ onBack }: { onBack: () => void }) {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <UsersRound className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
-                  <h4 className="font-semibold">Поровну между всеми</h4>
+                  <h4 className="font-semibold">{t("venue_settings_tips_equal_title")}</h4>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Сумма делится равными долями между участниками рабочего дня.
+                  {t("venue_settings_tips_equal_desc")}
                 </p>
               </div>
             </div>
@@ -124,13 +125,13 @@ function TipsDistributionSettingsView({ onBack }: { onBack: () => void }) {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <Clock className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
-                  <h4 className="font-semibold">Пропорционально времени</h4>
+                  <h4 className="font-semibold">{t("venue_settings_tips_by_hours_title")}</h4>
                   <Badge variant="secondary" className="text-[10px]">
                     by_hours
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Сумма делится пропорционально учтенным минутам сотрудников.
+                  {t("venue_settings_tips_by_hours_desc")}
                 </p>
               </div>
             </div>
@@ -139,7 +140,7 @@ function TipsDistributionSettingsView({ onBack }: { onBack: () => void }) {
 
         <Button className="w-full h-12" onClick={saveTipsSettings} disabled={loading || saving}>
           <Check className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          {saving ? "Сохранение..." : "Сохранить настройки"}
+          {saving ? t("venue_settings_saving") : t("venue_settings_save_settings")}
         </Button>
       </div>
     </div>
@@ -157,6 +158,7 @@ export default function GlobalSettingsView({
   initialCashTab?: CashSettingsTab
   cashLocationId?: string | null
 }) {
+  const { t } = useTranslation()
   const [settingsScreen, setSettingsScreen] = useState<SettingsScreen>(initialScreen)
 
   useEffect(() => {
@@ -187,29 +189,28 @@ export default function GlobalSettingsView({
 
   return (
     <div className="min-h-screen bg-background pb-6 max-w-md mx-auto">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background">
         <div className="p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
               <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
             </Button>
-            <h1 className="text-lg font-semibold">Настройки заведения</h1>
-            <div className="w-10" />
+            <h1 className="text-lg font-semibold">{t("venue_settings_title")}</h1>
           </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className="px-4 pb-4 space-y-3">
         <Card className="p-4 border-primary/20 bg-primary/5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-start gap-2">
               <ReceiptText className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" strokeWidth={1.5} />
               <div>
-                <p className="font-semibold">Касса</p>
-                <p className="text-sm text-muted-foreground">Поля открытия/закрытия, формулы расчета и источник.</p>
+                <p className="font-semibold">{t("venue_settings_cash_title")}</p>
+                <p className="text-sm text-muted-foreground">{t("venue_settings_cash_desc")}</p>
               </div>
             </div>
-            <Button onClick={() => setSettingsScreen("cash")}>Открыть</Button>
+            <Button onClick={() => setSettingsScreen("cash")}>{t("venue_settings_open")}</Button>
           </div>
         </Card>
 
@@ -218,11 +219,11 @@ export default function GlobalSettingsView({
             <div className="flex items-start gap-2">
               <UsersRound className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" strokeWidth={1.5} />
               <div>
-                <p className="font-semibold">Команда</p>
-                <p className="text-sm text-muted-foreground">Список сотрудников, карточки и управление составом.</p>
+                <p className="font-semibold">{t("venue_settings_team_title")}</p>
+                <p className="text-sm text-muted-foreground">{t("venue_settings_team_desc")}</p>
               </div>
             </div>
-            <Button onClick={() => setSettingsScreen("team")}>Открыть</Button>
+            <Button onClick={() => setSettingsScreen("team")}>{t("venue_settings_open")}</Button>
           </div>
         </Card>
 
@@ -231,11 +232,11 @@ export default function GlobalSettingsView({
             <div className="flex items-start gap-2">
               <ShieldCheck className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" strokeWidth={1.5} />
               <div>
-                <p className="font-semibold">Роли и правила</p>
-                <p className="text-sm text-muted-foreground">Правила открытия/закрытия по должностям.</p>
+                <p className="font-semibold">{t("venue_settings_roles_title")}</p>
+                <p className="text-sm text-muted-foreground">{t("venue_settings_roles_desc")}</p>
               </div>
             </div>
-            <Button onClick={() => setSettingsScreen("roles")}>Открыть</Button>
+            <Button onClick={() => setSettingsScreen("roles")}>{t("venue_settings_open")}</Button>
           </div>
         </Card>
 
@@ -244,13 +245,14 @@ export default function GlobalSettingsView({
             <div className="flex items-start gap-2">
               <Sparkles className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" strokeWidth={1.5} />
               <div>
-                <p className="font-semibold">Распределение чаевых</p>
-                <p className="text-sm text-muted-foreground">Глобальный метод деления чаевых по локации.</p>
+                <p className="font-semibold">{t("venue_settings_tips_title")}</p>
+                <p className="text-sm text-muted-foreground">{t("venue_settings_tips_desc")}</p>
               </div>
             </div>
-            <Button onClick={() => setSettingsScreen("tips")}>Открыть</Button>
+            <Button onClick={() => setSettingsScreen("tips")}>{t("venue_settings_open")}</Button>
           </div>
         </Card>
+
       </div>
     </div>
   )

@@ -13,6 +13,7 @@ import { findWorkdayCashSourceAnswer } from "@/lib/cash/workday-cash-source"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import { finalizeWorkIntervalOpen } from "@/lib/work-intervals/open"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 type RouteContext = { params: Promise<{ id: string }> }
 const forceSchema = z.object({
@@ -27,7 +28,7 @@ const isProceduresSchemaMissing = (error: unknown) =>
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
   const {
-    session,
+    access,
     interval,
     hasManagementAccess,
     effectiveStatus,
@@ -66,7 +67,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const actorName = toEventActorName(
-    { fullName: session?.user.fullName, email: session?.user.email },
+    { fullName: access?.user.fullName, email: access?.user.email },
     "Сотрудник",
   )
   const workDateLabel = toEventDateLabel(interval.workday.workDate)
@@ -88,7 +89,7 @@ export async function POST(request: Request, context: RouteContext) {
       const updated = await finalizeWorkIntervalOpen(tx, {
         intervalId: interval.id,
         openedAt: resolvedOpenedAt ?? new Date(),
-        openedByOwnerId: force ? session?.user.id ?? null : null,
+        openedByOwnerId: force ? access?.user.id ?? null : null,
         openOverrideReason: force ? normalizedReason ?? null : null,
       })
 
@@ -98,7 +99,7 @@ export async function POST(request: Request, context: RouteContext) {
         title: "Открыта рабочая смена",
         message: notificationMessage,
         payload: notificationPayload,
-        excludeUserId: session?.user.id ?? null,
+        excludeUserId: access?.user.id ?? null,
       })
 
       return updated
@@ -194,7 +195,7 @@ export async function POST(request: Request, context: RouteContext) {
       const opened = await finalizeWorkIntervalOpen(tx, {
         intervalId: interval.id,
         openedAt: resolvedOpenedAt ?? new Date(),
-        openedByOwnerId: force ? session?.user.id ?? null : null,
+        openedByOwnerId: force ? access?.user.id ?? null : null,
         openOverrideReason: force ? normalizedReason ?? null : null,
       })
 
@@ -204,7 +205,7 @@ export async function POST(request: Request, context: RouteContext) {
         title: "Открыта рабочая смена",
         message: notificationMessage,
         payload: notificationPayload,
-        excludeUserId: session?.user.id ?? null,
+        excludeUserId: access?.user.id ?? null,
       })
 
       return {
@@ -216,6 +217,15 @@ export async function POST(request: Request, context: RouteContext) {
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error, missing: (result as any).missing ?? [] }, { status: 400 })
+    }
+
+    if (access) {
+      void logInternalAction(access, {
+        action: INTERNAL_ACTIONS.WORK_INTERVAL_OPEN,
+        entityType: "work_interval",
+        entityId: interval.id,
+        metadata: { forced: (result as any).forced ?? false },
+      })
     }
 
     return NextResponse.json({

@@ -1,15 +1,23 @@
 import { redirect } from "next/navigation"
-import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
+import { getSessionUser } from "@/lib/auth"
+import { resolveOrganizationAccess, isOwnerOrManagerEffectiveRole } from "@/lib/organization-access"
 import PositionRulesView from "@/components/position-rules-view"
 
 export default async function RolesPage() {
-  const session = await getSessionUserWithOrg()
-  if (!session?.user) redirect("/login")
-  if (!session.user.primaryMode) redirect("/select-role")
-  if (!session.user.onboardingReady) {
-    redirect(session.user.primaryMode === "owner" ? "/onboarding/owner" : "/onboarding/employee")
+  const user = await getSessionUser()
+  if (!user) redirect("/login")
+  if (!user.primaryMode) redirect("/select-role")
+  if (!user.onboardingReady) {
+    redirect(user.primaryMode === "owner" ? "/onboarding/owner" : "/onboarding/employee")
   }
-  if (!isOwnerOrManagerRole(session.membership)) redirect("/app")
+
+  const access = user.activeOrganizationId
+    ? await resolveOrganizationAccess(user.id, user.activeOrganizationId, {
+        useActiveInternalSession: user.isInternal,
+      })
+    : null
+
+  if (!access || !isOwnerOrManagerEffectiveRole(access)) redirect("/app")
 
   return <PositionRulesView />
 }

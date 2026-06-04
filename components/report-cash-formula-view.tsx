@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { Area, AreaChart, CartesianGrid, Line, XAxis, YAxis } from "recharts"
 import { Calendar, ChevronLeft, Calculator } from "lucide-react"
+import { useTranslation } from "@/lib/i18n/context"
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear()
@@ -15,27 +16,27 @@ const toDateInputValue = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-const formatCashValue = (value: number | null | undefined) => {
+const formatCashValue = (value: number | null | undefined, locale: string) => {
   if (value == null || !Number.isFinite(value)) return "-"
-  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value)
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value)
 }
 
-const formatWorkDate = (workDate: string) => {
+const formatWorkDate = (workDate: string, locale: string) => {
   const [yearRaw, monthRaw, dayRaw] = workDate.split("-")
   const year = Number(yearRaw)
   const month = Number(monthRaw)
   const day = Number(dayRaw)
   if (!year || !month || !day) return workDate
-  return new Date(year, month - 1, day).toLocaleDateString("ru-RU")
+  return new Date(year, month - 1, day).toLocaleDateString(locale)
 }
 
-const formatChartDateLabel = (workDate: string) => {
+const formatChartDateLabel = (workDate: string, locale: string) => {
   const [yearRaw, monthRaw, dayRaw] = workDate.split("-")
   const year = Number(yearRaw)
   const month = Number(monthRaw)
   const day = Number(dayRaw)
   if (!year || !month || !day) return workDate
-  return new Date(year, month - 1, day).toLocaleDateString("ru-RU", {
+  return new Date(year, month - 1, day).toLocaleDateString(locale, {
     day: "2-digit",
     month: "short",
   })
@@ -100,24 +101,6 @@ const EMPTY_DATA: FormulaDetailsPayload = {
   history: [],
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  open: "Открыта",
-  closing_draft: "Черновик закрытия",
-  closed: "Закрыта",
-  reviewed: "Проверена",
-}
-
-const chartConfig = {
-  valueCents: {
-    label: "Значение",
-    color: "hsl(var(--primary))",
-  },
-  trendCents: {
-    label: "Тренд",
-    color: "hsl(var(--muted-foreground))",
-  },
-} satisfies ChartConfig
-
 type Props = {
   onBack: () => void
   resultKey: string
@@ -133,6 +116,22 @@ export default function ReportCashFormulaView({
   initialFromDate,
   initialToDate,
 }: Props) {
+  const { t, language } = useTranslation()
+  const locale = language === "en" ? "en-US" : "ru-RU"
+  const chartConfig = useMemo(
+    () =>
+      ({
+        valueCents: {
+          label: t("reports_chart_value"),
+          color: "hsl(var(--primary))",
+        },
+        trendCents: {
+          label: t("reports_chart_trend"),
+          color: "hsl(var(--muted-foreground))",
+        },
+      }) satisfies ChartConfig,
+    [t],
+  )
   const today = useMemo(() => new Date(), [])
   const defaultFrom = useMemo(() => toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), [today])
   const defaultTo = useMemo(() => toDateInputValue(today), [today])
@@ -180,7 +179,7 @@ export default function ReportCashFormulaView({
           | null
 
         if (!response.ok || !json?.data) {
-          throw new Error(json?.error || "Не удалось загрузить детализацию формулы")
+          throw new Error(json?.error || t("reports_load_formula_details_error"))
         }
 
         const raw = json.data
@@ -213,7 +212,7 @@ export default function ReportCashFormulaView({
                   sessionId,
                   workdayId,
                   workDate,
-                  cashRegisterName: typeof row.cashRegisterName === "string" ? row.cashRegisterName : "Касса",
+                  cashRegisterName: typeof row.cashRegisterName === "string" ? row.cashRegisterName : t("reports_cash_register_fallback"),
                   cashSessionStatus: typeof row.cashSessionStatus === "string" ? row.cashSessionStatus : "closed",
                   valueCents: Number.isInteger(row.valueCents) ? Number(row.valueCents) : 0,
                   actorName: typeof row.actorName === "string" ? row.actorName : null,
@@ -259,7 +258,7 @@ export default function ReportCashFormulaView({
             isTipsSource: false,
           },
         })
-        setLoadError(error instanceof Error ? error.message : "Не удалось загрузить детализацию формулы")
+        setLoadError(error instanceof Error ? error.message : t("reports_load_formula_details_error"))
       } finally {
         if (active) setIsLoading(false)
       }
@@ -270,27 +269,36 @@ export default function ReportCashFormulaView({
     return () => {
       active = false
     }
-  }, [appliedRange.fromDate, appliedRange.toDate, resultKey, resultLabel])
+  }, [appliedRange.fromDate, appliedRange.toDate, resultKey, resultLabel, t])
 
   const chartPoints = useMemo(
     () =>
       details.chart.points.map((point) => ({
         ...point,
-        dateLabel: formatChartDateLabel(point.date),
+        dateLabel: formatChartDateLabel(point.date, locale),
       })),
-    [details.chart.points],
+    [details.chart.points, locale],
   )
 
   const hasChartData = useMemo(() => chartPoints.some((point) => point.valueCents !== 0), [chartPoints])
 
   const changeText =
     details.summary.changePercent == null
-      ? "Нет базы для сравнения"
-      : `${details.summary.changePercent > 0 ? "+" : ""}${details.summary.changePercent.toFixed(1)}% к предыдущему периоду`
+      ? t("reports_no_comparison_base")
+      : t("reports_change_vs_previous", {
+          value: `${details.summary.changePercent > 0 ? "+" : ""}${details.summary.changePercent.toFixed(1)}`,
+        })
+
+  const statusLabels: Record<string, string> = {
+    open: t("reports_status_open"),
+    closing_draft: t("reports_status_closing_draft"),
+    closed: t("reports_status_closed"),
+    reviewed: t("reports_status_reviewed"),
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24 max-w-md mx-auto">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
         <div className="p-4">
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
@@ -299,7 +307,7 @@ export default function ReportCashFormulaView({
             <h1 className="text-xl font-semibold truncate max-w-[230px] text-center">{details.formula.resultLabel || resultLabel}</h1>
             <div className="w-10" />
           </div>
-          <p className="text-xs text-muted-foreground text-center mt-1">Расчет формулы</p>
+          <p className="text-xs text-muted-foreground text-center mt-1">{t("reports_cash_formula_subtitle")}</p>
         </div>
       </div>
 
@@ -307,7 +315,7 @@ export default function ReportCashFormulaView({
         <Card className="p-4 space-y-3">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Calendar className="h-4 w-4" strokeWidth={1.5} />
-            Период
+            {t("reports_period")}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
@@ -318,10 +326,10 @@ export default function ReportCashFormulaView({
             onClick={() => setAppliedRange({ fromDate, toDate })}
             disabled={Boolean(fromDate && toDate && toDate < fromDate)}
           >
-            Применить период
+            {t("reports_apply_period")}
           </Button>
           {fromDate && toDate && toDate < fromDate && (
-            <p className="text-xs text-destructive">Конечная дата должна быть не раньше начальной</p>
+            <p className="text-xs text-destructive">{t("reports_invalid_period")}</p>
           )}
         </Card>
 
@@ -331,13 +339,13 @@ export default function ReportCashFormulaView({
           <>
             <Card className="p-4 space-y-3">
               {isLoading ? (
-                <p className="text-sm text-muted-foreground">Загрузка сводки...</p>
+                <p className="text-sm text-muted-foreground">{t("reports_loading_summary")}</p>
               ) : (
                 <>
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm text-muted-foreground">Сумма за выбранный период</p>
-                      <p className="text-3xl font-bold mt-1">{formatCashValue(details.summary.totalValueCents)}</p>
+                      <p className="text-sm text-muted-foreground">{t("reports_total_for_period")}</p>
+                      <p className="text-3xl font-bold mt-1">{formatCashValue(details.summary.totalValueCents, locale)}</p>
                     </div>
                     <div className="rounded-xl bg-primary/10 p-2.5">
                       <Calculator className="h-5 w-5 text-primary" strokeWidth={1.5} />
@@ -346,18 +354,18 @@ export default function ReportCashFormulaView({
 
                   <div className="grid grid-cols-2 gap-2">
                     <Card className="p-3 bg-muted/30 border-border/70">
-                      <p className="text-xs text-muted-foreground">Среднее за смену</p>
-                      <p className="font-semibold mt-1">{formatCashValue(details.summary.averageValueCents)}</p>
+                      <p className="text-xs text-muted-foreground">{t("reports_average_per_shift")}</p>
+                      <p className="font-semibold mt-1">{formatCashValue(details.summary.averageValueCents, locale)}</p>
                     </Card>
                     <Card className="p-3 bg-muted/30 border-border/70">
-                      <p className="text-xs text-muted-foreground">Смен в периоде</p>
+                      <p className="text-xs text-muted-foreground">{t("reports_shifts_in_period")}</p>
                       <p className="font-semibold mt-1">{details.summary.entriesCount}</p>
                     </Card>
                   </div>
 
                   <p className="text-xs text-muted-foreground">{changeText}</p>
                   {details.formula.isTipsSource && (
-                    <div className="text-xs rounded bg-amber-100 text-amber-800 px-2 py-1 w-fit">Источник чаевых</div>
+                    <div className="text-xs rounded bg-amber-100 text-amber-800 px-2 py-1 w-fit">{t("reports_tips_source")}</div>
                   )}
 
                   {details.summary.formulaWarnings.length > 0 && (
@@ -368,7 +376,7 @@ export default function ReportCashFormulaView({
 
                   {details.summary.formulaErrors > 0 && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                      Ошибок расчета: {details.summary.formulaErrors}
+                      {t("reports_formula_errors_short", { count: details.summary.formulaErrors })}
                     </div>
                   )}
                 </>
@@ -376,11 +384,11 @@ export default function ReportCashFormulaView({
             </Card>
 
             <Card className="p-4 space-y-3">
-              <h2 className="text-base font-semibold">Динамика</h2>
+              <h2 className="text-base font-semibold">{t("reports_dynamics")}</h2>
               {isLoading ? (
-                <p className="text-sm text-muted-foreground">Строим график...</p>
+                <p className="text-sm text-muted-foreground">{t("reports_building_chart")}</p>
               ) : chartPoints.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Нет данных за период.</p>
+                <p className="text-sm text-muted-foreground">{t("reports_no_period_data")}</p>
               ) : (
                 <>
                   <ChartContainer config={chartConfig} className="h-56 w-full aspect-auto">
@@ -404,20 +412,20 @@ export default function ReportCashFormulaView({
                         axisLine={false}
                         width={60}
                         tickMargin={6}
-                        tickFormatter={(value) => formatCashValue(Number(value))}
+                        tickFormatter={(value) => formatCashValue(Number(value), locale)}
                       />
                       <ChartTooltip
                         cursor={false}
                         content={
                           <ChartTooltipContent
                             indicator="dashed"
-                            labelFormatter={(label) => `Дата: ${label}`}
+                            labelFormatter={(label) => t("reports_chart_date", { date: String(label) })}
                             formatter={(value, name) => {
                               const numeric = typeof value === "number" ? value : Number(value)
                               return (
                                 <div className="flex w-full items-center justify-between gap-3">
-                                  <span className="text-muted-foreground">{String(name) === "trendCents" ? "Тренд" : "Значение"}</span>
-                                  <span className="font-medium tabular-nums">{formatCashValue(Number.isFinite(numeric) ? numeric : 0)}</span>
+                                  <span className="text-muted-foreground">{String(name) === "trendCents" ? t("reports_chart_trend") : t("reports_chart_value")}</span>
+                                  <span className="font-medium tabular-nums">{formatCashValue(Number.isFinite(numeric) ? numeric : 0, locale)}</span>
                                 </div>
                               )
                             }}
@@ -442,37 +450,39 @@ export default function ReportCashFormulaView({
                       />
                     </AreaChart>
                   </ChartContainer>
-                  {!hasChartData && <p className="text-xs text-muted-foreground">Все значения по выбранному периоду равны 0.</p>}
+                  {!hasChartData && <p className="text-xs text-muted-foreground">{t("reports_all_values_zero")}</p>}
                 </>
               )}
             </Card>
 
             <div className="space-y-3">
-              <h2 className="text-base font-semibold">История начислений</h2>
+              <h2 className="text-base font-semibold">{t("reports_history")}</h2>
               {isLoading ? (
-                <Card className="p-4 text-sm text-muted-foreground">Загрузка истории...</Card>
+                <Card className="p-4 text-sm text-muted-foreground">{t("reports_loading_history")}</Card>
               ) : details.history.length === 0 ? (
-                <Card className="p-4 text-sm text-muted-foreground">По выбранному периоду история пустая.</Card>
+                <Card className="p-4 text-sm text-muted-foreground">{t("reports_history_empty")}</Card>
               ) : (
                 <div className="space-y-2">
                   {details.history.map((item) => (
                     <Card key={item.sessionId} className="p-4 space-y-2.5">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="font-semibold text-sm">{formatWorkDate(item.workDate)}</p>
+                          <p className="font-semibold text-sm">{formatWorkDate(item.workDate, locale)}</p>
                           <p className="text-xs text-muted-foreground">{item.cashRegisterName}</p>
                         </div>
-                        <p className="font-semibold text-sm">{formatCashValue(item.valueCents)}</p>
+                        <p className="font-semibold text-sm">{formatCashValue(item.valueCents, locale)}</p>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                         <span className="rounded bg-muted px-2 py-1">
-                          {STATUS_LABELS[item.cashSessionStatus] || item.cashSessionStatus}
+                          {statusLabels[item.cashSessionStatus] || item.cashSessionStatus}
                         </span>
-                        <span className="rounded bg-muted px-2 py-1">Смена {item.sessionId.slice(0, 8)}</span>
+                        <span className="rounded bg-muted px-2 py-1">{t("reports_shift_id", { id: item.sessionId.slice(0, 8) })}</span>
                       </div>
 
-                      <p className="text-xs text-muted-foreground">Внес: {item.actorName || "Не указано"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t("reports_entered_by", { name: item.actorName || t("common_not_specified") })}
+                      </p>
                     </Card>
                   ))}
                 </div>

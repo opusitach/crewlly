@@ -43,6 +43,15 @@ enum Weekday {
   SUN
 }
 
+enum InternalAccessLevel {
+  owner_view
+  employee_view
+}
+
+enum InternalAccessScope {
+  all_establishments
+}
+
 // ==========================================
 // ORGANIZATIONS / LOCATIONS
 // ==========================================
@@ -81,7 +90,8 @@ model Organization {
   payrollRuns           PayrollRun[]
   notifications         Notification[]
   earningAdjustments    EmployeeEarningAdjustment[]
-
+  internalAuditLogs     InternalAuditLog[]         @relation("InternalAuditOrg")
+  internalAccessSessions InternalAccessSession[]   @relation("InternalAccessSessionOrg")
   @@map("organizations")
 }
 
@@ -125,6 +135,7 @@ model User {
   status               String   @default("active") // active|invited|disabled
   primaryMode          String?  @map("primary_mode") // owner|worker
   onboardingReady      Boolean  @default(false) @map("onboarding_ready")
+  isInternal           Boolean  @default(false) @map("is_internal")
   activeOrganizationId String?  @map("active_organization_id") @db.Uuid
   passwordHash         String   @map("password_hash")
   createdAt            DateTime @default(now()) @map("created_at")
@@ -148,6 +159,9 @@ model User {
   cashSessionAuditLogs    CashSessionAuditLog[]  @relation("CashSessionAuditActor")
   createdEarningAdjustments EmployeeEarningAdjustment[] @relation("EmployeeEarningAdjustmentCreator")
   handoffNotesAuthored    ShiftHandoffNote[]     @relation("HandoffAuthorUser")
+  internalAccess          InternalGlobalAccess[]
+  internalAuditLogs       InternalAuditLog[]         @relation("InternalAuditActor")
+  internalAccessSessions  InternalAccessSession[]    @relation("InternalAccessSessionUser")
 
   @@map("users")
 }
@@ -1063,3 +1077,74 @@ model AppState {
 
   @@map("app_states")
 }
+
+// ==========================================
+// INTERNAL PLATFORM ACCESS
+// ==========================================
+
+model InternalAuditLog {
+  id             String              @id @default(uuid()) @db.Uuid
+  internalUserId String              @map("internal_user_id") @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  accessLevel    InternalAccessLevel @map("access_level")
+  action         String
+  entityType     String?             @map("entity_type")
+  entityId       String?             @map("entity_id")
+  metadata       Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  internalUser User         @relation("InternalAuditActor", fields: [internalUserId], references: [id], onDelete: Cascade)
+  organization Organization @relation("InternalAuditOrg", fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([internalUserId])
+  @@index([organizationId])
+  @@index([accessLevel])
+  @@index([action])
+  @@index([createdAt])
+  @@map("internal_audit_logs")
+}
+
+model InternalAccessSession {
+  id             String              @id @default(uuid()) @db.Uuid
+  internalUserId String              @map("internal_user_id") @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  accessLevel    InternalAccessLevel @map("access_level")
+
+  startedAt DateTime  @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  internalUser User         @relation("InternalAccessSessionUser", fields: [internalUserId], references: [id], onDelete: Cascade)
+  organization Organization @relation("InternalAccessSessionOrg", fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([internalUserId])
+  @@index([organizationId])
+  @@index([accessLevel])
+  @@index([startedAt])
+  @@index([endedAt])
+  @@index([internalUserId, endedAt])
+  @@map("internal_access_sessions")
+}
+
+model InternalGlobalAccess {
+  id          String              @id @default(uuid()) @db.Uuid
+  userId      String              @map("user_id") @db.Uuid
+  accessLevel InternalAccessLevel @map("access_level")
+  scope       InternalAccessScope @default(all_establishments) @map("scope")
+  enabled     Boolean             @default(true)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accessLevel, scope])
+  @@index([userId])
+  @@index([enabled])
+  @@index([accessLevel])
+  @@map("internal_global_access")
+}
+
+

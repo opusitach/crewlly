@@ -17,7 +17,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuthStore } from "@/lib/store/auth-store"
-import { formatIntervalWorkedDuration } from "@/lib/utils/interval-worked-duration"
+import { useTranslation } from "@/lib/i18n/context"
+import { resolveIntervalWorkedMinutes } from "@/lib/utils/interval-worked-duration"
 import { formatTimeValue } from "@/lib/utils/timezone"
 import {
   AlertCircle,
@@ -115,35 +116,29 @@ type ShiftDetailsViewProps = {
   }) => Promise<void>
 }
 
-const RULE_TYPE_LABELS: Record<Exclude<ProcedureRule["type"], "CASH">, string> = {
-  CHECKLIST: "Чек-лист",
-  INPUT: "Поле",
-  PHOTO: "Фото",
-}
-
 const integerTokenRegex = /^-?\d+$/
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/
 const timeInputPattern = /^([01]\d|2[0-3]):([0-5]\d)$/
 
-const formatDate = (raw: string) => {
+const formatDate = (raw: string, locale: string) => {
   if (dateOnlyPattern.test(raw)) {
     const [yearRaw, monthRaw, dayRaw] = raw.split("-")
     const year = Number(yearRaw)
     const month = Number(monthRaw)
     const day = Number(dayRaw)
     if (year && month && day) {
-      return new Date(year, month - 1, day).toLocaleDateString("ru-RU")
+      return new Date(year, month - 1, day).toLocaleDateString(locale)
     }
   }
 
   const parsed = new Date(raw)
   if (Number.isNaN(parsed.getTime())) return raw
-  return parsed.toLocaleDateString("ru-RU")
+  return parsed.toLocaleDateString(locale)
 }
 
 const formatTime = (raw: string | null, timeZone?: string | null) => formatTimeValue(raw, timeZone, "-")
 
-const formatDuration = (startAt: string, endAt: string) => {
+const formatDuration = (startAt: string, endAt: string, labels: { hours: string; minutes: string }) => {
   const start = new Date(startAt)
   const end = new Date(endAt)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "-"
@@ -151,9 +146,9 @@ const formatDuration = (startAt: string, endAt: string) => {
   const minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
   const hours = Math.floor(minutes / 60)
   const restMinutes = minutes % 60
-  if (hours === 0) return `${restMinutes} мин`
-  if (restMinutes === 0) return `${hours} ч`
-  return `${hours} ч ${restMinutes} мин`
+  if (hours === 0) return `${restMinutes} ${labels.minutes}`
+  if (restMinutes === 0) return `${hours} ${labels.hours}`
+  return `${hours} ${labels.hours} ${restMinutes} ${labels.minutes}`
 }
 
 const toTimeInputValue = (primary: string | null | undefined, timeZone?: string | null, fallback?: string | null) => {
@@ -164,19 +159,32 @@ const toTimeInputValue = (primary: string | null | undefined, timeZone?: string 
   return fallbackFormatted !== "-" ? fallbackFormatted : "00:00"
 }
 
-const formatInteger = (value: string) => {
+const formatInteger = (value: string, locale: string) => {
   if (!integerTokenRegex.test(value.trim())) return value
   const number = Number(value)
   if (!Number.isFinite(number)) return value
-  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(number)
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(number)
 }
 
-function RuleValue({ rule }: { rule: Exclude<ProcedureRule, { type: "CASH" }> }) {
+function RuleValue({
+  rule,
+  locale,
+  text,
+}: {
+  rule: Exclude<ProcedureRule, { type: "CASH" }>
+  locale: string
+  text: {
+    checklistEmpty: string
+    notFilled: string
+    photoMissing: string
+    comment: string
+  }
+}) {
   if (rule.type === "CHECKLIST") {
     const checkedIds = new Set((rule.answer?.checklistItems ?? []).filter((item) => item.isChecked).map((item) => item.itemId))
 
     if (rule.checklistItems.length === 0) {
-      return <p className="text-sm text-muted-foreground">Пункты чек-листа не заданы</p>
+      return <p className="text-sm text-muted-foreground">{text.checklistEmpty}</p>
     }
 
     return (
@@ -201,9 +209,9 @@ function RuleValue({ rule }: { rule: Exclude<ProcedureRule, { type: "CASH" }> })
   if (rule.type === "INPUT") {
     const value = (rule.answer?.inputValue ?? "").trim()
     if (!value) {
-      return <p className="text-sm text-muted-foreground">Не заполнено</p>
+      return <p className="text-sm text-muted-foreground">{text.notFilled}</p>
     }
-    return <p className="text-base font-medium">{formatInteger(value)}</p>
+    return <p className="text-base font-medium">{formatInteger(value, locale)}</p>
   }
 
   const photoUrl = rule.answer?.photoUrl ?? null
@@ -219,11 +227,11 @@ function RuleValue({ rule }: { rule: Exclude<ProcedureRule, { type: "CASH" }> })
           imageClassName="w-full max-h-60 rounded-lg object-cover"
         />
       ) : (
-        <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">Фото не добавлено</div>
+        <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">{text.photoMissing}</div>
       )}
       {photoComment && (
         <div className="rounded-md bg-muted/40 border border-border/60 px-3 py-2 text-sm">
-          <p className="text-xs text-muted-foreground">Комментарий</p>
+          <p className="text-xs text-muted-foreground">{text.comment}</p>
           <p className="mt-1">{photoComment}</p>
         </div>
       )}
@@ -239,8 +247,15 @@ export default function ShiftDetailsView({
   canEditActualHours = false,
   onEditActualHours,
 }: ShiftDetailsViewProps) {
+  const { t, language } = useTranslation()
   const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
-  const workedDuration = formatIntervalWorkedDuration(interval)
+  const locale = language === "en" ? "en-US" : "ru-RU"
+  const durationLabels = { hours: t("hours_short"), minutes: t("minutes_suffix") }
+  const workedMinutes = resolveIntervalWorkedMinutes(interval)
+  const workedDuration =
+    workedMinutes == null || !Number.isFinite(workedMinutes)
+      ? ""
+      : formatDuration(new Date(0).toISOString(), new Date(Math.max(0, workedMinutes) * 60000).toISOString(), durationLabels)
   const [procedures, setProcedures] = useState<{
     open: ProcedureView | null
     close: ProcedureView | null
@@ -274,7 +289,7 @@ export default function ShiftDetailsView({
         const json = (await response.json().catch(() => null)) as ProcedureResponse | null
 
         if (!response.ok) {
-          throw new Error(json?.error || "Не удалось загрузить данные процедур")
+          throw new Error(json?.error || t("verification_load_procedures_error"))
         }
 
         const procedureRows = Array.isArray(json?.data?.procedures) ? json.data.procedures : []
@@ -290,14 +305,14 @@ export default function ShiftDetailsView({
           open: null,
           close: null,
         })
-        setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить данные процедур")
+        setError(loadError instanceof Error ? loadError.message : t("verification_load_procedures_error"))
       } finally {
         setIsLoading(false)
       }
     }
 
     void load()
-  }, [interval.id])
+  }, [interval.id, t])
 
   const renderProcedureCard = (input: {
     title: string
@@ -336,13 +351,18 @@ export default function ShiftDetailsView({
         {!isLoading && !error && !input.procedure && <p className="text-sm text-muted-foreground">{input.emptyText}</p>}
 
         {!isLoading && !error && input.procedure && visibleRules.length === 0 && (
-          <p className="text-sm text-muted-foreground">Нет данных для отображения.</p>
+          <p className="text-sm text-muted-foreground">{t("verification_no_display_data")}</p>
         )}
 
         {!isLoading && !error && input.procedure && visibleRules.length > 0 && (
           <div className="space-y-3">
             {visibleRules.map((rule) => {
-              const ruleTypeLabel = RULE_TYPE_LABELS[rule.type as Exclude<ProcedureRule["type"], "CASH">]
+              const ruleTypeLabel =
+                rule.type === "CHECKLIST"
+                  ? t("verification_rule_checklist")
+                  : rule.type === "INPUT"
+                    ? t("verification_rule_input")
+                    : t("verification_rule_photo")
 
               return (
                 <Card key={rule.id} className="p-3 space-y-3 border-border/70">
@@ -359,7 +379,16 @@ export default function ShiftDetailsView({
                     </Badge>
                   </div>
 
-                  <RuleValue rule={rule} />
+                  <RuleValue
+                    rule={rule}
+                    locale={locale}
+                    text={{
+                      checklistEmpty: t("verification_checklist_empty"),
+                      notFilled: t("verification_not_filled"),
+                      photoMissing: t("verification_photo_missing"),
+                      comment: t("verification_comment"),
+                    }}
+                  />
                 </Card>
               )
             })}
@@ -388,12 +417,12 @@ export default function ShiftDetailsView({
 
     const normalizedReason = editReason.trim()
     if (!normalizedReason) {
-      setEditError("Укажите причину изменения")
+      setEditError(t("verification_reason_required"))
       return
     }
 
     if (!timeInputPattern.test(editedOpenedTime) || !timeInputPattern.test(editedClosedTime)) {
-      setEditError("Укажите корректное время начала и конца")
+      setEditError(t("verification_invalid_time"))
       return
     }
 
@@ -409,7 +438,7 @@ export default function ShiftDetailsView({
       setIsEditDialogOpen(false)
       setEditReason("")
     } catch (submitError) {
-      setEditError(submitError instanceof Error ? submitError.message : "Не удалось изменить фактическое время")
+      setEditError(submitError instanceof Error ? submitError.message : t("verification_save_actual_time_error"))
     } finally {
       setIsEditSubmitting(false)
     }
@@ -417,45 +446,44 @@ export default function ShiftDetailsView({
 
   return (
     <div className="min-h-screen bg-background pb-6 max-w-md mx-auto">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background">
         <div className="p-4">
-          <div className="flex items-center justify-between">
-            <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full -ml-2">
               <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
             </Button>
-            <h1 className="text-xl font-semibold">Детали смены</h1>
-            <div className="w-10" />
+            <h1 className="text-xl font-semibold">{t("verification_shift_details_title")}</h1>
           </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="px-4 pb-4 space-y-4">
         <Card className="p-4 space-y-3">
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center">
               <User className="h-5 w-5 text-primary" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="font-semibold text-base">{interval.employee.fullName || "Сотрудник"}</p>
-              <p className="text-sm text-muted-foreground">{interval.position?.name || "Без позиции"}</p>
+              <p className="font-semibold text-base">{interval.employee.fullName || t("common_employee_fallback")}</p>
+              <p className="text-sm text-muted-foreground">{interval.position?.name || t("common_no_position")}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="rounded-md bg-muted/40 border border-border/60 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground">Дата</p>
-              <p className="font-medium mt-0.5">{formatDate(interval.workday.workDate)}</p>
+              <p className="text-[11px] text-muted-foreground">{t("common_date")}</p>
+              <p className="font-medium mt-0.5">{formatDate(interval.workday.workDate, locale)}</p>
             </div>
             <div className="rounded-md bg-muted/40 border border-border/60 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground">Длительность</p>
-              <p className="font-medium mt-0.5">{formatDuration(interval.startAt, interval.endAt)}</p>
+              <p className="text-[11px] text-muted-foreground">{t("common_duration")}</p>
+              <p className="font-medium mt-0.5">{formatDuration(interval.startAt, interval.endAt, durationLabels)}</p>
             </div>
           </div>
 
           <div className="space-y-1 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4" strokeWidth={1.5} />
-              <span>{formatDate(interval.workday.workDate)}</span>
+              <span>{formatDate(interval.workday.workDate, locale)}</span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" strokeWidth={1.5} />
@@ -466,7 +494,10 @@ export default function ShiftDetailsView({
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" strokeWidth={1.5} />
               <span>
-                Открыта: {formatTime(interval.openedAt, organizationTimeZone)} • Закрыта: {formatTime(interval.closedAt, organizationTimeZone)}
+                {t("verification_opened_closed", {
+                  opened: formatTime(interval.openedAt, organizationTimeZone),
+                  closed: formatTime(interval.closedAt, organizationTimeZone),
+                })}
                 {workedDuration ? ` • ${workedDuration}` : ""}
               </span>
             </div>
@@ -476,12 +507,12 @@ export default function ShiftDetailsView({
             {interval.workday.status === "published" ? (
               <Badge variant="secondary" className="bg-green-500/10 text-green-700 border-green-500/20">
                 <CheckCircle2 className="h-3 w-3 mr-1" strokeWidth={1.5} />
-                Проверено
+                {t("verification_checked")}
               </Badge>
             ) : (
               <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
                 <AlertCircle className="h-3 w-3 mr-1" strokeWidth={1.5} />
-                Требует проверки
+                {t("verification_needs_review")}
               </Badge>
             )}
           </div>
@@ -494,24 +525,24 @@ export default function ShiftDetailsView({
               disabled={!canEditActualHours || isEditSubmitting}
               onClick={() => handleEditDialogOpenChange(true)}
             >
-              {isEditSubmitting ? "Сохраняем..." : "Изменить часы"}
+              {isEditSubmitting ? t("verification_saving") : t("verification_change_hours")}
             </Button>
           )}
         </Card>
 
         {renderProcedureCard({
-          title: "Заполненные данные открытия",
+          title: t("verification_open_data_title"),
           stageLabel: "OPEN",
-          loadingText: "Загрузка данных открытия...",
-          emptyText: "Для этой смены пока нет заполненных правил открытия.",
+          loadingText: t("verification_loading_open_data"),
+          emptyText: t("verification_open_rules_empty"),
           procedure: procedures.open,
         })}
 
         {renderProcedureCard({
-          title: "Заполненные данные закрытия",
+          title: t("verification_close_data_title"),
           stageLabel: "CLOSE",
-          loadingText: "Загрузка данных закрытия...",
-          emptyText: "Для этой смены пока нет заполненных правил закрытия.",
+          loadingText: t("verification_loading_close_data"),
+          emptyText: t("verification_close_rules_empty"),
           procedure: procedures.close,
         })}
 
@@ -524,23 +555,20 @@ export default function ShiftDetailsView({
             void onMarkReviewed()
           }}
         >
-          {isReviewed ? "Проверено" : isMarkReviewedLoading ? "Проверяем..." : "Проверено"}
+          {isReviewed ? t("verification_checked") : isMarkReviewedLoading ? t("verification_checking") : t("verification_checked")}
         </Button>
       </div>
 
       <Dialog open={isEditDialogOpen} onOpenChange={handleEditDialogOpenChange}>
         <DialogContent className="max-w-md gap-4">
           <DialogHeader>
-            <DialogTitle>Изменить фактическое время</DialogTitle>
-            <DialogDescription>
-              Изменится только строка «Открыта / Закрыта». Если время конца раньше времени начала, смена считается
-              завершенной на следующий день.
-            </DialogDescription>
+            <DialogTitle>{t("verification_edit_actual_time_title")}</DialogTitle>
+            <DialogDescription>{t("verification_edit_actual_time_desc")}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-shift-opened-time">Начало</Label>
+              <Label htmlFor="edit-shift-opened-time">{t("verification_start")}</Label>
               <Input
                 id="edit-shift-opened-time"
                 type="time"
@@ -553,7 +581,7 @@ export default function ShiftDetailsView({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-shift-closed-time">Конец</Label>
+              <Label htmlFor="edit-shift-closed-time">{t("verification_end")}</Label>
               <Input
                 id="edit-shift-closed-time"
                 type="time"
@@ -566,13 +594,13 @@ export default function ShiftDetailsView({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-shift-reason">Причина</Label>
+              <Label htmlFor="edit-shift-reason">{t("verification_reason")}</Label>
               <Textarea
                 id="edit-shift-reason"
                 value={editReason}
                 disabled={isEditSubmitting}
                 onChange={(event) => setEditReason(event.target.value)}
-                placeholder="Например: исправляем неверно зафиксированное время"
+                placeholder={t("verification_reason_placeholder")}
               />
             </div>
 
@@ -585,10 +613,10 @@ export default function ShiftDetailsView({
 
           <DialogFooter>
             <Button type="button" variant="ghost" disabled={isEditSubmitting} onClick={() => handleEditDialogOpenChange(false)}>
-              Отмена
+              {t("common_cancel")}
             </Button>
             <Button type="button" disabled={isEditSubmitting} onClick={() => void handleEditActualHoursSubmit()}>
-              {isEditSubmitting ? "Сохраняем..." : "Сохранить"}
+              {isEditSubmitting ? t("verification_saving") : t("common_save")}
             </Button>
           </DialogFooter>
         </DialogContent>

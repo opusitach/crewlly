@@ -15,7 +15,8 @@ import {
   subDays,
   startOfDay,
 } from "date-fns"
-import { ru } from "date-fns/locale"
+import { enUS, ru } from "date-fns/locale"
+import { useTranslation } from "@/lib/i18n/context"
 
 interface DateRangePickerProps {
   isOpen: boolean
@@ -26,6 +27,9 @@ interface DateRangePickerProps {
 }
 
 export default function DateRangePicker({ isOpen, onClose, startDate, endDate, onApply }: DateRangePickerProps) {
+  const { t, language } = useTranslation()
+  const dateLocale = language === "en" ? enUS : ru
+  const weekdayLabels = language === "en" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedStart, setSelectedStart] = useState<Date | null>(startDate)
   const [selectedEnd, setSelectedEnd] = useState<Date | null>(endDate)
@@ -36,13 +40,13 @@ export default function DateRangePicker({ isOpen, onClose, startDate, endDate, o
   const today = startOfDay(new Date())
 
   const presets = [
-    { label: "Сегодня", getValue: () => ({ start: today, end: today }) },
-    { label: "Вчера", getValue: () => ({ start: subDays(today, 1), end: subDays(today, 1) }) },
-    { label: "Последние 7 дней", getValue: () => ({ start: subDays(today, 6), end: today }) },
-    { label: "Последние 30 дней", getValue: () => ({ start: subDays(today, 29), end: today }) },
-    { label: "Этот месяц", getValue: () => ({ start: startOfMonth(today), end: today }) },
+    { label: t("reports_today"), getValue: () => ({ start: today, end: today }) },
+    { label: t("reports_yesterday"), getValue: () => ({ start: subDays(today, 1), end: subDays(today, 1) }) },
+    { label: t("reports_last_7_days"), getValue: () => ({ start: subDays(today, 6), end: today }) },
+    { label: t("reports_last_30_days"), getValue: () => ({ start: subDays(today, 29), end: today }) },
+    { label: t("reports_this_month"), getValue: () => ({ start: startOfMonth(today), end: today }) },
     {
-      label: "Прошлый месяц",
+      label: t("reports_last_month"),
       getValue: () => {
         const lastMonth = subDays(startOfMonth(today), 1)
         return { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) }
@@ -60,7 +64,7 @@ export default function DateRangePicker({ isOpen, onClose, startDate, endDate, o
   const handleDateClick = (date: Date) => {
     // Don't allow future dates
     if (isAfter(date, today)) {
-      setError("Нельзя выбирать будущие даты")
+      setError(t("reports_no_future_dates"))
       return
     }
 
@@ -119,7 +123,7 @@ export default function DateRangePicker({ isOpen, onClose, startDate, endDate, o
       <div className="bg-card text-card-foreground flex flex-col gap-4 rounded-xl border py-6 rounded-t-3xl rounded-b-none border-b-0 shadow-2xl overflow-hidden max-w-md mx-auto w-full animate-in slide-in-from-bottom duration-300">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-lg font-semibold">Выбрать период</h2>
+          <h2 className="text-lg font-semibold">{t("reports_select_period")}</h2>
           <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full h-8 w-8">
             <X className="h-5 w-5" strokeWidth={1.5} />
           </Button>
@@ -129,10 +133,10 @@ export default function DateRangePicker({ isOpen, onClose, startDate, endDate, o
         {selectedStart && selectedEnd && (
           <div className="px-4 pt-3 pb-2">
             <div className="text-center">
-              <p className="text-sm text-muted-foreground">Выбранный период</p>
+              <p className="text-sm text-muted-foreground">{t("reports_selected_period")}</p>
               <p className="font-semibold text-base mt-0.5">
-                {format(selectedStart, "dd.MM.yyyy", { locale: ru })} —{" "}
-                {format(selectedEnd, "dd.MM.yyyy", { locale: ru })}
+                {format(selectedStart, "dd.MM.yyyy", { locale: dateLocale })} —{" "}
+                {format(selectedEnd, "dd.MM.yyyy", { locale: dateLocale })}
               </p>
             </div>
           </div>
@@ -176,7 +180,7 @@ export default function DateRangePicker({ isOpen, onClose, startDate, endDate, o
             >
               <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
             </Button>
-            <h3 className="font-semibold">{format(currentMonth, "LLLL yyyy", { locale: ru })}</h3>
+            <h3 className="font-semibold">{format(currentMonth, "LLLL yyyy", { locale: dateLocale })}</h3>
             <Button
               variant="ghost"
               size="icon"
@@ -199,7 +203,7 @@ export default function DateRangePicker({ isOpen, onClose, startDate, endDate, o
 
           {/* Day Headers */}
           <div className="grid grid-cols-7 gap-1 mb-2">
-            {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
+            {weekdayLabels.map((day) => (
               <div key={day} className="text-center text-xs font-medium text-muted-foreground py-1">
                 {day}
               </div>
@@ -244,10 +248,10 @@ export default function DateRangePicker({ isOpen, onClose, startDate, endDate, o
         {/* Actions */}
         <div className="p-4 pt-2 pb-safe flex gap-2 border-t border-border">
           <Button variant="outline" onClick={handleReset} className="flex-1 h-11 bg-transparent">
-            Сбросить
+            {t("common_reset")}
           </Button>
           <Button onClick={handleApply} disabled={!canApply} className="flex-1 h-11">
-            Применить
+            {t("common_apply")}
           </Button>
         </div>
       </div>

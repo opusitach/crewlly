@@ -44,8 +44,9 @@ describe("POST /api/work-intervals/[id]/cancel", () => {
 
   it("sends owner notification with cancel reason", async () => {
     mocked.getAuthorizedInterval.mockResolvedValue({
-      session: {
+      access: {
         user: { id: "worker_1", fullName: "Иван Петров", email: "worker@example.com" },
+        organizationId: "org_1",
         organization: { id: "org_1" },
       },
       interval: {
@@ -119,8 +120,9 @@ describe("POST /api/work-intervals/[id]/cancel", () => {
     mocked.toEventDateLabel.mockReturnValue("08.03.2026")
 
     mocked.getAuthorizedInterval.mockResolvedValue({
-      session: {
+      access: {
         user: { id: "manager_1", fullName: "Мария Смирнова", email: "manager@example.com" },
+        organizationId: "org_1",
         organization: { id: "org_1" },
       },
       interval: {

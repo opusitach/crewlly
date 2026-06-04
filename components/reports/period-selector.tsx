@@ -3,7 +3,8 @@
 import { Button } from "@/components/ui/button"
 import { Calendar } from "lucide-react"
 import { format } from "date-fns"
-import { ru } from "date-fns/locale"
+import { enUS, ru } from "date-fns/locale"
+import { useTranslation } from "@/lib/i18n/context"
 
 interface PeriodSelectorProps {
   startDate: Date
@@ -12,8 +13,10 @@ interface PeriodSelectorProps {
 }
 
 export default function PeriodSelector({ startDate, endDate, onClick }: PeriodSelectorProps) {
+  const { t, language } = useTranslation()
+  const dateLocale = language === "en" ? enUS : ru
   const formatDate = (date: Date) => {
-    return format(date, "dd.MM", { locale: ru })
+    return format(date, "dd.MM", { locale: dateLocale })
   }
 
   return (
@@ -25,7 +28,7 @@ export default function PeriodSelector({ startDate, endDate, onClick }: PeriodSe
       <div className="flex items-center gap-2">
         <Calendar className="h-4 w-4 text-primary" strokeWidth={1.5} />
         <span className="font-medium text-sm">
-          Период: {formatDate(startDate)} — {formatDate(endDate)}
+          {t("reports_period_button", { start: formatDate(startDate), end: formatDate(endDate) })}
         </span>
       </div>
     </Button>

@@ -58,7 +58,7 @@ export function BottomSheet({
   return (
     // HIG overlay: lighter than 50% — 25-30% is iOS standard
     <div
-      className="fixed inset-0 z-[70] flex items-end bg-black/30 dark:bg-black/50 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[70] flex items-end bg-black/40 dark:bg-black/60"
       onClick={onClose}
       aria-hidden="true"
     >
@@ -69,7 +69,7 @@ export function BottomSheet({
           // Glass card, rounded-t-[28px] per HIG sheets
           "relative mx-auto flex max-h-[94dvh] w-full max-w-md flex-col overflow-hidden",
           "rounded-t-[1.75rem] rounded-b-none",
-          "glass-card border border-b-0 border-white/25 dark:border-white/10",
+          "bg-background border border-b-0 border-border",
           "shadow-elev-modal",
           "animate-in slide-in-from-bottom duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
           "outline-none",

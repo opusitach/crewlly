@@ -83,7 +83,7 @@ services:
       - |
         /bin/sh /app/docker/dev-sync-deps.sh
         attempts=0
-        until npx prisma@5.19.1 db push; do
+        until npx prisma@5.19.1 db push --accept-data-loss; do
           attempts=$$((attempts + 1))
           if [ "$$attempts" -ge 30 ]; then
             echo "Prisma db push failed after $$attempts attempts"
@@ -114,14 +114,16 @@ services:
       dockerfile: Dockerfile
       target: deps
     working_dir: /app
-    command: /bin/sh -ec "/bin/sh /app/docker/dev-sync-deps.sh && npx prisma@5.19.1 generate && npm run dev -- --hostname 0.0.0.0 -p 3001"
+    command: /bin/sh -ec "/bin/sh /app/docker/dev-sync-deps.sh && npx prisma@5.19.1 generate && npm run dev -- --turbopack --hostname 0.0.0.0 -p 3001"
     restart: unless-stopped
+    cpus: '4'
     environment:
       NODE_ENV: development
       COOKIE_SECURE: "false"
       NEXT_TELEMETRY_DISABLED: "1"
       WATCHPACK_POLLING: "1"
       CHOKIDAR_USEPOLLING: "1"
+      RAYON_NUM_THREADS: "4"
       DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
       PORT: 3001
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
@@ -158,14 +160,16 @@ services:
       dockerfile: Dockerfile
       target: deps
     working_dir: /app
-    command: /bin/sh -ec "/bin/sh /app/docker/dev-sync-deps.sh && npx prisma@5.19.1 generate && npm run dev -- --hostname 0.0.0.0 -p 3000"
+    command: /bin/sh -ec "/bin/sh /app/docker/dev-sync-deps.sh && npx prisma@5.19.1 generate && npm run dev -- --turbopack --hostname 0.0.0.0 -p 3000"
     restart: unless-stopped
+    cpus: '4'
     environment:
       NODE_ENV: development
       COOKIE_SECURE: "false"
       NEXT_TELEMETRY_DISABLED: "1"
       WATCHPACK_POLLING: "1"
       CHOKIDAR_USEPOLLING: "1"
+      RAYON_NUM_THREADS: "4"
       DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
       PORT: 3000
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
@@ -192,6 +196,41 @@ services:
     depends_on:
       back:
         condition: service_started
+
+  internal_admin:
+    build:
+      context: .
+      dockerfile: internal-admin/Dockerfile
+    command: npm run start
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@db:5432/app}
+      PORT: 3002
+      MAIN_APP_URL: ${MAIN_APP_URL:-http://localhost:3000}
+      ADMIN_APP_URL: ${ADMIN_APP_URL:-http://localhost:3002}
+      NEXT_PUBLIC_MAIN_APP_URL: ${MAIN_APP_URL:-http://localhost:3000}
+      SESSION_COOKIE_DOMAIN: ${SESSION_COOKIE_DOMAIN:-localhost}
+      COOKIE_SECURE: "false"
+      INTERNAL_ADMIN_ENABLED: "true"
+    ports:
+      - "${DEV_ADMIN_PORT:-3002}:3002"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3002/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   dev_pgdata:

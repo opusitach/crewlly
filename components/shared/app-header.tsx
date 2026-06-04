@@ -3,10 +3,12 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronDown, Bell } from "lucide-react"
+import { useTranslation } from "@/lib/i18n/context"
 
 interface AppHeaderProps {
   title: string
   titleHref?: string
+  showLogo?: boolean
   onBack?: () => void
   titleAlign?: "center" | "left"
   showVenueSelector?: boolean
@@ -22,6 +24,7 @@ interface AppHeaderProps {
 export default function AppHeader({
   title,
   titleHref,
+  showLogo,
   onBack,
   titleAlign = "center",
   showVenueSelector,
@@ -33,6 +36,7 @@ export default function AppHeader({
   avatarUrl,
   userName,
 }: AppHeaderProps) {
+  const { t } = useTranslation()
   const hasUnreadBadge = typeof unreadCount === "number" && unreadCount > 0
   const unreadBadgeLabel = hasUnreadBadge ? (unreadCount > 9 ? "9+" : String(unreadCount)) : null
 
@@ -44,12 +48,21 @@ export default function AppHeader({
       .toUpperCase()
       .slice(0, 2)
 
+  const titleContent = (
+    <span className="flex items-center gap-0.5">
+      {showLogo && (
+        <img src="/logo.svg" alt="" aria-hidden="true" className="block flex-shrink-0" style={{ width: 36, height: 36, minWidth: 36 }} />
+      )}
+      {title}
+    </span>
+  )
+
   const titleNode = titleHref ? (
     <Link href={titleHref} className="hover:opacity-80 transition-opacity">
-      {title}
+      {titleContent}
     </Link>
   ) : (
-    title
+    titleContent
   )
 
   // 44pt icon button — matches HIG minimum tap target
@@ -57,7 +70,7 @@ export default function AppHeader({
     "relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-fill-3 active:bg-fill-2 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
 
   return (
-    <div className="sticky top-0 z-10 glass-chrome">
+    <div className="sticky top-0 z-10 bg-background flex-shrink-0">
       <div className="px-4 py-2 space-y-2">
         <div className="flex items-center justify-between gap-2 h-11">
           {/* Left slot */}
@@ -67,7 +80,7 @@ export default function AppHeader({
                 <button
                   type="button"
                   onClick={onBack}
-                  aria-label="Назад"
+                  aria-label={t("header_back")}
                   className={iconBtnCls}
                 >
                   <ChevronLeft className="h-5 w-5" strokeWidth={2} />
@@ -81,7 +94,7 @@ export default function AppHeader({
                 <button
                   type="button"
                   onClick={onBack}
-                  aria-label="Назад"
+                  aria-label={t("header_back")}
                   className={iconBtnCls}
                 >
                   <ChevronLeft className="h-5 w-5" strokeWidth={2} />
@@ -101,8 +114,8 @@ export default function AppHeader({
                 onClick={onNotificationClick}
                 aria-label={
                   hasUnreadBadge
-                    ? `Уведомления, ${unreadCount} непрочитанных`
-                    : "Уведомления"
+                    ? t("header_notifications_unread").replace("{count}", String(unreadCount))
+                    : t("header_notifications")
                 }
                 className={iconBtnCls}
               >
@@ -121,13 +134,13 @@ export default function AppHeader({
             <button
               type="button"
               onClick={onAvatarClick}
-              aria-label={userName ? `Профиль: ${userName}` : "Профиль"}
+              aria-label={userName ? `${t("header_profile")}: ${userName}` : t("header_profile")}
               className={`${iconBtnCls} p-0.5`}
             >
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
-                  alt={userName ?? "Аватар пользователя"}
+                  alt={userName ?? t("header_avatar")}
                   className="h-full w-full rounded-full object-cover"
                 />
               ) : (
@@ -147,7 +160,7 @@ export default function AppHeader({
             onClick={onVenueChange}
           >
             <span className="truncate">
-              {selectedVenue === "all" ? "Все заведения" : (selectedVenue ?? "Выберите заведение")}
+              {selectedVenue === "all" ? t("header_all_venues") : (selectedVenue ?? t("header_select_venue"))}
             </span>
             <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0 ml-2" strokeWidth={1.5} />
           </Button>

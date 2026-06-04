@@ -12,6 +12,7 @@ import { toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-ev
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
 import { finalizeWorkIntervalClose, isProceduresSchemaMissing } from "@/lib/work-intervals/close"
 import { HANDOFF_NOTE_MAX_LENGTH, upsertHandoffNote } from "@/lib/work-intervals/handoff-notes"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 type RouteContext = { params: Promise<{ id: string }> }
 const forceSchema = z.object({
@@ -24,7 +25,7 @@ const forceSchema = z.object({
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
   const {
-    session,
+    access,
     interval,
     hasManagementAccess,
     effectiveStatus,
@@ -61,7 +62,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const actorName = toEventActorName(
-    { fullName: session?.user.fullName, email: session?.user.email },
+    { fullName: access?.user.fullName, email: access?.user.email },
     "Сотрудник",
   )
   const workDateLabel = toEventDateLabel(interval.workday.workDate)
@@ -79,7 +80,7 @@ export async function POST(request: Request, context: RouteContext) {
       intervalId: interval.id,
       ...(notificationWorkDate ? { workDate: notificationWorkDate } : {}),
     },
-    excludeUserId: session?.user.id ?? null,
+    excludeUserId: access?.user.id ?? null,
   }
 
   const closeWithoutProcedures = async () => {
@@ -92,7 +93,7 @@ export async function POST(request: Request, context: RouteContext) {
         workdayId: interval.workday.id,
         locationId: interval.workday.locationId,
         closedAt: resolvedClosedAt ?? new Date(),
-        closedByOwnerId: force ? session?.user.id ?? null : null,
+        closedByOwnerId: force ? access?.user.id ?? null : null,
         closeOverrideReason: force ? normalizedReason ?? null : null,
         notification,
         syncWorkday: false,
@@ -102,7 +103,7 @@ export async function POST(request: Request, context: RouteContext) {
           authorIntervalId: interval.id,
           locationId: interval.workday.locationId,
           authorEmployeeId: interval.employeeId,
-          authorUserId: session?.user.id ?? null,
+          authorUserId: access?.user.id ?? null,
           text: normalizedHandoffNote,
           authorClosedAt: closed.closedAt,
         })
@@ -218,7 +219,7 @@ export async function POST(request: Request, context: RouteContext) {
         workdayId: interval.workday.id,
         locationId: interval.workday.locationId,
         closedAt: resolvedClosedAt ?? new Date(),
-        closedByOwnerId: force ? session?.user.id ?? null : null,
+        closedByOwnerId: force ? access?.user.id ?? null : null,
         closeOverrideReason: force ? normalizedReason ?? null : null,
         notification,
       })
@@ -228,7 +229,7 @@ export async function POST(request: Request, context: RouteContext) {
           authorIntervalId: interval.id,
           locationId: interval.workday.locationId,
           authorEmployeeId: interval.employeeId,
-          authorUserId: session?.user.id ?? null,
+          authorUserId: access?.user.id ?? null,
           text: normalizedHandoffNote,
           authorClosedAt: result.closedAt,
         })
@@ -244,6 +245,15 @@ export async function POST(request: Request, context: RouteContext) {
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error, missing: (result as any).missing ?? [] }, { status: 400 })
+    }
+
+    if (access) {
+      void logInternalAction(access, {
+        action: INTERNAL_ACTIONS.WORK_INTERVAL_CLOSE,
+        entityType: "work_interval",
+        entityId: interval.id,
+        metadata: { forced: (result as any).forced ?? false },
+      })
     }
 
     return NextResponse.json({

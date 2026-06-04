@@ -12,9 +12,10 @@ import {
   isSameMonth,
   startOfMonth,
   subMonths,
+  type Locale,
 } from "date-fns"
-import { ru } from "date-fns/locale"
-import { ArrowLeft, Calculator, ChevronLeft, Plus, RotateCcw, X } from "lucide-react"
+import { enUS, ru } from "date-fns/locale"
+import { ArrowLeft, Calculator, ChevronLeft, Plus, RotateCcw, SlidersHorizontal, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -35,21 +36,14 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { GlassCalendar, type GlassCalendarDay, type GlassCalendarView } from "@/components/ui/glass-calendar"
-import { MonthPicker } from "@/components/shifts/month-picker"
+import { type GlassCalendarDay, type GlassCalendarView } from "@/components/ui/glass-calendar"
+import { ScheduleCalendar } from "@/components/ui/schedule-calendar"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { useShiftStore } from "@/lib/store/shift-store"
@@ -59,6 +53,8 @@ import { formatDate, getMonthCalendarDays, getWeekDays, parseDate } from "@/lib/
 import { formatTimeValue } from "@/lib/utils/timezone"
 import type { IntervalConflict, WorkInterval } from "@/lib/types/shift"
 import { decodeCashProcedureValues } from "@/lib/cash/procedure-values"
+import { useTranslation } from "@/lib/i18n/context"
+import type { TranslationKey } from "@/lib/i18n/translations"
 
 const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 const INTERVAL_OVERLAP_ERROR_CODE = "INTERVAL_OVERLAP"
@@ -67,13 +63,13 @@ const STATUS_SYNC_INTERVAL_MS = 3000
 
 const capitalizeLabel = (value: string) => (value.length > 0 ? value.charAt(0).toUpperCase() + value.slice(1) : value)
 
-const formatShiftWord = (count: number) => {
+const formatShiftWord = (count: number, t: (key: TranslationKey) => string) => {
   const mod10 = count % 10
   const mod100 = count % 100
 
-  if (mod10 === 1 && mod100 !== 11) return "смена"
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "смены"
-  return "смен"
+  if (mod10 === 1 && mod100 !== 11) return t("shift_one")
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return t("shift_few")
+  return t("shift_many")
 }
 
 const STATUS_STYLES = {
@@ -202,18 +198,18 @@ const normalizeFormulaCalculations = (raw: unknown): CashFormulaCalculations | n
   }
 }
 
-const STATUS_FILTERS: { key: IntervalUiStatus["key"]; label: string }[] = [
-  { key: "scheduled", label: "Запланирована" },
-  { key: "in_progress", label: "Идет" },
-  { key: "completed", label: "Завершена" },
-  { key: "canceled", label: "Отменена" },
-  { key: "conflict", label: "Конфликт" },
+const STATUS_FILTERS: { key: IntervalUiStatus["key"]; labelKey: TranslationKey }[] = [
+  { key: "scheduled", labelKey: "dash_shift_status_planned" },
+  { key: "in_progress", labelKey: "dash_shift_status_active" },
+  { key: "completed", labelKey: "dash_shift_status_done" },
+  { key: "canceled", labelKey: "dash_shift_status_cancelled" },
+  { key: "conflict", labelKey: "dash_shift_status_conflict" },
 ]
 
 const CUSTOM_PAY_OPTIONS = [
-  { key: "hourly", label: "Почасовая", placeholder: "180" },
-  { key: "fixed_shift", label: "Фикс", placeholder: "2500" },
-  { key: "percent_revenue", label: "Процент", placeholder: "3" },
+  { key: "hourly", labelKey: "planner_pay_hourly", placeholder: "180" },
+  { key: "fixed_shift", labelKey: "planner_pay_fixed", placeholder: "2500" },
+  { key: "percent_revenue", labelKey: "planner_pay_percent", placeholder: "3" },
 ] as const
 
 type CustomPayKey = (typeof CUSTOM_PAY_OPTIONS)[number]["key"]
@@ -319,10 +315,10 @@ const isIntervalStartInPast = (dateValue: string, timeValue: string, now = new D
   return startAt.getTime() < now.getTime()
 }
 
-const formatShiftDateForToast = (dateValue: string) => {
+const formatShiftDateForToast = (dateValue: string, dateLocale: Locale) => {
   const parsedDate = parseDate(dateValue)
   if (!isValid(parsedDate)) return dateValue
-  return format(parsedDate, "d MMMM yyyy", { locale: ru })
+  return format(parsedDate, "d MMMM yyyy", { locale: dateLocale })
 }
 
 const normalizeCancelReason = (value?: string | null) => value?.trim().replace(/\s+/gu, " ") ?? ""
@@ -341,6 +337,9 @@ export default function ShiftsView({
   externalHeader = false,
 }: ShiftsViewProps) {
   const { toast } = useToast()
+  const { t, language } = useTranslation()
+  const dateLocale = language === "en" ? enUS : ru
+  const weekdayLabels = language === "en" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : WEEK_DAYS
   const organizationTimeZone = useAuthStore((state) => state.organization?.timezone)
   const {
     workdays,
@@ -362,10 +361,10 @@ export default function ShiftsView({
   const [panelReturnView, setPanelReturnView] = useState<"list" | "details">("list")
   const monthViewRef = useRef<HTMLDivElement | null>(null)
   const weekViewRef = useRef<HTMLDivElement | null>(null)
-  const contentRef = useRef<HTMLDivElement | null>(null)
+  const panelContainerRef = useRef<HTMLDivElement | null>(null)
   const [monthViewHeight, setMonthViewHeight] = useState<number | null>(null)
   const [weekViewHeight, setWeekViewHeight] = useState<number | null>(null)
-  const [contentHeight, setContentHeight] = useState<number | null>(null)
+  const [calendarTopOffset, setCalendarTopOffset] = useState<number | null>(null)
   const [panelTransitionsEnabled, setPanelTransitionsEnabled] = useState(false)
   const [isBulkMode, setIsBulkMode] = useState(false)
   const [bulkSelectedDates, setBulkSelectedDates] = useState<string[]>([])
@@ -391,7 +390,7 @@ export default function ShiftsView({
   )
   const [selectedPositionIds, setSelectedPositionIds] = useState<string[]>([])
   const [selectedStatusKeys, setSelectedStatusKeys] = useState<IntervalUiStatus["key"][]>([])
-  const [activeFilter, setActiveFilter] = useState<"employee" | "position" | "status" | null>(null)
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false)
   const filtersHidden = hideFilters
   const autoRefreshInFlightRef = useRef(false)
   const versionSyncInFlightRef = useRef(false)
@@ -411,14 +410,6 @@ export default function ShiftsView({
     setDisplayDate(nextDate)
     setSelectedDate(nextDate)
   }, [initialDate])
-
-  const handleFilterOpenChange =
-    (filterKey: "employee" | "position" | "status") => (open: boolean) => {
-      setActiveFilter((current) => {
-        if (open) return filterKey
-        return current === filterKey ? null : current
-      })
-    }
 
   const refreshRange = useMemo(() => {
     const start = startOfMonth(subMonths(safeDisplayDate, 1))
@@ -542,7 +533,7 @@ export default function ShiftsView({
         })
         const json = await res.json().catch(() => null)
         if (!res.ok) {
-          throw new Error(json?.error || "Не удалось загрузить процедуры")
+          throw new Error(json?.error || t("planner_load_procedures_error"))
         }
         if (!active) return
         const procedures = json?.data?.procedures ?? []
@@ -593,12 +584,13 @@ export default function ShiftsView({
 
     const measure = () => {
       rafId = null
-      const nextMonth = monthViewRef.current?.getBoundingClientRect().height ?? null
+      const monthRect = monthViewRef.current?.getBoundingClientRect() ?? null
+      const nextMonth = monthRect?.height ?? null
       const nextWeek = weekViewRef.current?.getBoundingClientRect().height ?? null
-      const nextContent = contentRef.current?.getBoundingClientRect().height ?? null
+      const nextTop = monthRect?.top ?? null
       setMeasuredHeight(setMonthViewHeight, nextMonth)
       setMeasuredHeight(setWeekViewHeight, nextWeek)
-      setMeasuredHeight(setContentHeight, nextContent)
+      setMeasuredHeight(setCalendarTopOffset, nextTop)
     }
 
     const scheduleMeasure = () => {
@@ -613,22 +605,44 @@ export default function ShiftsView({
     })
     if (monthViewRef.current) observer.observe(monthViewRef.current)
     if (weekViewRef.current) observer.observe(weekViewRef.current)
-    if (contentRef.current) observer.observe(contentRef.current)
+
+    window.addEventListener("resize", scheduleMeasure)
 
     return () => {
       if (rafId !== null) window.cancelAnimationFrame(rafId)
       observer.disconnect()
+      window.removeEventListener("resize", scheduleMeasure)
     }
   }, [])
 
   useEffect(() => {
+    if (!isBulkMode || panelExpanded) return
+    if (monthViewHeight == null || calendarTopOffset == null) return
+    const viewportH = window.visualViewport?.height ?? window.innerHeight
+    const overlap = calendarTopOffset + monthViewHeight - (viewportH - 185) + 8
+    if (overlap <= 0) return
+    const timer = window.setTimeout(() => {
+      let parent: HTMLElement | null = monthViewRef.current?.parentElement ?? null
+      while (parent) {
+        const { overflowY } = window.getComputedStyle(parent)
+        if (overflowY === "auto" || overflowY === "scroll") {
+          parent.scrollBy({ top: overlap, behavior: "smooth" })
+          break
+        }
+        parent = parent.parentElement
+      }
+    }, 50)
+    return () => window.clearTimeout(timer)
+  }, [isBulkMode, panelExpanded, monthViewHeight, calendarTopOffset])
+
+  useEffect(() => {
     if (panelTransitionsEnabled) return
-    if (monthViewHeight == null || contentHeight == null) return
+    if (monthViewHeight == null) return
     const timer = window.setTimeout(() => {
       setPanelTransitionsEnabled(true)
     }, 180)
     return () => window.clearTimeout(timer)
-  }, [panelTransitionsEnabled, monthViewHeight, contentHeight])
+  }, [panelTransitionsEnabled, monthViewHeight])
 
   const workdayById = useMemo(
     () => new Map(workdays.map((wd) => [wd.id, wd])),
@@ -710,18 +724,18 @@ export default function ShiftsView({
 
   const getIntervalStatus = (interval: WorkInterval): IntervalUiStatus => {
     if (interval.status === "conflict") {
-      return { key: "conflict", label: "Конфликт", className: STATUS_STYLES.conflict as string }
+      return { key: "conflict", label: t("dash_shift_status_conflict"), className: STATUS_STYLES.conflict as string }
     }
     if (interval.status === "canceled") {
-      return { key: "canceled", label: "Отменена", className: STATUS_STYLES.canceled as string }
+      return { key: "canceled", label: t("dash_shift_status_cancelled"), className: STATUS_STYLES.canceled as string }
     }
     if (interval.status === "completed") {
-      return { key: "completed", label: "Завершена", className: STATUS_STYLES.completed as string }
+      return { key: "completed", label: t("dash_shift_status_done"), className: STATUS_STYLES.completed as string }
     }
     if (interval.status === "in_progress") {
-      return { key: "in_progress", label: "Идет", className: STATUS_STYLES.in_progress as string }
+      return { key: "in_progress", label: t("dash_shift_status_active"), className: STATUS_STYLES.in_progress as string }
     }
-    return { key: "scheduled", label: "Запланирована", className: STATUS_STYLES.scheduled as string }
+    return { key: "scheduled", label: t("dash_shift_status_planned"), className: STATUS_STYLES.scheduled as string }
   }
 
   const filteredIntervals = useMemo(() => {
@@ -823,7 +837,6 @@ export default function ShiftsView({
     setSelectedEmployeeIds(lockedEmployeeId ? [lockedEmployeeId] : [])
     setSelectedPositionIds([])
     setSelectedStatusKeys([])
-    setActiveFilter(null)
   }
 
   const handleToday = () => {
@@ -942,14 +955,14 @@ export default function ShiftsView({
 
   const getOverlapErrorDescription = (conflicts?: IntervalConflict[] | null) => {
     if (!conflicts || conflicts.length === 0) {
-      return "У сотрудника уже есть смена в это время."
+      return t("planner_overlap_default")
     }
     const previews = conflicts.slice(0, 3).map((conflict) => {
       const employeeName = conflict.employeeName ? ` • ${conflict.employeeName}` : ""
       return `${conflict.workDate} ${conflict.startTime}—${conflict.endTime}${employeeName}`
     })
-    const tail = conflicts.length > 3 ? ` и еще ${conflicts.length - 3}` : ""
-    return `Пересечение с: ${previews.join("; ")}${tail}.`
+    const tail = conflicts.length > 3 ? t("planner_overlap_more", { count: conflicts.length - 3 }) : ""
+    return t("planner_overlap_with", { items: previews.join("; "), tail })
   }
 
   const showIntervalErrorToast = (fallbackMessage: string) => {
@@ -962,43 +975,43 @@ export default function ShiftsView({
       return
     }
     if (state.lastIntervalErrorCode === INTERVAL_IN_PAST_ERROR_CODE) {
-      const selectedDateLabel = formatShiftDateForToast(selectedDateStr)
+      const selectedDateLabel = formatShiftDateForToast(selectedDateStr, dateLocale)
       const selectedTimeLabel = formValues.startTime || "--:--"
       toast({
-        title: "Смена в прошлом недоступна",
-        description: `Для владельца доступно только текущее и будущее время. Выбрано: ${selectedDateLabel}, ${selectedTimeLabel}.`,
+        title: t("planner_past_shift_title"),
+        description: t("planner_past_shift_owner_desc", { date: selectedDateLabel, time: selectedTimeLabel }),
         variant: "destructive",
       })
       return
     }
     toast({
-      title: "Ошибка",
+      title: t("common_error"),
       description: state.lastIntervalError || fallbackMessage,
       variant: "destructive",
     })
   }
 
   const showPastShiftToast = (options?: { date?: string; time?: string; skippedCount?: number }) => {
-    const dateLabel = options?.date ? formatShiftDateForToast(options.date) : null
+    const dateLabel = options?.date ? formatShiftDateForToast(options.date, dateLocale) : null
     const timeLabel = options?.time || "--:--"
 
     if (typeof options?.skippedCount === "number") {
       toast({
-        title: "Смена в прошлом недоступна",
+        title: t("planner_past_shift_title"),
         description:
           options.skippedCount === 1
-            ? "Одна дата пропущена: нельзя назначать смены задним числом. Оставьте только текущее или будущее время."
-            : `Пропущено дат в прошлом: ${options.skippedCount}. Назначайте смены только на текущее или будущее время.`,
+            ? t("planner_past_shift_one_skipped")
+            : t("planner_past_shift_many_skipped", { count: options.skippedCount }),
         variant: "destructive",
       })
       return
     }
 
     toast({
-      title: "Смена в прошлом недоступна",
+      title: t("planner_past_shift_title"),
       description: dateLabel
-        ? `Нельзя назначить смену на ${dateLabel}, ${timeLabel}. Выберите текущее или будущее время.`
-        : "Нельзя назначить смену задним числом. Выберите текущее или будущее время.",
+        ? t("planner_past_shift_date_desc", { date: dateLabel, time: timeLabel })
+        : t("planner_past_shift_generic_desc"),
       variant: "destructive",
     })
   }
@@ -1006,10 +1019,10 @@ export default function ShiftsView({
   const overlapConflictLines = useMemo(
     () =>
       overlapDialog.conflicts.map((conflict) => {
-        const dateLabel = format(parseDate(conflict.workDate), "d MMMM yyyy", { locale: ru })
+        const dateLabel = format(parseDate(conflict.workDate), "d MMMM yyyy", { locale: dateLocale })
         return `${dateLabel}, ${conflict.startTime} — ${conflict.endTime}`
       }),
-    [overlapDialog.conflicts],
+    [dateLocale, overlapDialog.conflicts],
   )
 
   const canEditIntervalByStatus = (status: IntervalUiStatus["key"]) =>
@@ -1021,8 +1034,8 @@ export default function ShiftsView({
     const isBulkSave = bulkCreateDates.length > 0 && !editingInterval
     if (!formValues.positionId) {
       toast({
-        title: "Нужна позиция",
-        description: "Выберите роль для смены",
+        title: t("planner_position_required_title"),
+        description: t("planner_select_role_for_shift"),
         variant: "destructive",
       })
       return
@@ -1040,8 +1053,8 @@ export default function ShiftsView({
         const status = getIntervalStatus(editingInterval)
         if (!canEditIntervalByStatus(status.key)) {
           toast({
-            title: "Редактирование недоступно",
-            description: "Смены можно редактировать только в статусах Запланирована или Конфликт",
+            title: t("planner_edit_unavailable_title"),
+            description: t("planner_edit_unavailable_desc"),
           })
           return
         }
@@ -1055,7 +1068,7 @@ export default function ShiftsView({
           ...customPayPayload,
         })
         if (!updated) {
-          showIntervalErrorToast("Не удалось обновить смену")
+          showIntervalErrorToast(t("planner_update_shift_error"))
           return
         }
       } else if (isBulkSave) {
@@ -1097,14 +1110,14 @@ export default function ShiftsView({
         }
         setBulkCreateDates([])
         if (createdCount === 0) {
-          const message = useShiftStore.getState().lastIntervalError || "Не удалось создать смены"
-          toast({ title: "Ошибка", description: message, variant: "destructive" })
+          const message = useShiftStore.getState().lastIntervalError || t("planner_create_shifts_error")
+          toast({ title: t("common_error"), description: message, variant: "destructive" })
           return
         }
         if (failedCount > 0) {
           toast({
-            title: "Смены сохранены частично",
-            description: `Создано: ${createdCount}, ошибок: ${failedCount}`,
+            title: t("planner_shifts_partially_saved"),
+            description: t("planner_bulk_save_summary", { created: createdCount, failed: failedCount }),
             variant: "destructive",
           })
           shouldShowSuccessToast = false
@@ -1112,7 +1125,7 @@ export default function ShiftsView({
       } else {
         const workday = await getOrCreateWorkday(selectedDateStr)
         if (!workday) {
-          toast({ title: "Ошибка", description: "Не удалось создать рабочий день", variant: "destructive" })
+          toast({ title: t("common_error"), description: t("planner_create_workday_error"), variant: "destructive" })
           return
         }
         const created = await createInterval({
@@ -1126,7 +1139,7 @@ export default function ShiftsView({
           ...customPayPayload,
         })
         if (!created) {
-          showIntervalErrorToast("Не удалось создать смену")
+          showIntervalErrorToast(t("planner_create_shift_error"))
           return
         }
       }
@@ -1135,12 +1148,12 @@ export default function ShiftsView({
       setPanelView("list")
       setPanelExpanded(true)
       if (shouldShowSuccessToast) {
-        toast({ title: isBulkSave ? "Смены сохранены" : "Смена сохранена" })
+        toast({ title: isBulkSave ? t("planner_shifts_saved") : t("planner_shift_saved") })
       }
     } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: error?.message || "Не удалось сохранить смену",
+        title: t("common_error"),
+        description: error?.message || t("planner_save_shift_error"),
         variant: "destructive",
       })
     } finally {
@@ -1161,8 +1174,8 @@ export default function ShiftsView({
     const status = getIntervalStatus(selectedInterval)
     if (!canEditIntervalByStatus(status.key)) {
       toast({
-        title: "Редактирование недоступно",
-        description: "Смены можно редактировать только в статусах Запланирована или Конфликт",
+        title: t("planner_edit_unavailable_title"),
+        description: t("planner_edit_unavailable_desc"),
       })
       return
     }
@@ -1208,7 +1221,7 @@ export default function ShiftsView({
     await deleteInterval(selectedInterval.id)
     setPanelView("list")
     setSelectedInterval(null)
-    toast({ title: "Смена удалена" })
+    toast({ title: t("planner_shift_deleted") })
   }
 
   const handlePanelToggle = () => {
@@ -1316,196 +1329,89 @@ export default function ShiftsView({
           hasEvent: dayCount > 0,
           hasConflict: conflictDates.has(dateStr),
           eventCount: dayCount,
-          helperText: dayCount > 0 ? `${dayCount} ${formatShiftWord(dayCount)}` : "Нет смен",
+          helperText: dayCount > 0 ? `${dayCount} ${formatShiftWord(dayCount, t)}` : t("planner_no_shifts"),
         }
       }),
-    [conflictDates, intervalsByDate, safeDisplayDate, safeSelectedDate, today, weekDays],
+    [conflictDates, intervalsByDate, safeDisplayDate, safeSelectedDate, t, today, weekDays],
   )
 
   const calendarTitle = capitalizeLabel(
-    format(calendarViewMode === "week" ? safeSelectedDate : safeDisplayDate, "LLLL", { locale: ru }),
+    format(calendarViewMode === "week" ? safeSelectedDate : safeDisplayDate, "LLLL", { locale: dateLocale }),
   )
   const calendarSubtitle =
     calendarViewMode === "week"
-      ? `${capitalizeLabel(format(weekDays[0] ?? safeSelectedDate, "d MMM", { locale: ru }))} - ${capitalizeLabel(
-          format(weekDays[weekDays.length - 1] ?? safeSelectedDate, "d MMM yyyy", { locale: ru }),
+      ? `${capitalizeLabel(format(weekDays[0] ?? safeSelectedDate, "d MMM", { locale: dateLocale }))} - ${capitalizeLabel(
+          format(weekDays[weekDays.length - 1] ?? safeSelectedDate, "d MMM yyyy", { locale: dateLocale }),
         )}`
-      : `${format(safeDisplayDate, "yyyy")} • ${
-          isBulkMode ? "Массовое создание" : readOnly ? "Мой график" : "План команды"
-        }`
-  const selectedDateSummary = capitalizeLabel(format(safeSelectedDate, "d MMMM", { locale: ru }))
+      : format(safeDisplayDate, "yyyy")
+  const selectedDateSummary = capitalizeLabel(format(safeSelectedDate, "d MMMM", { locale: dateLocale }))
   const selectedIntervalsSummary =
-    selectedIntervals.length > 0 ? `${selectedIntervals.length} ${formatShiftWord(selectedIntervals.length)}` : "Без смен"
-  const selectedConflictSummary = conflictDates.has(selectedDateStr) ? "Есть конфликт" : null
+    selectedIntervals.length > 0 ? `${selectedIntervals.length} ${formatShiftWord(selectedIntervals.length, t)}` : t("planner_no_shifts_short")
+  const selectedConflictSummary = conflictDates.has(selectedDateStr) ? t("planner_has_conflict") : null
 
-  const calendarToolbar = (
-    <div className="flex flex-col gap-3">
+  const activeFilterCount =
+    selectedEmployeeIds.length + selectedPositionIds.length + selectedStatusKeys.length
+
+  const filterButton = !filtersHidden ? (
+    <button
+      type="button"
+      onClick={() => setIsFilterSheetOpen(true)}
+      className={cn(
+        "relative flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/80 px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors",
+        activeFilterCount > 0
+          ? "border-orange-300/60 bg-orange-500/10 text-orange-600"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+      aria-label={t("planner_filters")}
+    >
+      <SlidersHorizontal className="size-3.5" />
+      {t("planner_filters")}
+      {activeFilterCount > 0 && (
+        <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white">
+          {activeFilterCount}
+        </span>
+      )}
+    </button>
+  ) : undefined
+
+  const calendarToolbar =
+    calendarViewMode === "month" && (!readOnly || filterButton) ? (
       <div className="flex items-center justify-between gap-2">
-        <MonthPicker currentDate={safeDisplayDate} onChange={handleMonthChange} showIcon={false} />
-        {!readOnly && calendarViewMode === "month" ? (
-          <div className="flex items-center gap-2">
-            <Button
-              variant={isBulkMode ? "secondary" : "outline"}
-              size="sm"
-              className={cn(
-                "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
-                isBulkMode && "border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
-              )}
-              onClick={handleToggleBulkMode}
-            >
-              Массово
-            </Button>
-            {isBulkMode ? (
-              <Button
-                size="icon"
-                className="size-9 rounded-full bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
-                onClick={handleBulkCreate}
-                aria-label="Создать смены"
-              >
-                <Plus className="size-4" />
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      {!filtersHidden ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <DropdownMenu
-            open={activeFilter === "employee"}
-            onOpenChange={handleFilterOpenChange("employee")}
-          >
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant={selectedEmployeeIds.length > 0 ? "secondary" : "outline"}
-                size="sm"
-                className={cn(
-                  "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
-                  selectedEmployeeIds.length > 0 && "bg-secondary text-secondary-foreground",
-                )}
-              >
-                <span className="truncate">
-                  Сотрудники: {selectedEmployeeIds.length > 0 ? selectedEmployeeIds.length : "Все"}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="rounded-xl border-border shadow-lg">
-              {employees.length === 0 ? (
-                <DropdownMenuItem disabled>Нет сотрудников</DropdownMenuItem>
-              ) : (
-                employees.map((employee) => (
-                  <DropdownMenuCheckboxItem
-                    key={employee.id}
-                    checked={selectedEmployeeIds.includes(employee.id)}
-                    onCheckedChange={(checked) => {
-                      setSelectedEmployeeIds((prev) =>
-                        checked
-                          ? [...prev, employee.id]
-                          : prev.filter((id) => id !== employee.id),
-                      )
-                    }}
-                    onSelect={(event) => event.preventDefault()}
-                  >
-                    {employee.fullName || employee.name || "Сотрудник"}
-                  </DropdownMenuCheckboxItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DropdownMenu
-            open={activeFilter === "position"}
-            onOpenChange={handleFilterOpenChange("position")}
-          >
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant={selectedPositionIds.length > 0 ? "secondary" : "outline"}
-                size="sm"
-                className={cn(
-                  "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
-                  selectedPositionIds.length > 0 && "bg-secondary text-secondary-foreground",
-                )}
-              >
-                <span className="truncate">
-                  Должности: {selectedPositionIds.length > 0 ? selectedPositionIds.length : "Все"}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="rounded-xl border-border shadow-lg">
-              {positions.length === 0 ? (
-                <DropdownMenuItem disabled>Нет должностей</DropdownMenuItem>
-              ) : (
-                positions.map((position) => (
-                  <DropdownMenuCheckboxItem
-                    key={position.id}
-                    checked={selectedPositionIds.includes(position.id)}
-                    onCheckedChange={(checked) => {
-                      setSelectedPositionIds((prev) =>
-                        checked
-                          ? [...prev, position.id]
-                          : prev.filter((id) => id !== position.id),
-                      )
-                    }}
-                    onSelect={(event) => event.preventDefault()}
-                  >
-                    {position.name}
-                  </DropdownMenuCheckboxItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DropdownMenu
-            open={activeFilter === "status"}
-            onOpenChange={handleFilterOpenChange("status")}
-          >
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant={selectedStatusKeys.length > 0 ? "secondary" : "outline"}
-                size="sm"
-                className={cn(
-                  "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
-                  selectedStatusKeys.length > 0 && "bg-secondary text-secondary-foreground",
-                )}
-              >
-                <span className="truncate">
-                  Статус: {selectedStatusKeys.length > 0 ? selectedStatusKeys.length : "Все"}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="rounded-xl border-border shadow-lg">
-              {STATUS_FILTERS.map((status) => (
-                <DropdownMenuCheckboxItem
-                  key={status.key}
-                  checked={selectedStatusKeys.includes(status.key)}
-                  onCheckedChange={(checked) => {
-                    setSelectedStatusKeys((prev) =>
-                      checked ? [...prev, status.key] : prev.filter((key) => key !== status.key),
-                    )
-                  }}
-                  onSelect={(event) => event.preventDefault()}
-                >
-                  {status.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
+        {!readOnly ? (
           <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={handleResetFilters}
-            aria-label="Сбросить фильтры"
+            variant={isBulkMode ? "secondary" : "outline"}
+            size="sm"
+            className={cn(
+              "rounded-full border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent",
+              isBulkMode && "border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+            )}
+            onClick={handleToggleBulkMode}
           >
-            <RotateCcw className="size-4" />
+            {t("planner_bulk")}
           </Button>
-        </div>
-      ) : null}
-    </div>
-  )
+        ) : null}
+        {filterButton}
+      </div>
+    ) : undefined
 
-  const calendarFooter = (
+  const calendarHeaderEnd = calendarViewMode === "month" ? undefined : filterButton
+
+  const calendarFooter = isBulkMode ? (
+    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+      <span className="truncate">{selectedDateSummary}</span>
+      <Button
+        size="sm"
+        className="h-7 rounded-full bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-xs hover:bg-primary/90"
+        onClick={handleBulkCreate}
+      >
+        {t("common_create")}
+      </Button>
+      <span className="shrink-0">
+        {selectedIntervalsSummary}
+        {selectedConflictSummary ? ` • ${selectedConflictSummary}` : ""}
+      </span>
+    </div>
+  ) : (
     <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
       <span className="truncate">{selectedDateSummary}</span>
       <span className="shrink-0">
@@ -1529,10 +1435,10 @@ export default function ShiftsView({
     ? resolveTime(selectedInterval.endTime || selectedInterval.endAt, organizationTimeZone)
     : "--:--"
   const detailEmployeeName =
-    selectedInterval?.employee?.fullName || selectedInterval?.employee?.name || "Сотрудник"
+    selectedInterval?.employee?.fullName || selectedInterval?.employee?.name || t("common_employee_fallback")
   const detailPositionName =
     selectedInterval?.position?.name || selectedInterval?.employee?.primaryPosition?.name
-  const detailAssignmentText = `${detailEmployeeName} — ${detailPositionName || "Без позиции"}`
+  const detailAssignmentText = `${detailEmployeeName} — ${detailPositionName || t("planner_no_position")}`
   const detailCancelReason = selectedInterval?.cancelReason?.trim() || ""
   const detailNotesText = selectedInterval?.notes?.trim() || ""
   const detailGrossPayCents = selectedInterval?.calculatedGrossPayCents ?? null
@@ -1542,7 +1448,7 @@ export default function ShiftsView({
       ? formatMoneyCents(detailGrossPayCents)
       : selectedStatus?.key === "completed"
         ? "—"
-        : "После закрытия"
+        : t("planner_detail_salary_after_close_short")
   const detailDateText = format(selectedWorkdayDate, "d MMMM yyyy", { locale: ru })
   const detailScheduleText = selectedInterval ? `${detailStartTime} — ${detailEndTime}` : "—"
   const detailOpenedTimeText = selectedInterval?.openedAt ? resolveTime(selectedInterval.openedAt, organizationTimeZone) : "—"
@@ -1557,29 +1463,31 @@ export default function ShiftsView({
       : null
   const detailPlannedDurationText =
     detailPlannedMinutes != null
-      ? `${Math.floor(detailPlannedMinutes / 60)} ч ${detailPlannedMinutes % 60} мин`
+      ? `${Math.floor(detailPlannedMinutes / 60)} ${t("hours_short")} ${detailPlannedMinutes % 60} ${t("minutes_suffix")}`
       : "—"
   const detailWorkedText =
-    detailMinutesWorked != null ? `${Math.floor(detailMinutesWorked / 60)} ч ${detailMinutesWorked % 60} мин` : "Нет данных"
-  const detailOpenedHintText = selectedInterval?.openedAt ? "Фактический старт" : "Открытие не зафиксировано"
-  const detailClosedHintText = selectedInterval?.closedAt ? "Фактическое завершение" : "Закрытие не зафиксировано"
-  const detailSalaryHintText = detailGrossPayCents != null ? "Расчет сохранен" : "Появится после закрытия"
+    detailMinutesWorked != null
+      ? `${Math.floor(detailMinutesWorked / 60)} ${t("hours_short")} ${detailMinutesWorked % 60} ${t("minutes_suffix")}`
+      : t("planner_detail_no_data")
+  const detailOpenedHintText = selectedInterval?.openedAt ? t("planner_detail_actual_start") : t("planner_detail_opened_not_recorded")
+  const detailClosedHintText = selectedInterval?.closedAt ? t("planner_detail_actual_end") : t("planner_detail_closed_not_recorded")
+  const detailSalaryHintText = detailGrossPayCents != null ? t("planner_detail_salary_saved") : t("planner_detail_salary_after_close")
   const detailProcedureSummary = isProcedureLoading
-    ? "Загрузка правил..."
-    : `Открытие: ${procedureDetails?.open?.rules.length ?? 0} • Закрытие: ${procedureDetails?.close?.rules.length ?? 0}`
+    ? t("planner_loading_procedure_rules")
+    : `${t("planner_procedure_open_count", { count: String(procedureDetails?.open?.rules.length ?? 0) })} • ${t("planner_procedure_close_count", { count: String(procedureDetails?.close?.rules.length ?? 0) })}`
   const detailCalculationsSummary = isProcedureLoading
-    ? "Загрузка расчетов..."
+    ? t("planner_loading_calculations")
     : procedureDetails?.formulaCalculations?.error
-      ? "Есть ошибка расчета"
+      ? t("planner_calculations_error")
       : (procedureDetails?.formulaCalculations?.items.length ?? 0) > 0
-        ? `Формул: ${procedureDetails?.formulaCalculations?.items.length ?? 0}`
-        : "Данных пока нет"
+        ? t("planner_calculations_count", { count: String(procedureDetails?.formulaCalculations?.items.length ?? 0) })
+        : t("planner_calculations_no_data")
 
   const employeeOptions = useMemo(
     () =>
       employees.map((emp) => ({
         id: emp.id,
-        name: emp.fullName || emp.name || "Сотрудник",
+        name: emp.fullName || emp.name || t("common_employee_fallback"),
         primaryPositionId: emp.primaryPosition?.id,
         positions: Array.from(
           new Map(
@@ -1645,21 +1553,19 @@ export default function ShiftsView({
   )
   const panelTranslate =
     panelView === "list" ? "translateX(0%)" : panelView === "details" ? "translateX(-33.333%)" : "translateX(-66.666%)"
-  const panelOffset = 8
-  const panelTranslateY = panelOffset
+  const panelTranslateY = 0
   const calendarHeight = panelExpanded ? weekViewHeight : monthViewHeight
-  const baseCollapsedHeight = 140
-  const baseExpandedHeight = "60vh"
-  const availableHeight =
-    contentHeight && calendarHeight ? Math.max(0, contentHeight - calendarHeight - panelOffset) : null
-  const collapsedHeight = availableHeight ?? baseCollapsedHeight
-  const expandedHeight = availableHeight ? `${availableHeight}px` : baseExpandedHeight
+  const collapsedHeight = 185
+  const expandedHeight =
+    calendarTopOffset != null && weekViewHeight != null
+      ? `calc(100dvh - ${Math.round(calendarTopOffset)}px - ${Math.round(weekViewHeight)}px - 8px)`
+      : "calc(100dvh - 128px)"
 
   const renderProcedureSection = (title: string, procedure?: ProcedureView) => (
     <div className="space-y-2">
       <div className="text-xs uppercase tracking-widest text-white/70">{title}</div>
       {!procedure || procedure.rules.length === 0 ? (
-        <div className="text-xs text-white/80">Нет правил</div>
+        <div className="text-xs text-white/80">{t("planner_no_rules")}</div>
       ) : (
         <div className="space-y-2">
           {procedure.rules.map((rule) => {
@@ -1681,18 +1587,18 @@ export default function ShiftsView({
                 {rule.type === "PHOTO" && (
                   <div className="mt-2">
                     {rule.answer?.photoDeletedAt ? (
-                      <div className="text-muted-foreground">Фото удалено по политике хранения</div>
+                      <div className="text-muted-foreground">{t("planner_cash_photo_deleted")}</div>
                     ) : rule.answer?.photoUrl ? (
                       <ImagePreview
                         src={rule.answer.photoUrl}
-                        alt="Фото"
+                        alt={t("shift_rule_photo")}
                         triggerClassName="w-full rounded-md"
                         imageClassName="w-full h-24 object-cover rounded-md"
                       />
                     ) : rule.answer?.photoS3Key ? (
-                      <div className="text-muted-foreground">Фото загружено</div>
+                      <div className="text-muted-foreground">{t("planner_cash_photo_uploaded")}</div>
                     ) : (
-                      <div className="text-muted-foreground">Фото не добавлено</div>
+                      <div className="text-muted-foreground">{t("planner_cash_photo_missing")}</div>
                     )}
                     {rule.answer?.photoComment && (
                       <div className="mt-1 text-muted-foreground">{rule.answer.photoComment}</div>
@@ -1738,7 +1644,7 @@ export default function ShiftsView({
                               {photoUrl ? (
                                 <ImagePreview
                                   src={photoUrl}
-                                  alt={`Фото поля ${field.label}`}
+                                  alt={t("planner_cash_photo_field_alt", { label: field.label })}
                                   triggerClassName="w-full rounded-md"
                                   imageClassName="h-20 w-full rounded-md object-cover"
                                 />
@@ -1748,7 +1654,7 @@ export default function ShiftsView({
                         })
                       })()
                     ) : (
-                      <div>{rule.answer?.inputValue?.trim() || "Поля кассы не настроены"}</div>
+                      <div>{rule.answer?.inputValue?.trim() || t("planner_cash_fields_not_configured")}</div>
                     )}
                   </div>
                 )}
@@ -1762,11 +1668,11 @@ export default function ShiftsView({
 
   const renderFormulaCalculationsWidget = (formulaCalculations?: CashFormulaCalculations | null) => {
     if (isProcedureLoading) {
-      return <div className="text-xs text-white/80">Загрузка расчетов...</div>
+      return <div className="text-xs text-white/80">{t("planner_loading_calculations")}</div>
     }
 
     if (!formulaCalculations || formulaCalculations.items.length === 0) {
-      return <div className="text-xs text-white/80">Формулы кассы не настроены.</div>
+      return <div className="text-xs text-white/80">{t("planner_cash_formulas_empty")}</div>
     }
 
     if (formulaCalculations.error) {
@@ -1774,7 +1680,7 @@ export default function ShiftsView({
     }
 
     if (!formulaCalculations.hasCashInput) {
-      return <div className="text-xs text-white/80">Нет заполненных данных кассы для расчета формул.</div>
+      return <div className="text-xs text-white/80">{t("planner_cash_no_data_for_formulas")}</div>
     }
 
     return (
@@ -1786,7 +1692,7 @@ export default function ShiftsView({
                 <div className="font-medium truncate">
                   {item.resultLabel}
                   {item.isTipsSource && (
-                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">Чаевые</span>
+                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">{t("planner_cash_tips_badge")}</span>
                   )}
                 </div>
                 <div className="text-[11px] text-muted-foreground truncate">{item.resultKey}</div>
@@ -1847,32 +1753,24 @@ export default function ShiftsView({
   )
 
   return (
-    <div className="relative flex flex-col h-screen bg-background max-w-md mx-auto overflow-hidden">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
-        <div className="flex flex-col gap-3 px-4 py-3">
-          {externalHeader ? (
-            <div className="flex items-center justify-end">
-              <Button variant="outline" size="sm" className="rounded-full bg-transparent text-xs" onClick={handleToday}>
-                Сегодня
+    <div
+      className="flex flex-col bg-background max-w-md mx-auto touch-pan-y"
+      style={{ minHeight: "100%", paddingBottom: `${collapsedHeight + 8}px` }}
+    >
+      {!externalHeader && (
+        <div className="sticky top-0 z-20 bg-background">
+          <div className="flex flex-col gap-3 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
+                <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
               </Button>
+              <h1 className="text-xl font-semibold">{t("owner_tab_shifts")}</h1>
             </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
-                  <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
-                </Button>
-                <h1 className="text-xl font-semibold">Смены</h1>
-              </div>
-              <Button variant="outline" size="sm" className="rounded-full bg-transparent text-xs" onClick={handleToday}>
-                Сегодня
-              </Button>
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
-      <div ref={contentRef} className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex flex-col">
         <div className="overflow-hidden">
           <div
             className={cn(
@@ -1892,20 +1790,22 @@ export default function ShiftsView({
               aria-hidden={panelExpanded}
             >
               <div ref={monthViewRef} className="p-4 pb-0">
-                <GlassCalendar
+                <ScheduleCalendar
                   view="month"
-                  showSettings={false}
+                  showFilters={false}
                   title={calendarTitle}
                   subtitle={calendarSubtitle}
-                  weekdayLabels={WEEK_DAYS}
+                  weekdayLabels={weekdayLabels}
                   days={monthCalendarItems}
                   selectedDate={safeSelectedDate}
                   onDateSelect={handleCalendarDateSelect}
                   onViewChange={handleCalendarViewChange}
                   onPrev={() => handleMonthChange(subMonths(safeDisplayDate, 1))}
                   onNext={() => handleMonthChange(addMonths(safeDisplayDate, 1))}
+                  onToday={handleToday}
                   toolbar={calendarToolbar}
                   footer={calendarFooter}
+                  headerEnd={calendarHeaderEnd}
                   className={cn(isBulkMode && "ring-2 ring-primary/15")}
                 />
               </div>
@@ -1919,27 +1819,222 @@ export default function ShiftsView({
               aria-hidden={!panelExpanded}
             >
               <div ref={weekViewRef} className="p-4 pb-0">
-                <GlassCalendar
+                <ScheduleCalendar
                   view="week"
-                  showSettings={false}
+                  showFilters={false}
                   title={calendarTitle}
                   subtitle={calendarSubtitle}
-                  weekdayLabels={WEEK_DAYS}
+                  weekdayLabels={weekdayLabels}
                   days={weekCalendarItems}
                   selectedDate={safeSelectedDate}
                   onDateSelect={handleCalendarDateSelect}
                   onViewChange={handleCalendarViewChange}
                   onPrev={() => handleWeekShift(-7)}
                   onNext={() => handleWeekShift(7)}
+                  onToday={handleToday}
                   toolbar={calendarToolbar}
                   footer={calendarFooter}
+                  headerEnd={calendarHeaderEnd}
                 />
               </div>
             </div>
           </div>
         </div>
 
-          <div className="z-30 flex items-end justify-center px-3 flex-shrink-0">
+        {/* Filter bottom sheet — owner view */}
+        {!filtersHidden && isFilterSheetOpen ? (
+          <>
+            <div
+              className="fixed inset-0 z-40 bg-black/40 animate-in fade-in duration-200"
+              onClick={() => setIsFilterSheetOpen(false)}
+            />
+            <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl bg-card shadow-xl animate-in slide-in-from-bottom duration-300 max-h-[85vh]">
+              {/* Handle */}
+              <div className="flex justify-center pt-3 pb-2">
+                <div className="h-1 w-10 rounded-full bg-muted-foreground/30" />
+              </div>
+
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-border px-5 pb-4">
+                <h3 className="text-lg font-semibold">{t("planner_filters")}</h3>
+                <div className="flex items-center gap-3">
+                  {activeFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="text-sm font-medium text-orange-500"
+                    >
+                      {t("common_reset")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterSheetOpen(false)}
+                    className="rounded-full p-2 -mr-2 text-muted-foreground transition-colors hover:bg-muted"
+                    aria-label={t("common_close")}
+                  >
+                    <X className="size-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                {/* Employees */}
+                {employees.length > 0 && (
+                  <div>
+                    <p className="mb-3 text-sm font-medium">{t("planner_employees")}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEmployeeIds(lockedEmployeeId ? [lockedEmployeeId] : [])}
+                        className={cn(
+                          "rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
+                          selectedEmployeeIds.length === 0
+                            ? "bg-orange-500 text-white"
+                            : "bg-muted text-muted-foreground hover:bg-muted/80",
+                        )}
+                      >
+                        {t("common_all")}
+                      </button>
+                      {employees.map((employee) => {
+                        const isActive = selectedEmployeeIds.includes(employee.id)
+                        return (
+                          <button
+                            key={employee.id}
+                            type="button"
+                            onClick={() =>
+                              setSelectedEmployeeIds((prev) =>
+                                isActive
+                                  ? prev.filter((id) => id !== employee.id)
+                                  : [...prev, employee.id],
+                              )
+                            }
+                            className={cn(
+                              "rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
+                              isActive
+                                ? "bg-orange-500 text-white"
+                                : "bg-muted text-muted-foreground hover:bg-muted/80",
+                            )}
+                          >
+                            {employee.fullName || employee.name || t("role_worker")}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Positions */}
+                {positions.length > 0 && (
+                  <div>
+                    <p className="mb-3 text-sm font-medium">{t("planner_position")}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPositionIds([])}
+                        className={cn(
+                          "rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
+                          selectedPositionIds.length === 0
+                            ? "bg-orange-500 text-white"
+                            : "bg-muted text-muted-foreground hover:bg-muted/80",
+                        )}
+                      >
+                        {t("common_all")}
+                      </button>
+                      {positions.map((position) => {
+                        const isActive = selectedPositionIds.includes(position.id)
+                        return (
+                          <button
+                            key={position.id}
+                            type="button"
+                            onClick={() =>
+                              setSelectedPositionIds((prev) =>
+                                isActive
+                                  ? prev.filter((id) => id !== position.id)
+                                  : [...prev, position.id],
+                              )
+                            }
+                            className={cn(
+                              "rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
+                              isActive
+                                ? "bg-orange-500 text-white"
+                                : "bg-muted text-muted-foreground hover:bg-muted/80",
+                            )}
+                          >
+                            {position.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Statuses */}
+                <div>
+                  <p className="mb-3 text-sm font-medium">{t("planner_status")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStatusKeys([])}
+                      className={cn(
+                        "rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
+                        selectedStatusKeys.length === 0
+                          ? "bg-orange-500 text-white"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80",
+                      )}
+                    >
+                      {t("common_all")}
+                    </button>
+                    {STATUS_FILTERS.map((status) => {
+                      const isActive = selectedStatusKeys.includes(status.key)
+                      return (
+                        <button
+                          key={status.key}
+                          type="button"
+                          onClick={() =>
+                            setSelectedStatusKeys((prev) =>
+                              isActive
+                                ? prev.filter((k) => k !== status.key)
+                                : [...prev, status.key],
+                            )
+                          }
+                          className={cn(
+                            "rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
+                            isActive
+                              ? "bg-orange-500 text-white"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80",
+                          )}
+                        >
+                          {t(status.labelKey)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Apply button */}
+              <div
+                className="border-t border-border bg-card px-5 pt-5"
+                style={{ paddingBottom: "calc(1.25rem + 4.5rem + env(safe-area-inset-bottom))" }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsFilterSheetOpen(false)}
+                  className="w-full rounded-2xl bg-orange-500 py-3.5 font-semibold text-white transition-all hover:bg-orange-600 active:scale-[0.98]"
+                >
+                  {t("common_apply")}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : null}
+
+          <div
+            ref={panelContainerRef}
+            className="fixed z-40 inset-x-0 bottom-0 mx-auto w-full max-w-md px-3"
+          >
             <div
               className={cn(
                 "w-full max-w-md transform-gpu will-change-transform",
@@ -1965,7 +2060,7 @@ export default function ShiftsView({
                   type="button"
                   className="flex w-full justify-center pt-3 pb-2 cursor-pointer select-none"
                   onClick={handlePanelToggle}
-                  aria-label={panelExpanded ? "Скрыть список смен" : "Показать список смен"}
+                  aria-label={panelExpanded ? t("planner_hide_shift_list") : t("planner_show_shift_list")}
                 >
                   <div className="h-1.5 w-14 rounded-full bg-white/60" />
                 </button>
@@ -1974,12 +2069,12 @@ export default function ShiftsView({
               {panelView === "list" ? (
                 <div className="relative flex items-start justify-between">
                   <div>
-                    <div className="text-xs uppercase tracking-widest text-white/80">Всего смен</div>
+                    <div className="text-xs uppercase tracking-widest text-white/80">{t("planner_total_shifts")}</div>
                     <div className="text-2xl font-semibold text-white">
                       {isBulkMode ? bulkSelectedDates.length : selectedIntervals.length}
                     </div>
                     <div className="text-sm text-white/80 mt-1">
-                      {format(safeSelectedDate, "d MMMM", { locale: ru })}
+                      {format(safeSelectedDate, "d MMMM", { locale: dateLocale })}
                     </div>
                   </div>
                   {!readOnly && !showCollapseIcon && !isBulkMode && (
@@ -1991,7 +2086,7 @@ export default function ShiftsView({
                         event.stopPropagation()
                         handleOpenCreate(safeSelectedDate)
                       }}
-                      aria-label={`Создать смену на ${format(safeSelectedDate, "d MMMM", { locale: ru })}`}
+                      aria-label={t("planner_create_shift_on", { date: format(safeSelectedDate, "d MMMM", { locale: dateLocale }) })}
                     >
                       <Plus className="h-6 w-6" />
                     </Button>
@@ -2022,7 +2117,7 @@ export default function ShiftsView({
                   >
                     <ArrowLeft className="h-4 w-4" />
                   </Button>
-                  <div className="text-sm font-semibold text-white">Детали смены</div>
+                  <div className="text-sm font-semibold text-white">{t("planner_shift_details")}</div>
                   <div className="w-9" />
                 </div>
               ) : (
@@ -2036,7 +2131,7 @@ export default function ShiftsView({
                     <ArrowLeft className="h-4 w-4" />
                   </Button>
                   <div className="text-sm font-semibold text-white">
-                    {editingInterval ? "Редактирование" : "Новая смена"}
+                    {editingInterval ? t("planner_editing") : t("planner_new_shift")}
                   </div>
                   <div className="w-9" />
                 </div>
@@ -2057,7 +2152,7 @@ export default function ShiftsView({
                   style={{ transform: panelTranslate }}
                 >
                     <div className="w-1/3 pr-2 h-full min-h-0">
-                      <div className="h-full min-h-0 space-y-2 overflow-y-auto pr-1">
+                      <div className="h-full min-h-0 space-y-2 overflow-y-auto pr-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 88px)" }}>
                         {selectedIntervals.length === 0 ? (
                           <div className="flex flex-col items-center text-center text-white/80 py-6">
                             {!readOnly && (
@@ -2072,22 +2167,22 @@ export default function ShiftsView({
                                 <Plus className="h-5 w-5" />
                               </Button>
                             )}
-                            <div className="text-sm font-semibold">Нет смен на выбранный день</div>
+                            <div className="text-sm font-semibold">{t("planner_no_shifts_selected_day")}</div>
                             {!readOnly && (
-                              <div className="text-xs text-white/70 mt-1">Нажмите + чтобы создать смену</div>
+                              <div className="text-xs text-white/70 mt-1">{t("planner_tap_plus_create")}</div>
                             )}
                           </div>
                         ) : (
                           <>
                             {selectedIntervals.map((interval) => {
                               const status = getIntervalStatus(interval)
-                              const employeeName = interval.employee?.fullName || interval.employee?.name || "Сотрудник"
+                              const employeeName = interval.employee?.fullName || interval.employee?.name || t("role_worker")
                               const positionName = interval.position?.name || interval.employee?.primaryPosition?.name
                               const startTime = resolveTime(interval.startTime || interval.startAt, organizationTimeZone)
                               const endTime = resolveTime(interval.endTime || interval.endAt, organizationTimeZone)
                               const firstConflict = interval.conflicts?.[0]
                               const conflictPreview = firstConflict
-                                ? `${firstConflict.startTime}—${firstConflict.endTime} (${firstConflict.employeeName || "Сотрудник"})`
+                                ? `${firstConflict.startTime}—${firstConflict.endTime} (${firstConflict.employeeName || t("role_worker")})`
                                 : null
 
                               return (
@@ -2110,7 +2205,7 @@ export default function ShiftsView({
                                         </div>
                                         {status.key === "conflict" && conflictPreview && (
                                           <div className="text-[11px] text-red-600 mt-1">
-                                            Конфликтует с: {conflictPreview}
+                                            {t("planner_conflicts_with")}: {conflictPreview}
                                           </div>
                                         )}
                                       </div>
@@ -2125,7 +2220,7 @@ export default function ShiftsView({
                                 className="mt-4 w-full bg-white text-orange-700 hover:bg-white/90"
                                 onClick={() => handleOpenCreate()}
                               >
-                                + Добавить смену
+                                + {t("planner_add_shift")}
                               </Button>
                             )}
                           </>
@@ -2134,7 +2229,7 @@ export default function ShiftsView({
                     </div>
                     <div className="w-1/3 px-2 h-full min-h-0">
                       {selectedInterval && (
-                        <div className="h-full min-h-0 space-y-4 overflow-y-auto scrollbar-hidden pr-1">
+                        <div className="h-full min-h-0 space-y-4 overflow-y-auto scrollbar-hidden pr-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 88px)" }}>
                           <div className="space-y-3 px-1">
                             <div className={DETAIL_SECTION_CLASS}>
                               <div className="flex items-start justify-between gap-3">
@@ -2144,7 +2239,7 @@ export default function ShiftsView({
                                   </div>
                                   <div className="mt-1 truncate text-sm font-semibold text-white" title={detailAssignmentText}>
                                     {detailEmployeeName}
-                                    <span className="font-medium text-white/72"> — {detailPositionName || "Без позиции"}</span>
+                                    <span className="font-medium text-white/72"> — {detailPositionName || t("planner_no_position")}</span>
                                   </div>
                                 </div>
                                 {selectedStatus ? (
@@ -2158,31 +2253,31 @@ export default function ShiftsView({
                             {selectedStatus?.key === "canceled" && (
                               <div className="rounded-[20px] border border-rose-200/80 bg-rose-50/95 px-3.5 py-3 shadow-sm shadow-rose-950/10">
                                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-500">
-                                  Причина отмены
+                                  {t("planner_cancel_reason_label")}
                                 </div>
                                 <div className="mt-2 text-sm leading-6 text-rose-950">
-                                  {detailCancelReason || "Причина не указана"}
+                                  {detailCancelReason || t("planner_cancel_reason_empty")}
                                 </div>
                               </div>
                             )}
 
                             <div className={DETAIL_SECTION_CLASS}>
                               <div className="mb-3">
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/65">Сводка</div>
-                                <div className="mt-1 text-sm font-semibold text-white">Время и итог по смене</div>
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/65">{t("planner_detail_summary_eyebrow")}</div>
+                                <div className="mt-1 text-sm font-semibold text-white">{t("planner_detail_summary_title")}</div>
                               </div>
                               <div className="overflow-hidden rounded-[18px] border border-white/70 bg-white/95 shadow-sm">
                                 <div className="flex items-start justify-between gap-3 px-4 py-3.5">
                                   <div className="min-w-0">
                                     <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                      Рабочий день
+                                      {t("planner_workday")}
                                     </div>
                                     <div className="mt-1 text-base font-semibold text-slate-900">{detailDateText}</div>
                                     <div className="mt-1 text-sm text-slate-600">{detailScheduleText}</div>
                                   </div>
                                   <div className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-right shadow-sm">
                                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-600">
-                                      План
+                                      {t("planner_detail_plan")}
                                     </div>
                                     <div className="mt-0.5 text-sm font-semibold text-amber-950">{detailPlannedDurationText}</div>
                                   </div>
@@ -2191,16 +2286,16 @@ export default function ShiftsView({
                                 <div className="grid grid-cols-2 gap-px border-y border-slate-200/80 bg-slate-200/80">
                                   <div className="bg-white px-4 py-3">
                                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                      Факт
+                                      {t("planner_detail_actual")}
                                     </div>
                                     <div className="mt-1 text-sm font-semibold text-slate-900">{detailWorkedText}</div>
                                     <div className="mt-1 text-xs text-slate-500">
-                                      {detailMinutesWorked != null ? "Фактическое время" : "Нет фактических данных"}
+                                      {detailMinutesWorked != null ? t("planner_detail_actual_time") : t("planner_detail_no_actual_data")}
                                     </div>
                                   </div>
                                   <div className="bg-white px-4 py-3">
                                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                      Начислено
+                                      {t("planner_detail_accrued")}
                                     </div>
                                     <div className="mt-1 text-sm font-semibold text-slate-900">{detailSalaryText}</div>
                                     <div className="mt-1 text-xs text-slate-500">{detailSalaryHintText}</div>
@@ -2210,14 +2305,14 @@ export default function ShiftsView({
                                 <div className="grid grid-cols-2 gap-px bg-slate-200/80">
                                   <div className="bg-slate-50/90 px-4 py-2.5">
                                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                      Открыта
+                                      {t("planner_detail_opened")}
                                     </div>
                                     <div className="mt-1 text-sm font-semibold text-slate-900">{detailOpenedTimeText}</div>
                                     <div className="mt-1 text-xs text-slate-500">{detailOpenedHintText}</div>
                                   </div>
                                   <div className="bg-slate-50/90 px-4 py-2.5">
                                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                      Закрыта
+                                      {t("planner_detail_closed")}
                                     </div>
                                     <div className="mt-1 text-sm font-semibold text-slate-900">{detailClosedTimeText}</div>
                                     <div className="mt-1 text-xs text-slate-500">{detailClosedHintText}</div>
@@ -2230,17 +2325,17 @@ export default function ShiftsView({
                               <div className={cn(DETAIL_SECTION_CLASS, "border-rose-200/80 bg-gradient-to-br from-rose-50/95 via-white/95 to-rose-100/80")}>
                                 <div className="mb-3 flex items-start justify-between gap-3">
                                   <div>
-                                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-500">Конфликт</div>
-                                    <div className="mt-1 text-sm font-semibold text-slate-900">Смена пересекается с другим интервалом</div>
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-500">{t("planner_has_conflict")}</div>
+                                    <div className="mt-1 text-sm font-semibold text-slate-900">{t("planner_conflict_detail_title")}</div>
                                   </div>
                                   <Badge className="rounded-full border-0 bg-rose-500 px-3 py-1 text-[11px] text-white shadow-none">
-                                    Проверить
+                                    {t("planner_conflict_check")}
                                   </Badge>
                                 </div>
                                 {(selectedInterval.conflicts ?? []).length === 0 ? (
                                   <div className={READONLY_FIELD_CLASS}>
                                     <div className="text-sm leading-6 text-slate-700">
-                                      Конфликт не детализирован. Проверьте расписание сотрудника.
+                                      {t("planner_conflict_no_detail")}
                                     </div>
                                   </div>
                                 ) : (
@@ -2269,13 +2364,13 @@ export default function ShiftsView({
                             <Accordion key={`detail-sections-${selectedInterval.id}`} type="multiple" className="space-y-3">
                               {renderDetailAccordionItem({
                                 value: "notes",
-                                eyebrow: "Заметки",
-                                title: "Комментарий к смене",
-                                summary: detailNotesText || "Комментарий к смене не добавлен",
+                                eyebrow: t("planner_notes_eyebrow"),
+                                title: t("planner_shift_comment"),
+                                summary: detailNotesText || t("planner_shift_no_comment"),
                                 children: (
                                   <div className={cn(READONLY_FIELD_CLASS, "min-h-[88px]")}>
                                     <div className="text-sm leading-6 text-slate-700">
-                                      {detailNotesText || "Комментарий к смене не добавлен"}
+                                      {detailNotesText || t("planner_shift_no_comment")}
                                     </div>
                                   </div>
                                 ),
@@ -2283,31 +2378,31 @@ export default function ShiftsView({
 
                               {renderDetailAccordionItem({
                                 value: "procedures",
-                                eyebrow: "Процедуры",
-                                title: "Правила открытия и закрытия",
+                                eyebrow: t("planner_procedures_eyebrow"),
+                                title: t("planner_procedures_title"),
                                 summary: detailProcedureSummary,
                                 children: isProcedureLoading ? (
                                   <div className={READONLY_FIELD_CLASS}>
-                                    <div className="text-xs text-slate-500">Загрузка правил...</div>
+                                    <div className="text-xs text-slate-500">{t("planner_loading_procedure_rules")}</div>
                                   </div>
                                 ) : (
                                   <div className="space-y-4">
-                                    {renderProcedureSection("OPEN правила", procedureDetails?.open)}
-                                    {renderProcedureSection("CLOSE правила", procedureDetails?.close)}
+                                    {renderProcedureSection(t("planner_open_rules"), procedureDetails?.open)}
+                                    {renderProcedureSection(t("planner_close_rules"), procedureDetails?.close)}
                                   </div>
                                 ),
                               })}
 
                               {renderDetailAccordionItem({
                                 value: "calculations",
-                                eyebrow: "Расчеты",
-                                title: "Формулы и итоговые значения",
+                                eyebrow: t("planner_calculations_eyebrow"),
+                                title: t("planner_calculations_title"),
                                 summary: detailCalculationsSummary,
                                 children: (
                                   <div className="space-y-3">
                                     <div className="flex items-center gap-2 text-xs text-white/70">
                                       <Calculator className="h-3.5 w-3.5" />
-                                      <span>Итоги по данным смены и кассовых формул</span>
+                                      <span>{t("planner_calculations_hint")}</span>
                                     </div>
                                     {renderFormulaCalculationsWidget(procedureDetails?.formulaCalculations)}
                                   </div>
@@ -2319,10 +2414,10 @@ export default function ShiftsView({
                           {selectedStatus && canEditIntervalByStatus(selectedStatus.key) && !readOnly ? (
                             <div className="space-y-2 px-1">
                               <Button className="w-full bg-white text-orange-700 hover:bg-white/90" onClick={handleEditInterval}>
-                                Редактировать смену
+                                {t("planner_edit_shift")}
                               </Button>
                               <Button variant="destructive" className="w-full" onClick={handleDeleteInterval}>
-                                Удалить смену
+                                {t("planner_delete_shift")}
                               </Button>
                             </div>
                           ) : null}
@@ -2330,16 +2425,16 @@ export default function ShiftsView({
                       )}
                     </div>
                     <div key={formViewKey} className="w-1/3 pl-2 h-full min-h-0 flex flex-col">
-                      <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-1">
+                      <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 88px)" }}>
                         <div className="space-y-4 px-1">
                           <div className={FORM_SECTION_CLASS}>
                             <div className="mb-4">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Назначение</div>
-                              <div className="mt-1 text-sm font-semibold text-white">Кому и на какую позицию назначить смену</div>
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">{t("planner_assignment")}</div>
+                              <div className="mt-1 text-sm font-semibold text-white">{t("planner_assignment_desc")}</div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div className="min-w-0 space-y-2">
-                                <label className="text-xs font-semibold text-white/90">Сотрудник</label>
+                                <label className="text-xs font-semibold text-white/90">{t("planner_employee")}</label>
                                 <Select
                                   value={formValues.employeeId}
                                   onValueChange={(value) => {
@@ -2368,7 +2463,7 @@ export default function ShiftsView({
                                   }}
                                 >
                                   <SelectTrigger className="w-full min-w-0 border-white/70 bg-white/92 text-slate-900 shadow-sm">
-                                    <SelectValue placeholder="Выберите сотрудника" className="truncate" />
+                                    <SelectValue placeholder={t("planner_select_employee")} className="truncate" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {employeeOptions.map((emp) => (
@@ -2381,7 +2476,7 @@ export default function ShiftsView({
                               </div>
 
                               <div className="min-w-0 space-y-2">
-                                <label className="text-xs font-semibold text-white/90">Позиция</label>
+                                <label className="text-xs font-semibold text-white/90">{t("planner_position")}</label>
                                 <Select
                                   value={formValues.positionId ?? ""}
                                   onValueChange={(value) =>
@@ -2393,7 +2488,7 @@ export default function ShiftsView({
                                   disabled={!formValues.employeeId || positionOptions.length === 0}
                                 >
                                   <SelectTrigger className="w-full min-w-0 border-white/70 bg-white/92 text-slate-900 shadow-sm">
-                                    <SelectValue placeholder="Выберите позицию" className="truncate" />
+                                    <SelectValue placeholder={t("planner_select_position")} className="truncate" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {positionOptions.map((pos) => (
@@ -2405,7 +2500,7 @@ export default function ShiftsView({
                                 </Select>
                                 {!formValues.positionId && formValues.employeeId && (
                                   <div className="text-[10px] text-white/80">
-                                    {positionOptions.length === 0 ? "У сотрудника нет доступных позиций" : "Нужно выбрать позицию"}
+                                    {positionOptions.length === 0 ? t("planner_employee_no_positions") : t("planner_need_position")}
                                   </div>
                                 )}
                               </div>
@@ -2414,24 +2509,24 @@ export default function ShiftsView({
 
                           <div className={FORM_SECTION_CLASS}>
                             <div className="mb-4">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Время</div>
-                              <div className="mt-1 text-sm font-semibold text-white">Когда начинается и заканчивается смена</div>
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">{t("planner_time")}</div>
+                              <div className="mt-1 text-sm font-semibold text-white">{t("planner_time_desc")}</div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div className="space-y-2">
-                                <label className="text-xs font-semibold text-white/90">Начало</label>
+                                <label className="text-xs font-semibold text-white/90">{t("planner_start")}</label>
                                 <TimePicker24h
                                   value={formValues.startTime}
-                                  label="Начало смены"
+                                  label={t("planner_shift_start")}
                                   className="h-12"
                                   onChange={(value) => setFormValues((prev) => ({ ...prev, startTime: value }))}
                                 />
                               </div>
                               <div className="space-y-2">
-                                <label className="text-xs font-semibold text-white/90">Окончание</label>
+                                <label className="text-xs font-semibold text-white/90">{t("planner_end")}</label>
                                 <TimePicker24h
                                   value={formValues.endTime}
-                                  label="Окончание смены"
+                                  label={t("planner_shift_end")}
                                   className="h-12"
                                   onChange={(value) => setFormValues((prev) => ({ ...prev, endTime: value }))}
                                 />
@@ -2442,8 +2537,8 @@ export default function ShiftsView({
                           <div className={FORM_SECTION_CLASS}>
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Оплата</div>
-                                <div className="mt-1 text-sm font-semibold text-white">Стандартная или индивидуальная ставка</div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">{t("planner_pay")}</div>
+                                <div className="mt-1 text-sm font-semibold text-white">{t("planner_pay_desc")}</div>
                               </div>
                               <Switch
                                 checked={formValues.useStandardPay}
@@ -2473,7 +2568,7 @@ export default function ShiftsView({
                                       value={option.key}
                                       className="rounded-full bg-white/90 text-slate-900 first:rounded-full last:rounded-full data-[state=on]:bg-white data-[state=on]:text-orange-700"
                                     >
-                                      {option.label}
+                                      {t(option.labelKey)}
                                     </ToggleGroupItem>
                                   ))}
                                 </ToggleGroup>
@@ -2481,7 +2576,7 @@ export default function ShiftsView({
                                   <div className="space-y-2">
                                     {selectedCustomPayOptions.map((option) => (
                                       <div key={option.key} className="space-y-1">
-                                        <label className="text-xs font-semibold text-white/90">{option.label}</label>
+                                        <label className="text-xs font-semibold text-white/90">{t(option.labelKey)}</label>
                                         <Input
                                           type="number"
                                           inputMode="decimal"
@@ -2510,8 +2605,8 @@ export default function ShiftsView({
 
                           <div className={FORM_SECTION_CLASS}>
                             <div className="mb-4">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Заметки</div>
-                              <div className="mt-1 text-sm font-semibold text-white">Комментарий для менеджера или команды</div>
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">{t("planner_notes")}</div>
+                              <div className="mt-1 text-sm font-semibold text-white">{t("planner_notes_desc")}</div>
                             </div>
                             <Textarea
                               rows={3}
@@ -2520,7 +2615,7 @@ export default function ShiftsView({
                               onChange={(event) =>
                                 setFormValues((prev) => ({ ...prev, notes: event.target.value }))
                               }
-                              placeholder="Комментарий к смене"
+                              placeholder={t("planner_shift_comment")}
                             />
                           </div>
                         </div>
@@ -2531,7 +2626,7 @@ export default function ShiftsView({
                             disabled={!isFormValid || isSavingInterval}
                             onClick={handleSaveInterval}
                           >
-                            {isSavingInterval ? "Сохранение..." : "Сохранить"}
+                            {isSavingInterval ? t("profile_saving") : t("common_save")}
                           </Button>
                           <Button
                             variant="ghost"
@@ -2539,7 +2634,7 @@ export default function ShiftsView({
                             disabled={isSavingInterval}
                             onClick={() => setPanelView(panelReturnView)}
                           >
-                            Отмена
+                            {t("common_cancel")}
                           </Button>
                         </div>
                       </div>
@@ -2564,10 +2659,10 @@ export default function ShiftsView({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Смена пересекается</AlertDialogTitle>
+            <AlertDialogTitle>{t("planner_overlap_title")}</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
-                <div>Смена пересекается с уже запланированной сменой:</div>
+                <div>{t("planner_overlap_desc")}</div>
                 {overlapConflictLines.length > 0 ? (
                   <div className="space-y-1">
                     {overlapConflictLines.map((line) => (
@@ -2589,7 +2684,7 @@ export default function ShiftsView({
                 })
               }
             >
-              Ок
+              {t("common_ok")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

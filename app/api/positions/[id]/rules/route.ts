@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
+import { getSessionUser } from "@/lib/auth"
+import { resolveOrganizationAccess, isOwnerOrManagerEffectiveRole } from "@/lib/organization-access"
 import { syncScheduledProceduresForPosition } from "@/lib/procedures/scheduled-sync"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 const whenValues = ["OPEN", "CLOSE"] as const
 const typeValues = ["CHECKLIST", "INPUT", "PHOTO", "CASH"] as const
@@ -63,18 +65,24 @@ function formatScopeLabel(dayOfWeek: DayValue | null) {
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(request: Request, context: RouteContext) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  if (!isOwnerOrManagerRole(session.membership)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const { id: positionId } = await context.params
   const position = await prisma.position.findUnique({ where: { id: positionId } })
-  if (!position || position.organizationId !== session.organization.id) {
+  if (!position) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, position.organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const url = new URL(request.url)
@@ -108,18 +116,24 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function POST(request: Request, context: RouteContext) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  if (!isOwnerOrManagerRole(session.membership)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const { id: positionId } = await context.params
   const position = await prisma.position.findUnique({ where: { id: positionId } })
-  if (!position || position.organizationId !== session.organization.id) {
+  if (!position) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, position.organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => null)
@@ -192,6 +206,13 @@ export async function POST(request: Request, context: RouteContext) {
     return results
   })
   await syncScheduledProceduresForPosition(positionId)
+
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.POSITION_RULES_CREATE,
+    entityType: "position",
+    entityId: positionId,
+    metadata: { ruleIds: createdRules.map((r) => r.id), when: payload.when, type: payload.type, count: createdRules.length },
+  })
 
   return NextResponse.json(
     {

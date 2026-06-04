@@ -22,6 +22,7 @@ import {
   isCashIntegerDraftToken,
   isCashIntegerToken,
 } from "@/lib/cash/procedure-values"
+import { useTranslation } from "@/lib/i18n/context"
 
 type ProcedureRuleType = "CHECKLIST" | "INPUT" | "PHOTO" | "CASH"
 type ProcedureWhen = "OPEN" | "CLOSE"
@@ -303,6 +304,7 @@ function CameraCaptureDialog({
   onOpenChange: (open: boolean) => void
   onCapture: (blob: Blob, previewUrl: string) => void
 }) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -317,8 +319,8 @@ function CameraCaptureDialog({
     const mediaDevices = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined
     if (!mediaDevices?.getUserMedia) {
       const message = window.isSecureContext
-        ? "Камера недоступна в этом браузере. Загрузите фото через файл."
-        : "Камера в браузере работает только по HTTPS. Загрузите фото через файл."
+        ? t("shift_camera_unavailable_browser")
+        : t("shift_camera_unavailable_https")
       setError(message)
       return
     }
@@ -335,7 +337,7 @@ function CameraCaptureDialog({
           videoRef.current.srcObject = stream
         }
       })
-      .catch(() => setError("Не удалось получить доступ к камере"))
+      .catch(() => setError(t("shift_camera_access_error")))
 
     return () => {
       active = false
@@ -415,6 +417,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const { t, language } = useTranslation()
   const whenParam = (searchParams.get("when") || "OPEN") as ProcedureWhen
   const draftStorageKey = useMemo(() => getProcedureDraftStorageKey(intervalId, whenParam), [intervalId, whenParam])
 
@@ -435,7 +438,6 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   const [isSubmittingHandoff, setIsSubmittingHandoff] = useState(false)
   const [incomingHandoffNotes, setIncomingHandoffNotes] = useState<HandoffNote[]>([])
   const [isAcknowledgingHandoff, setIsAcknowledgingHandoff] = useState(false)
-
   const toPhotoUploadKey = (ruleId: string, cashFieldKey?: string) => (cashFieldKey ? `${ruleId}:${cashFieldKey}` : ruleId)
 
   const canEdit = interval ? !["completed", "canceled"].includes(interval.status) : true
@@ -456,7 +458,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось загрузить процедуры")
+        throw new Error(json?.error || t("shift_load_procedures_error"))
       }
       const procedures = json?.data?.procedures ?? []
       const nextProcedure = procedures[0] ?? null
@@ -516,8 +518,8 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       }
     } catch (err: any) {
       toast({
-        title: "Ошибка",
-        description: err?.message || "Не удалось загрузить процедуры",
+        title: t("common_error"),
+        description: err?.message || t("shift_load_procedures_error"),
         variant: "destructive",
       })
     } finally {
@@ -698,10 +700,10 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось сохранить")
+        throw new Error(json?.error || t("shift_save_answers_error"))
       }
       if (!silentSuccess) {
-        toast({ title: "Сохранено", description: "Ответы сохранены" })
+        toast({ title: t("shift_answers_saved"), description: t("shift_answers_saved_desc") })
       }
       if (refreshAfterSave) {
         await refreshData()
@@ -709,8 +711,8 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       return true
     } catch (err: any) {
       toast({
-        title: "Ошибка",
-        description: err?.message || "Не удалось сохранить",
+        title: t("common_error"),
+        description: err?.message || t("shift_save_answers_error"),
         variant: "destructive",
       })
       return false
@@ -746,15 +748,16 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Операция не выполнена")
+        throw new Error(json?.error || t("shift_operation_failed"))
       }
       toast({
-        title: whenParam === "OPEN" ? "Смена открыта" : "Смена закрыта",
-        description: "Статус смены обновлён",
+        title: whenParam === "OPEN" ? t("shift_opened_toast") : t("shift_closed_toast"),
+        description: t("shift_status_updated"),
       })
       clearDraftCache()
 
       const isEmployeeActor = interval ? !interval.canForce : true
+
       if (whenParam === "CLOSE" && isEmployeeActor) {
         setHandoffNoteText("")
         setHandoffDialogOpen(true)
@@ -773,8 +776,8 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       await refreshData()
     } catch (err: any) {
       toast({
-        title: "Ошибка",
-        description: err?.message || "Не удалось выполнить операцию",
+        title: t("common_error"),
+        description: err?.message || t("shift_operation_error"),
         variant: "destructive",
       })
     } finally {
@@ -812,14 +815,14 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось сохранить комментарий")
+        throw new Error(json?.error || t("shift_save_handoff_error"))
       }
-      toast({ title: "Комментарий сохранён", description: "Следующая смена его увидит" })
+      toast({ title: t("shift_handoff_saved"), description: t("shift_handoff_saved_desc") })
       closeHandoffDialogAndRedirect()
     } catch (err: any) {
       toast({
-        title: "Ошибка",
-        description: err?.message || "Не удалось сохранить комментарий",
+        title: t("common_error"),
+        description: err?.message || t("shift_save_handoff_error"),
         variant: "destructive",
       })
     } finally {
@@ -879,11 +882,11 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   }, [whenParam, interval?.status, intervalId])
 
   const attemptForceAction = async () => {
-    const reason = window.prompt("Укажите причину принудительного действия")
+    const reason = window.prompt(t("shift_force_reason_prompt"))
     if (!reason || !reason.trim()) {
       toast({
-        title: "Нужна причина",
-        description: "Для принудительного действия укажите причину.",
+        title: t("shift_force_reason_required_title"),
+        description: t("shift_force_reason_required_desc"),
         variant: "destructive",
       })
       return
@@ -909,7 +912,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось получить ссылку для загрузки")
+        throw new Error(json?.error || t("shift_upload_url_error"))
       }
       const { uploadUrl, key, publicUrl, contentType } = json.data
       const uploadContentType =
@@ -961,11 +964,11 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
         })
       }
 
-      toast({ title: "Фото загружено" })
+      toast({ title: t("shift_photo_uploaded") })
     } catch (err: any) {
       toast({
-        title: "Ошибка",
-        description: err?.message || "Не удалось загрузить фото",
+        title: t("common_error"),
+        description: err?.message || t("shift_photo_upload_error"),
         variant: "destructive",
       })
     } finally {
@@ -973,7 +976,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
     }
   }
 
-  const pageTitle = whenParam === "OPEN" ? "Открытие смены" : "Закрытие смены"
+  const pageTitle = whenParam === "OPEN" ? t("shift_open_title") : t("shift_close_title")
   const startedAt = interval?.openedAt ?? interval?.startAt ?? null
   const elapsedSeconds =
     isOpenInProgress && startedAt
@@ -991,8 +994,9 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
 
   const formatMoney = (valueCents: number, currency: string | null | undefined) => {
     const safeCurrency = currency || "CZK"
+    const locale = language === "en" ? "en-US" : "ru-RU"
     try {
-      return new Intl.NumberFormat("ru-RU", {
+      return new Intl.NumberFormat(locale, {
         style: "currency",
         currency: safeCurrency,
         maximumFractionDigits: 0,
@@ -1023,37 +1027,38 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
   const actionBlockedMessage =
     whenParam === "OPEN"
       ? hasBlockingCashPhotoMissing
-        ? "Для заполненных полей кассы с требованием фото загрузите фото."
-        : "Все обязательные поля должны быть заполнены для открытия смены."
+        ? t("shift_blocked_photo_required")
+        : t("shift_blocked_open")
       : hasBlockingCashPhotoMissing
-        ? "Для заполненных полей кассы с требованием фото загрузите фото."
-        : "Все обязательные поля должны быть заполнены для закрытия смены."
+        ? t("shift_blocked_photo_required")
+        : t("shift_blocked_close")
 
   return (
     <div className="min-h-screen bg-background pb-24 max-w-md mx-auto">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="p-4 flex items-center justify-between">
-          <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full">
-            ←
-          </Button>
-          <h1 className="text-lg font-semibold">{pageTitle}</h1>
-          <div className="w-8" />
+      <div className="sticky top-0 z-10 bg-background">
+        <div className="p-4">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full">
+              ←
+            </Button>
+            <h1 className="text-xl font-semibold">{pageTitle}</h1>
+          </div>
         </div>
       </div>
 
       <div className="p-4 space-y-4">
-        {isLoading && <div className="text-sm text-muted-foreground">Загрузка...</div>}
+        {isLoading && <div className="text-sm text-muted-foreground">{t("common_loading")}</div>}
 
         {!isLoading && procedure && (
           <>
             {isOpenInProgress && (
               <Card className="p-4 space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">В смене</span>
+                  <span className="text-muted-foreground">{t("shift_in_progress")}</span>
                   <span className="font-semibold">{formatDuration(elapsedSeconds)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Зарплата</span>
+                  <span className="text-muted-foreground">{t("employee_profile_salary")}</span>
                   <span className="font-semibold">{salaryText}</span>
                 </div>
               </Card>
@@ -1061,7 +1066,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
 
             <Card className="p-4 space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Обязательные</span>
+                <span className="text-muted-foreground">{t("shift_required")}</span>
                 <span className="font-medium">
                   {completedRequired}/{requiredTotal}
                 </span>
@@ -1069,8 +1074,8 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
               <Progress value={progressValue} />
               <div className="text-xs text-muted-foreground">
                 {completedRequired === requiredTotal
-                  ? "Все обязательные правила выполнены"
-                  : "Нужно выполнить обязательные правила"}
+                  ? t("shift_all_required_done")
+                  : t("shift_required_pending")}
               </div>
             </Card>
 
@@ -1078,8 +1083,8 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
               {visibleRules.length === 0 && (
                 <Card className="p-4 text-sm text-muted-foreground">
                   {isOpenInProgress
-                    ? "Все необязательные поля открытия уже заполнены."
-                    : "Для этого этапа нет правил."}
+                    ? t("shift_optional_filled")
+                    : t("shift_no_rules")}
                 </Card>
               )}
               {visibleRules.map((rule) => {
@@ -1094,10 +1099,10 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                           {rule.required && <span className="text-destructive"> *</span>}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {rule.type === "CHECKLIST" && "Чеклист"}
-                          {rule.type === "INPUT" && "Поле ввода"}
-                          {rule.type === "PHOTO" && "Фото"}
-                          {rule.type === "CASH" && "Касса"}
+                          {rule.type === "CHECKLIST" && t("shift_rule_checklist")}
+                          {rule.type === "INPUT" && t("shift_rule_input")}
+                          {rule.type === "PHOTO" && t("shift_rule_photo")}
+                          {rule.type === "CASH" && t("shift_rule_cash")}
                         </div>
                       </div>
                       <span
@@ -1106,7 +1111,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                           isComplete ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground",
                         )}
                       >
-                        {isComplete ? "Готово" : "Не заполнено"}
+                        {isComplete ? t("shift_rule_done") : t("shift_rule_pending")}
                       </span>
                     </div>
 
@@ -1139,7 +1144,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                           updateAnswerState(rule.id, { inputValue: event.target.value.slice(0, 150) })
                         }
                         maxLength={150}
-                        placeholder="Введите значение"
+                        placeholder={t("shift_input_placeholder")}
                         disabled={!canEdit}
                       />
                     )}
@@ -1148,19 +1153,19 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                       <div className="space-y-2">
                         {rule.answer?.photoDeletedAt && (
                           <div className="text-xs text-muted-foreground">
-                            Ранее загруженное фото удалено по политике хранения.
+                            {t("shift_photo_deleted")}
                           </div>
                         )}
                         {state?.photoPreviewUrl ? (
                           <ImagePreview
                             src={state.photoPreviewUrl}
-                            alt="Фото"
+                            alt={t("shift_rule_photo")}
                             triggerClassName="w-full rounded-lg"
                             imageClassName="w-full h-40 object-cover rounded-lg"
                           />
                         ) : (
                           <div className="w-full h-32 rounded-lg bg-muted/40 flex items-center justify-center text-xs text-muted-foreground">
-                            Фото не сделано
+                            {t("shift_photo_not_taken")}
                           </div>
                         )}
                         <Button
@@ -1169,7 +1174,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                           onClick={() => setCameraTarget({ ruleId: rule.id })}
                           disabled={!canEdit || uploadingPhotoKey === rule.id}
                         >
-                          {uploadingPhotoKey === rule.id ? "Загрузка..." : "Сделать фото"}
+                          {uploadingPhotoKey === rule.id ? t("shift_photo_uploading") : t("shift_take_photo")}
                         </Button>
                         <Input
                           value={state?.photoComment ?? ""}
@@ -1179,7 +1184,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                             })
                           }
                           maxLength={300}
-                          placeholder="Комментарий к фото (опционально)"
+                          placeholder={t("shift_photo_comment_placeholder")}
                           disabled={!canEdit}
                         />
                       </div>
@@ -1192,35 +1197,34 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="space-y-1">
-                                  <div className="text-sm font-medium text-amber-950">Кассу закроет следующий сотрудник</div>
+                                  <div className="text-sm font-medium text-amber-950">{t("shift_cash_next_worker")}</div>
                                   <div className="text-xs text-amber-900/80">
-                                    Используйте это, если касса остаётся в работе и в этом рабочем дне ещё есть сотрудник,
-                                    который сможет закрыть её позже.
+                                    {t("shift_cash_next_worker_desc")}
                                   </div>
                                 </div>
                                 <Switch
                                   checked={skipCloseCash}
                                   onCheckedChange={(checked) => setSkipCloseCash(checked === true)}
                                   disabled={!canEdit}
-                                  aria-label="Кассу закроет следующий сотрудник"
+                                  aria-label={t("shift_cash_next_worker")}
                                 />
                               </div>
                               {isCloseCashSkipActive && (
                                 <div className="mt-2 text-xs text-amber-900/80">
-                                  Поля кассы для этой смены будут пропущены и не заблокируют закрытие.
+                                  {t("shift_cash_skip_note")}
                                 </div>
                               )}
                             </div>
                           ) : closeCashPolicy.reason ? (
                             <div className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                              {closeCashPolicy.reason}
+                              {t("shift_cash_last_employee")}
                             </div>
                           ) : null
                         )}
 
                         {rule.cashLocked && (
                           <div className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                            {rule.cashLockMessage ?? "Значения уже установлены для этого рабочего дня"}
+                            {rule.cashLockMessage ?? t("shift_cash_locked")}
                           </div>
                         )}
 
@@ -1246,7 +1250,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                                     {cashField.isRequired && <span className="text-destructive"> *</span>}
                                     {requiresPhoto && (
                                       <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
-                                        Фото
+                                        {t("shift_cash_photo_badge")}
                                       </span>
                                     )}
                                   </div>
@@ -1268,7 +1272,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                                       isPhotoMissing && "border-destructive focus-visible:ring-destructive",
                                     )}
                                     inputMode="numeric"
-                                    placeholder="Введите целое число"
+                                    placeholder={t("shift_cash_number_placeholder")}
                                     disabled={isCashInputDisabled}
                                   />
 
@@ -1283,7 +1287,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                                         />
                                       ) : (
                                         <div className="flex h-20 items-center justify-center rounded-md bg-muted/40 text-xs text-muted-foreground">
-                                          Фото не загружено
+                                          {t("shift_cash_photo_not_loaded")}
                                         </div>
                                       )}
 
@@ -1294,21 +1298,21 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                                         disabled={isCashInputDisabled || !hasValue || uploadingPhotoKey === fieldUploadKey}
                                       >
                                         {uploadingPhotoKey === fieldUploadKey
-                                          ? "Загрузка..."
+                                          ? t("shift_photo_uploading")
                                           : hasPhoto
-                                            ? "Переснять фото"
-                                            : "Сделать фото"}
+                                            ? t("shift_cash_retake_photo")
+                                            : t("shift_take_photo")}
                                       </Button>
 
                                       {!hasValue && !isCloseCashSkipActive && (
                                         <div className="text-xs text-muted-foreground">
-                                          Введите значение, затем загрузите фото.
+                                          {t("shift_cash_enter_then_photo")}
                                         </div>
                                       )}
 
                                       {isPhotoMissing && (
                                         <div className="text-xs text-destructive">
-                                          Для заполненного поля требуется фото.
+                                          {t("shift_cash_photo_required")}
                                         </div>
                                       )}
                                     </div>
@@ -1319,7 +1323,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                           </div>
                         ) : (
                           <div className="text-xs text-muted-foreground">
-                            В настройках кассы не задано полей для этого этапа.
+                            {t("shift_cash_no_fields")}
                           </div>
                         )}
                       </div>
@@ -1342,7 +1346,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                     }}
                     disabled={isSubmitting || !canOpen}
                   >
-                    {isSubmitting ? "Проверка..." : "Открыть смену"}
+                    {isSubmitting ? t("shift_checking") : t("shift_open_action")}
                   </Button>
                   {!canOpen && interval?.canForce && (
                     <Button
@@ -1351,7 +1355,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                       onClick={attemptForceAction}
                       disabled={isSubmitting}
                     >
-                      Принудительно открыть (владелец)
+                      {t("shift_force_open")}
                     </Button>
                   )}
                 </>
@@ -1362,7 +1366,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                   variant="destructive"
                   onClick={() => router.replace(`/shift-procedures/${intervalId}?when=CLOSE`)}
                 >
-                  Перейти к закрытию смены
+                  {t("shift_go_to_close")}
                 </Button>
               )}
               {whenParam === "CLOSE" && (
@@ -1378,7 +1382,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                     }}
                     disabled={isSubmitting || !canClose}
                   >
-                    {isSubmitting ? "Проверка..." : "Закрыть смену"}
+                    {isSubmitting ? t("shift_checking") : t("shift_close_action")}
                   </Button>
                   {!canClose && interval?.canForce && interval?.status === "in_progress" && (
                     <Button
@@ -1387,7 +1391,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                       onClick={attemptForceAction}
                       disabled={isSubmitting}
                     >
-                      Принудительно закрыть (владелец)
+                      {t("shift_force_close")}
                     </Button>
                   )}
                 </>
@@ -1397,7 +1401,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
         )}
 
         {!isLoading && !procedure && (
-          <Card className="p-4 text-sm text-muted-foreground">Правила для этой смены не настроены.</Card>
+          <Card className="p-4 text-sm text-muted-foreground">{t("shift_no_rules_configured")}</Card>
         )}
       </div>
 
@@ -1410,9 +1414,9 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
                   <MessageSquareText className="h-5 w-5 text-primary" strokeWidth={1.5} />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <div className="text-sm font-semibold">Комментарий от предыдущей смены</div>
+                  <div className="text-sm font-semibold">{t("shift_handoff_from_prev")}</div>
                   {note.authorFullName && (
-                    <div className="text-xs text-muted-foreground">От: {note.authorFullName}</div>
+                    <div className="text-xs text-muted-foreground">{t("shift_handoff_from", { name: note.authorFullName })}</div>
                   )}
                 </div>
               </div>
@@ -1424,7 +1428,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
             onClick={() => void acknowledgeIncomingHandoffNotes()}
             disabled={isAcknowledgingHandoff}
           >
-            {isAcknowledgingHandoff ? "Сохраняем..." : "Понятно"}
+            {isAcknowledgingHandoff ? t("shift_handoff_saving") : t("shift_handoff_acknowledge")}
           </Button>
         </div>
       )}
@@ -1441,14 +1445,14 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquareText className="h-5 w-5 text-primary" strokeWidth={1.5} />
-              Комментарий для следующей смены
+              {t("shift_handoff_title")}
             </DialogTitle>
             <DialogDescription>
-              Если нужно — оставьте заметку для следующего сотрудника, который откроет смену в этой локации. Поле не обязательное.
+              {t("shift_handoff_desc")}
             </DialogDescription>
           </DialogHeader>
           <Textarea
-            placeholder="Например: в холодильнике остался салат, нужно переставить"
+            placeholder={t("shift_handoff_placeholder")}
             value={handoffNoteText}
             onChange={(event) => setHandoffNoteText(event.target.value.slice(0, HANDOFF_NOTE_MAX_LENGTH))}
             rows={5}
@@ -1464,7 +1468,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
               onClick={() => void submitHandoffNote()}
               disabled={isSubmittingHandoff || !handoffNoteText.trim()}
             >
-              {isSubmittingHandoff ? "Сохраняем..." : "Сохранить"}
+              {isSubmittingHandoff ? t("shift_handoff_saving") : t("common_save")}
             </Button>
             <Button
               variant="outline"
@@ -1472,7 +1476,7 @@ export default function ShiftProcedurePage({ intervalId }: { intervalId: string 
               onClick={skipHandoffNote}
               disabled={isSubmittingHandoff}
             >
-              Пропустить
+              {t("shift_handoff_skip")}
             </Button>
           </DialogFooter>
         </DialogContent>

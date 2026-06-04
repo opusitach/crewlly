@@ -15,8 +15,9 @@ const mocked = vi.hoisted(() => {
 
   return {
     prisma,
-    getSessionUserWithOrg: vi.fn(),
-    isOwnerOrManagerRole: vi.fn(),
+    getSessionUser: vi.fn(),
+    resolveOrganizationAccess: vi.fn(),
+    isOwnerOrManagerEffectiveRole: vi.fn(),
     syncScheduledProceduresForPosition: vi.fn(),
   }
 })
@@ -26,8 +27,12 @@ vi.mock("@/lib/prisma", () => ({
 }))
 
 vi.mock("@/lib/auth", () => ({
-  getSessionUserWithOrg: mocked.getSessionUserWithOrg,
-  isOwnerOrManagerRole: mocked.isOwnerOrManagerRole,
+  getSessionUser: mocked.getSessionUser,
+}))
+
+vi.mock("@/lib/organization-access", () => ({
+  resolveOrganizationAccess: mocked.resolveOrganizationAccess,
+  isOwnerOrManagerEffectiveRole: mocked.isOwnerOrManagerEffectiveRole,
 }))
 
 vi.mock("@/lib/procedures/scheduled-sync", () => ({
@@ -41,11 +46,13 @@ describe("positions rules routes", () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    mocked.getSessionUserWithOrg.mockResolvedValue({
-      organization: { id: "org_1" },
-      membership: { role: "OWNER" },
+    mocked.getSessionUser.mockResolvedValue({ id: "user_1" })
+    mocked.resolveOrganizationAccess.mockResolvedValue({
+      organizationId: "org_1",
+      effectiveRoleKey: "owner",
+      permissions: [],
     })
-    mocked.isOwnerOrManagerRole.mockReturnValue(true)
+    mocked.isOwnerOrManagerEffectiveRole.mockReturnValue(true)
     mocked.prisma.position.findUnique.mockResolvedValue({ id: "pos_1", organizationId: "org_1" })
     mocked.prisma.ruleTemplate.count.mockResolvedValue(0)
     mocked.syncScheduledProceduresForPosition.mockResolvedValue(undefined)

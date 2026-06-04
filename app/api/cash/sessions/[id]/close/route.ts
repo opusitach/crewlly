@@ -19,6 +19,7 @@ import { syncWorkdayRevenueFromCashSessions } from "@/lib/cash/revenue-allocatio
 import { syncWorkdayTipsFromCashSessions } from "@/lib/cash/tips-sync"
 import { notifyOrganizationOwners, toEventActorName, toEventDateLabel } from "@/lib/notifications/owner-events"
 import { toNotificationDateOnly } from "@/lib/notifications/navigation"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -29,12 +30,21 @@ const closePayloadSchema = z.object({
 })
 
 export async function POST(request: Request, context: RouteContext) {
-  const auth = await getCashAuthContext({ requireManage: true })
+  const { id } = await context.params
+
+  const sessionForOrg = await prisma.cashSession.findUnique({
+    where: { id },
+    select: { cashRegister: { select: { location: { select: { organizationId: true } } } } },
+  })
+  if (!sessionForOrg) {
+    return NextResponse.json({ error: "Кассовая сессия не найдена" }, { status: 404 })
+  }
+  const orgId = sessionForOrg.cashRegister.location.organizationId
+
+  const auth = await getCashAuthContext({ requireManage: true, organizationId: orgId })
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
-
-  const { id } = await context.params
   const body = await request.json().catch(() => null)
   const parsed = closePayloadSchema.safeParse(body)
   if (!parsed.success) {
@@ -235,6 +245,13 @@ export async function POST(request: Request, context: RouteContext) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status })
     }
+
+    void logInternalAction(auth.access, {
+      action: INTERNAL_ACTIONS.CASH_SESSION_CLOSE,
+      entityType: "cash_session",
+      entityId: id,
+      metadata: { organizationId: auth.organizationId },
+    })
 
     return NextResponse.json({ data: result.data })
   } catch (error) {

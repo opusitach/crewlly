@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslation } from "@/lib/i18n/context"
 import { ChevronLeft, Plus, Trash2, Save } from "lucide-react"
 
 type CashFieldDraft = {
@@ -38,8 +39,6 @@ type CashFormulaDraft = {
 export type CashSettingsTab = "open" | "close" | "formula"
 
 const FORMULA_OPERATOR_BUTTONS = ["+", "-", "(", ")"] as const
-const DEFAULT_NEW_FORMULA_LABEL = "Новый расчет"
-
 const CYRILLIC_TO_LATIN: Record<string, string> = {
   а: "a",
   б: "b",
@@ -112,9 +111,6 @@ const createBaseFieldKeyFromLabel = (label: string, inputStage: "open" | "close"
   }
   return key.slice(0, 64)
 }
-
-const getDefaultFieldLabel = (inputStage: "open" | "close") =>
-  inputStage === "open" ? "Новое поле открытия" : "Новое поле закрытия"
 
 const createBaseFormulaKeyFromLabel = (label: string) => {
   const latin = transliterateToLatin(label)
@@ -195,6 +191,7 @@ export default function CashSettingsView({
   initialTab?: CashSettingsTab
   locationId?: string | null
 }) {
+  const { t } = useTranslation()
   const { toast } = useToast()
 
   const [locationId, setLocationId] = useState<string | null>(null)
@@ -210,6 +207,8 @@ export default function CashSettingsView({
   const [formulas, setFormulas] = useState<CashFormulaDraft[]>([])
   const [activeFormulaLocalId, setActiveFormulaLocalId] = useState<string | null>(null)
   const [percentInput, setPercentInput] = useState("10")
+  const getDefaultFieldLabel = (inputStage: "open" | "close") =>
+    inputStage === "open" ? t("cash_settings_new_open_field") : t("cash_settings_new_close_field")
 
   useEffect(() => {
     void loadSettings(initialLocationId)
@@ -285,7 +284,7 @@ export default function CashSettingsView({
       const res = await fetch(`/api/cash/settings${query}`, { credentials: "include" })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось загрузить настройки кассы")
+        throw new Error(json?.error || t("cash_settings_load_error"))
       }
 
       const data = json?.data
@@ -330,8 +329,8 @@ export default function CashSettingsView({
       setActiveFormulaLocalId(loadedFormulas[0]?.localId ?? null)
     } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: error?.message || "Не удалось загрузить настройки кассы",
+        title: t("common_error"),
+        description: error?.message || t("cash_settings_load_error"),
         variant: "destructive",
       })
     } finally {
@@ -435,7 +434,7 @@ export default function CashSettingsView({
   }
 
   const addFormula = () => {
-    const defaultLabel = DEFAULT_NEW_FORMULA_LABEL
+    const defaultLabel = t("cash_settings_new_calculation")
     const localId = createLocalId()
 
     setFormulas((prev) => {
@@ -538,8 +537,8 @@ export default function CashSettingsView({
     const value = Number(percentInput.trim())
     if (!Number.isInteger(value) || value < 0 || value > 100) {
       toast({
-        title: "Ошибка",
-        description: "Процент должен быть целым числом от 0 до 100.",
+        title: t("common_error"),
+        description: t("cash_settings_percent_invalid"),
         variant: "destructive",
       })
       return
@@ -547,8 +546,8 @@ export default function CashSettingsView({
 
     if (!activeFormula.expression.trim()) {
       toast({
-        title: "Ошибка",
-        description: "Сначала добавьте поле или выражение, затем вычитайте процент.",
+        title: t("common_error"),
+        description: t("cash_settings_percent_needs_expression"),
         variant: "destructive",
       })
       return
@@ -597,34 +596,34 @@ export default function CashSettingsView({
   const validateBeforeSave = () => {
     const active = fields.filter((field) => field.isActive)
     if (active.length === 0) {
-      return "Добавьте хотя бы одно активное поле"
+      return t("cash_settings_validation_add_field")
     }
 
     const seenKeys = new Set<string>()
     for (const field of active) {
-      if (!field.label.trim()) return "Укажите название для каждого поля"
-      if (!field.key.trim()) return "Не удалось сгенерировать поле. Измените название."
+      if (!field.label.trim()) return t("cash_settings_validation_field_name")
+      if (!field.key.trim()) return t("cash_settings_validation_field_generated")
       const normalized = field.key
       if (!keyPattern.test(normalized)) {
-        return "Не удалось сохранить одно из полей. Измените название и попробуйте снова."
+        return t("cash_settings_validation_field_save")
       }
       if (seenKeys.has(normalized)) {
-        return "Названия полей должны быть уникальными."
+        return t("cash_settings_validation_field_unique")
       }
       seenKeys.add(normalized)
     }
 
     const revenueFields = active.filter((field) => field.isRevenueBasis)
     if (revenueFields.length > 1) {
-      return "Для % от выручки можно выбрать только одно поле"
+      return t("cash_settings_validation_one_revenue")
     }
 
     if (revenueFields.length === 1 && revenueFields[0].inputStage !== "close") {
-      return "Поле-источник выручки должно быть из вкладки закрытия"
+      return t("cash_settings_validation_revenue_close")
     }
 
     if (formulas.length === 0) {
-      return "Добавьте хотя бы одну формулу"
+      return t("cash_settings_validation_add_formula")
     }
 
     const formulaKeys = new Set<string>()
@@ -633,24 +632,24 @@ export default function CashSettingsView({
     let revenueSourceCount = 0
     for (const formula of formulas) {
       if (!formula.resultLabel.trim()) {
-        return "Укажите название для каждого расчета"
+        return t("cash_settings_validation_formula_name")
       }
 
       if (!formula.expression.trim()) {
-        return `Заполните формулу для расчета «${formula.resultLabel || "Без названия"}»`
+        return t("cash_settings_validation_formula_expression", { name: formula.resultLabel || t("cash_settings_untitled") })
       }
 
       if (!formula.resultKey.trim() || !keyPattern.test(formula.resultKey)) {
-        return "Не удалось сохранить один из расчетов. Измените название и попробуйте снова."
+        return t("cash_settings_validation_formula_save")
       }
 
       if (formulaKeys.has(formula.resultKey)) {
-        return "Названия расчетов должны быть уникальными."
+        return t("cash_settings_validation_formula_unique")
       }
       formulaKeys.add(formula.resultKey)
 
       if (activeFieldKeys.has(formula.resultKey)) {
-        return `Название расчета «${formula.resultLabel || "Без названия"}» конфликтует с названием поля. Переименуйте расчет.`
+        return t("cash_settings_validation_formula_field_conflict", { name: formula.resultLabel || t("cash_settings_untitled") })
       }
 
       if (formula.isTipsSource) {
@@ -662,16 +661,16 @@ export default function CashSettingsView({
       }
 
       if (formula.isTipsSource && formula.isRevenueSource) {
-        return `В расчете «${formula.resultLabel || "Без названия"}» можно включить только один спец-тоггл: чаевые или выручка.`
+        return t("cash_settings_validation_one_special_toggle", { name: formula.resultLabel || t("cash_settings_untitled") })
       }
     }
 
     if (tipsSourceCount > 1) {
-      return "Только один расчет может быть отмечен как расчет чаевых."
+      return t("cash_settings_validation_one_tips")
     }
 
     if (revenueSourceCount > 1) {
-      return "Только один расчет может быть отмечен как данные для выручки."
+      return t("cash_settings_validation_one_revenue_formula")
     }
 
     return null
@@ -680,7 +679,7 @@ export default function CashSettingsView({
   const saveSettings = async () => {
     const validationError = validateBeforeSave()
     if (validationError) {
-      toast({ title: "Ошибка", description: validationError, variant: "destructive" })
+      toast({ title: t("common_error"), description: validationError, variant: "destructive" })
       return
     }
 
@@ -724,18 +723,18 @@ export default function CashSettingsView({
 
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error(json?.error || "Не удалось сохранить настройки")
+        throw new Error(json?.error || t("cash_settings_save_generic_error"))
       }
 
       toast({
-        title: "Сохранено",
-        description: "Настройки кассы сохранены",
+        title: t("cash_settings_saved"),
+        description: t("cash_settings_saved_desc"),
       })
       await loadSettings()
     } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: error?.message || "Не удалось сохранить настройки кассы",
+        title: t("common_error"),
+        description: error?.message || t("cash_settings_save_error"),
         variant: "destructive",
       })
     } finally {
@@ -745,15 +744,15 @@ export default function CashSettingsView({
 
   return (
     <div className="min-h-screen bg-background pb-8 max-w-3xl mx-auto">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="p-4 flex items-center justify-between">
-          <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
+      <div className="sticky top-0 z-10 bg-background">
+        <div className="p-4 flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full shrink-0">
             <ChevronLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold">Настройки кассы</h1>
+          <h1 className="min-w-0 flex-1 text-left text-lg font-semibold">{t("cash_settings_title")}</h1>
           <Button onClick={saveSettings} disabled={saving || loading}>
             <Save className="h-4 w-4 mr-2" />
-            Сохранить
+            {t("cash_settings_save")}
           </Button>
         </div>
       </div>
@@ -761,27 +760,27 @@ export default function CashSettingsView({
       <div className="p-4 space-y-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as CashSettingsTab)}>
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="open">Открытие</TabsTrigger>
-            <TabsTrigger value="close">Закрытие</TabsTrigger>
-            <TabsTrigger value="formula">Формулы</TabsTrigger>
+            <TabsTrigger value="open">{t("cash_settings_tab_open")}</TabsTrigger>
+            <TabsTrigger value="close">{t("cash_settings_tab_close")}</TabsTrigger>
+            <TabsTrigger value="formula">{t("cash_settings_tab_formulas")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="open" className="space-y-3 mt-4">
             <Card className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Поля открытия</h2>
+                <h2 className="font-semibold">{t("cash_settings_open_fields")}</h2>
                 <Button size="sm" variant="outline" onClick={() => addField("open")}>
                   <Plus className="h-4 w-4 mr-1" />
-                  Добавить поле
+                  {t("cash_settings_add_field")}
                 </Button>
               </div>
 
-              {openFields.length === 0 && <p className="text-sm text-muted-foreground">Поля открытия пока не добавлены</p>}
+              {openFields.length === 0 && <p className="text-sm text-muted-foreground">{t("cash_settings_open_fields_empty")}</p>}
 
               {openFields.map((field) => (
                 <Card key={field.localId} className="p-3 space-y-3">
                   <div className="space-y-1">
-                    <Label>Название</Label>
+                    <Label>{t("cash_settings_field_name")}</Label>
                     <Input
                       value={field.label}
                       onChange={(e) => updateFieldLabel(field.localId, e.target.value)}
@@ -792,7 +791,7 @@ export default function CashSettingsView({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Switch checked={field.isRequired} onCheckedChange={(v) => updateField(field.localId, { isRequired: Boolean(v) })} />
-                      <span className="text-sm">Обязательное поле</span>
+                      <span className="text-sm">{t("cash_settings_required_field")}</span>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => removeField(field.localId)}>
                       <Trash2 className="h-4 w-4 text-destructive" />
@@ -804,7 +803,7 @@ export default function CashSettingsView({
                       checked={field.isPhotoRequired}
                       onCheckedChange={(v) => updateField(field.localId, { isPhotoRequired: Boolean(v) })}
                     />
-                    <span className="text-sm">Запросить фото</span>
+                    <span className="text-sm">{t("cash_settings_request_photo")}</span>
                   </div>
                 </Card>
               ))}
@@ -814,19 +813,19 @@ export default function CashSettingsView({
           <TabsContent value="close" className="space-y-3 mt-4">
             <Card className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Поля закрытия</h2>
+                <h2 className="font-semibold">{t("cash_settings_close_fields")}</h2>
                 <Button size="sm" variant="outline" onClick={() => addField("close")}>
                   <Plus className="h-4 w-4 mr-1" />
-                  Добавить поле
+                  {t("cash_settings_add_field")}
                 </Button>
               </div>
 
-              {closeFields.length === 0 && <p className="text-sm text-muted-foreground">Поля закрытия пока не добавлены</p>}
+              {closeFields.length === 0 && <p className="text-sm text-muted-foreground">{t("cash_settings_close_fields_empty")}</p>}
 
               {closeFields.map((field) => (
                 <Card key={field.localId} className="p-3 space-y-3">
                   <div className="space-y-1">
-                    <Label>Название</Label>
+                    <Label>{t("cash_settings_field_name")}</Label>
                     <Input
                       value={field.label}
                       onChange={(e) => updateFieldLabel(field.localId, e.target.value)}
@@ -838,7 +837,7 @@ export default function CashSettingsView({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Switch checked={field.isRequired} onCheckedChange={(v) => updateField(field.localId, { isRequired: Boolean(v) })} />
-                        <span className="text-sm">Обязательное поле</span>
+                        <span className="text-sm">{t("cash_settings_required_field")}</span>
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => removeField(field.localId)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -847,7 +846,7 @@ export default function CashSettingsView({
 
                     <div className="flex items-center gap-2">
                       <Switch checked={field.isRevenueBasis} onCheckedChange={(v) => setRevenueBasis(field.localId, Boolean(v))} />
-                      <span className="text-sm">Источник выручки для зарплаты (% от revenue)</span>
+                      <span className="text-sm">{t("cash_settings_revenue_basis")}</span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -855,7 +854,7 @@ export default function CashSettingsView({
                         checked={field.isPhotoRequired}
                         onCheckedChange={(v) => updateField(field.localId, { isPhotoRequired: Boolean(v) })}
                       />
-                      <span className="text-sm">Запросить фото</span>
+                      <span className="text-sm">{t("cash_settings_request_photo")}</span>
                     </div>
                   </div>
                 </Card>
@@ -867,12 +866,12 @@ export default function CashSettingsView({
             <Card className="p-4 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="font-semibold">Расчеты</h2>
-                  <p className="text-sm text-muted-foreground">Добавляйте несколько формул и переключайтесь между ними для редактирования.</p>
+                  <h2 className="font-semibold">{t("cash_settings_calculations")}</h2>
+                  <p className="text-sm text-muted-foreground">{t("cash_settings_calculations_desc")}</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={addFormula}>
                   <Plus className="h-4 w-4 mr-1" />
-                  Добавить расчет
+                  {t("cash_settings_add_calculation")}
                 </Button>
               </div>
 
@@ -887,13 +886,13 @@ export default function CashSettingsView({
                       className="justify-between"
                       onClick={() => setActiveFormulaLocalId(formula.localId)}
                     >
-                      <span className="truncate">{formula.resultLabel.trim() || "Без названия"}</span>
+                      <span className="truncate">{formula.resultLabel.trim() || t("cash_settings_untitled")}</span>
                       <span className="flex items-center gap-1">
                         {formula.isTipsSource && (
-                          <span className="rounded bg-background/30 px-2 py-0.5 text-[10px] uppercase tracking-wide">чаевые</span>
+                          <span className="rounded bg-background/30 px-2 py-0.5 text-[10px] uppercase tracking-wide">{t("cash_settings_tips_badge")}</span>
                         )}
                         {formula.isRevenueSource && (
-                          <span className="rounded bg-background/30 px-2 py-0.5 text-[10px] uppercase tracking-wide">выручка</span>
+                          <span className="rounded bg-background/30 px-2 py-0.5 text-[10px] uppercase tracking-wide">{t("cash_settings_revenue_badge")}</span>
                         )}
                       </span>
                     </Button>
@@ -906,14 +905,14 @@ export default function CashSettingsView({
                   <div className="space-y-1">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 space-y-1">
-                        <Label>Название расчета</Label>
+                        <Label>{t("cash_settings_calculation_name")}</Label>
                         <Input
                           value={activeFormula.resultLabel}
                           onChange={(e) => updateFormulaLabel(activeFormula.localId, e.target.value)}
-                          placeholder={DEFAULT_NEW_FORMULA_LABEL}
+                          placeholder={t("cash_settings_new_calculation")}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Технические ключи скрыты. В интерфейсе отображается только название расчета.
+                          {t("cash_settings_keys_hidden")}
                         </p>
 
                         <div className="flex items-center gap-2 pt-1">
@@ -921,7 +920,7 @@ export default function CashSettingsView({
                             checked={activeFormula.isTipsSource}
                             onCheckedChange={(checked) => setTipsSource(activeFormula.localId, Boolean(checked))}
                           />
-                          <span className="text-sm">Расчет чаевых</span>
+                          <span className="text-sm">{t("cash_settings_tips_calculation")}</span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -929,7 +928,7 @@ export default function CashSettingsView({
                             checked={activeFormula.isRevenueSource}
                             onCheckedChange={(checked) => setRevenueSource(activeFormula.localId, Boolean(checked))}
                           />
-                          <span className="text-sm">Данные для выручки</span>
+                          <span className="text-sm">{t("cash_settings_revenue_data")}</span>
                         </div>
                       </div>
 
@@ -940,7 +939,7 @@ export default function CashSettingsView({
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Конструктор формулы</Label>
+                    <Label>{t("cash_settings_formula_builder")}</Label>
                     <div className="flex flex-wrap gap-2">
                       {expressionFields.map((field) => (
                         <Button key={field.key} size="sm" variant="outline" onClick={() => appendFormulaToken(field.key)}>
@@ -950,7 +949,7 @@ export default function CashSettingsView({
                     </div>
                     {availableFormulaReferences.length > 0 && (
                       <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Ранее созданные расчеты</p>
+                        <p className="text-xs text-muted-foreground">{t("cash_settings_previous_calculations")}</p>
                         <div className="flex flex-wrap gap-2">
                           {availableFormulaReferences.map((formulaRef) => (
                             <Button
@@ -983,22 +982,22 @@ export default function CashSettingsView({
                         className="h-8 w-24"
                       />
                       <Button size="sm" variant="secondary" onClick={appendPercentSubtraction}>
-                        Вычесть %
+                        {t("cash_settings_subtract_percent")}
                       </Button>
-                      <span className="text-xs text-muted-foreground">Только целые проценты от 0 до 100</span>
+                      <span className="text-xs text-muted-foreground">{t("cash_settings_percent_hint")}</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" variant="outline" onClick={deleteLastFormulaToken}>
-                        Удалить последнее
+                        {t("cash_settings_delete_last")}
                       </Button>
                       <Button size="sm" variant="outline" onClick={clearFormulaExpression}>
-                        Очистить
+                        {t("cash_settings_clear")}
                       </Button>
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <Label>Формула</Label>
+                    <Label>{t("cash_settings_formula")}</Label>
                     <div className="min-h-20 rounded-md border bg-muted/30 p-3">
                       {formulaDisplayTokens.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
@@ -1009,19 +1008,19 @@ export default function CashSettingsView({
                           ))}
                         </div>
                       ) : (
-                        <p className="text-sm text-muted-foreground">Соберите формулу кнопками выше</p>
+                        <p className="text-sm text-muted-foreground">{t("cash_settings_formula_empty")}</p>
                       )}
                     </div>
                   </div>
                 </Card>
               ) : (
-                <p className="text-sm text-muted-foreground">Добавьте первый расчет</p>
+                <p className="text-sm text-muted-foreground">{t("cash_settings_add_first_calculation")}</p>
               )}
             </Card>
           </TabsContent>
         </Tabs>
 
-        {loading && <p className="text-sm text-muted-foreground">Загрузка настроек...</p>}
+        {loading && <p className="text-sm text-muted-foreground">{t("cash_settings_loading")}</p>}
       </div>
     </div>
   )

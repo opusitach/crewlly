@@ -177,11 +177,12 @@ export const formatTimeInTimeZone = (
   value: SupportedDateInput | null | undefined,
   timeZone?: string | null,
   fallback = "-",
+  locale = DEFAULT_LOCALE,
 ) => {
   const date = toValidDate(value)
   if (!date) return fallback
 
-  return getFormatter(DEFAULT_LOCALE, resolveTimeZone(timeZone), {
+  return getFormatter(locale, resolveTimeZone(timeZone), {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -212,9 +213,10 @@ export const formatDateInTimeZone = (
   timeZone?: string | null,
   options?: Intl.DateTimeFormatOptions,
   fallback = "—",
+  locale = DEFAULT_LOCALE,
 ) => {
   const date = toValidDate(value)
   if (!date) return fallback
 
-  return getFormatter(DEFAULT_LOCALE, resolveTimeZone(timeZone), options ?? {}).format(date)
+  return getFormatter(locale, resolveTimeZone(timeZone), options ?? {}).format(date)
 }

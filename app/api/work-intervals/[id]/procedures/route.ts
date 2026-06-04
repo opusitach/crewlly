@@ -165,7 +165,7 @@ function buildCashFormulaCalculations(input: {
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params
   const {
-    session,
+    access,
     interval,
     hasManagementAccess,
     effectiveStatus,
@@ -381,7 +381,7 @@ export async function GET(request: Request, context: RouteContext) {
       closePackedValues,
       openFieldKeys: cashFieldsByWhen.OPEN.map((field) => field.key),
       closeFieldKeys: cashFieldsByWhen.CLOSE.map((field) => field.key),
-      currency: session?.organization?.currency ?? null,
+      currency: access?.organization?.currency ?? null,
     })
 
     const shouldResolveCloseCashSkip =
@@ -496,7 +496,7 @@ export async function GET(request: Request, context: RouteContext) {
             estimatedSalaryCents:
               estimatedSalaryCents != null && estimatedSalaryCents > 0 ? estimatedSalaryCents : null,
             salaryMessage,
-            currency: session?.organization?.currency ?? null,
+            currency: access?.organization?.currency ?? null,
           },
           canForce: hasManagementAccess,
         },
@@ -524,7 +524,7 @@ export async function GET(request: Request, context: RouteContext) {
           formulaCalculations: {
             items: [],
             hasCashInput: false,
-            currency: session?.organization?.currency ?? null,
+            currency: access?.organization?.currency ?? null,
             error: null,
           },
         },

@@ -43,9 +43,12 @@ describe("PATCH /api/work-intervals/[id]/owner-edit", () => {
     vi.clearAllMocks()
     mocked.auditActorFromSession.mockReturnValue({ user_id: "owner-user-1" })
     mocked.getAuthorizedInterval.mockResolvedValue({
-      session: {
-        user: { id: "owner-user-1" },
+      access: {
+        user: { id: "owner-user-1", primaryMode: null },
+        organizationId: "org-1",
         organization: { id: "org-1", timezone: "Europe/Prague" },
+        membership: null,
+        effectiveRoleKey: "owner",
       },
       interval: {
         id: "interval-1",
@@ -122,9 +125,12 @@ describe("PATCH /api/work-intervals/[id]/owner-edit", () => {
 
   it("rejects request for non-owner users", async () => {
     mocked.getAuthorizedInterval.mockResolvedValueOnce({
-      session: {
-        user: { id: "manager-user-1" },
+      access: {
+        user: { id: "manager-user-1", primaryMode: null },
+        organizationId: "org-1",
         organization: { id: "org-1", timezone: "Europe/Prague" },
+        membership: null,
+        effectiveRoleKey: "manager",
       },
       interval: {
         id: "interval-1",

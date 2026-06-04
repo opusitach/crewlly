@@ -1,0 +1,7 @@
+/* Minimal admin styling — Tailwind-shaped utility classes only.
+ * The admin app builds its own Tailwind config (see tailwind.config.ts) so it does
+ * not pull in the main app's design tokens, theme switching, or design system.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

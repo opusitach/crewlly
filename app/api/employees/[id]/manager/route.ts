@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { getSessionUserWithOrg, isOwnerRole } from "@/lib/auth"
+import { getSessionUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { resolveOrganizationAccess, isOwnerEffectiveRole } from "@/lib/organization-access"
 import { ensureDefaultRolesAndPermissions } from "@/lib/rbac/default-role-permissions"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 const MANAGER_POSITION_NAME = "Менеджер"
 
@@ -15,13 +17,9 @@ const resolveEmployeeId = (params?: { id?: string | string[] }, request?: Reques
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
-  if (!isOwnerRole(session.membership)) {
-    return NextResponse.json({ error: "Только владелец может назначать менеджера" }, { status: 403 })
   }
 
   const employeeId = resolveEmployeeId(params, request)
@@ -29,7 +27,24 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     return NextResponse.json({ error: "Invalid employee id" }, { status: 400 })
   }
 
-  const organizationId = session.organization.id
+  const employeeForOrg = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { organizationId: true },
+  })
+  if (!employeeForOrg) {
+    return NextResponse.json({ error: "Сотрудник не найден" }, { status: 404 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, employeeForOrg.organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  if (!isOwnerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Только владелец может назначать менеджера" }, { status: 403 })
+  }
+
+  const organizationId = access.organizationId
 
   const result = await prisma.$transaction(async (tx) => {
     const employee = await tx.employee.findFirst({
@@ -159,6 +174,13 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
+
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.EMPLOYEE_MANAGER_UPDATE,
+    entityType: "employee",
+    entityId: employeeId,
+    metadata: { organizationId: access.organizationId },
+  })
 
   return NextResponse.json({ data: result.data })
 }

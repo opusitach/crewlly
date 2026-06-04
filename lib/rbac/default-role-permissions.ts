@@ -26,6 +26,14 @@ const DEFAULT_PERMISSION_DEFINITIONS: Array<{ key: string; name: string; descrip
 const WORKER_PERMISSION_KEYS = new Set(["employee:view", "cash:view", "tips:view"])
 const MANAGER_FORBIDDEN_KEYS = new Set(["settings:manage", "payroll:manage", "employee:delete"])
 
+// Canonical per-role permission key sets.
+// Used by the organisation access resolver for internal-access permission building.
+export const SYSTEM_PERMISSIONS_BY_ROLE = {
+  owner: DEFAULT_PERMISSION_DEFINITIONS.map((p) => p.key),
+  manager: DEFAULT_PERMISSION_DEFINITIONS.map((p) => p.key).filter((k) => !MANAGER_FORBIDDEN_KEYS.has(k)),
+  worker: DEFAULT_PERMISSION_DEFINITIONS.map((p) => p.key).filter((k) => WORKER_PERMISSION_KEYS.has(k)),
+} as const satisfies Record<string, readonly string[]>
+
 export async function ensureDefaultRolesAndPermissions(tx: Prisma.TransactionClient, organizationId: string) {
   await tx.accessPermission.createMany({
     data: DEFAULT_PERMISSION_DEFINITIONS,

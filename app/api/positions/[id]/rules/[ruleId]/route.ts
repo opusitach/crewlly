@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
+import { getSessionUser } from "@/lib/auth"
+import { resolveOrganizationAccess, isOwnerOrManagerEffectiveRole } from "@/lib/organization-access"
 import { syncScheduledProceduresForPosition } from "@/lib/procedures/scheduled-sync"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 const whenValues = ["OPEN", "CLOSE"] as const
 const typeValues = ["CHECKLIST", "INPUT", "PHOTO", "CASH"] as const
@@ -70,12 +72,9 @@ function formatScopeLabel(dayOfWeek: DayValue | null) {
 type RouteContext = { params: Promise<{ id: string; ruleId: string }> }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  if (!isOwnerOrManagerRole(session.membership)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const { id: positionId, ruleId } = await context.params
@@ -84,8 +83,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     where: { id: ruleId },
     include: { position: true, checklistItems: true },
   })
-  if (!rule || rule.positionId !== positionId || rule.position.organizationId !== session.organization.id) {
+  if (!rule || rule.positionId !== positionId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, rule.position.organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => null)
@@ -222,6 +229,13 @@ export async function PATCH(request: Request, context: RouteContext) {
   })
   await syncScheduledProceduresForPosition(positionId)
 
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.POSITION_RULES_UPDATE,
+    entityType: "rule_template",
+    entityId: ruleId,
+    metadata: { positionId, changedFields: Object.keys(payload) },
+  })
+
   return NextResponse.json({
     data: updatedRules.length === 1 ? updatedRules[0] : updatedRules,
     meta: targetDays.length > 1 ? { savedCount: updatedRules.length } : undefined,
@@ -229,12 +243,9 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  if (!isOwnerOrManagerRole(session.membership)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const { id: positionId, ruleId } = await context.params
@@ -243,11 +254,27 @@ export async function DELETE(_request: Request, context: RouteContext) {
     include: { position: true },
   })
 
-  if (!rule || rule.positionId !== positionId || rule.position.organizationId !== session.organization.id) {
+  if (!rule || rule.positionId !== positionId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, rule.position.organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   await prisma.ruleTemplate.delete({ where: { id: ruleId } })
   await syncScheduledProceduresForPosition(positionId)
+
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.POSITION_RULES_DELETE,
+    entityType: "rule_template",
+    entityId: ruleId,
+    metadata: { positionId },
+  })
+
   return NextResponse.json({ ok: true })
 }

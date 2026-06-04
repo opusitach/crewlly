@@ -9,8 +9,9 @@ import { PhoneInput } from "@/components/ui/phone-input"
 import { Badge } from "@/components/ui/badge"
 import { ChevronLeft, Mail, Phone, Edit2, Camera, LogOut, Clock3, Sparkles, TrendingUp, Wallet } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
-import { PAY_COMPONENT_LABELS, type PayComponent } from "@/lib/pay-components"
+import type { PayComponent } from "@/lib/pay-components"
 import { useAuthStore } from "@/lib/store/auth-store"
+import { useTranslation } from "@/lib/i18n/context"
 import { cn } from "@/lib/utils"
 import { getEmailValidationError } from "@/lib/validation/email"
 import { formatPhoneForDisplay, getPhoneValidationError } from "@/lib/validation/phone"
@@ -45,10 +46,10 @@ const toDateInputValue = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-const formatMoney = (valueCents: number, currency: string | null | undefined) => {
+const formatMoney = (valueCents: number, currency: string | null | undefined, locale: string) => {
   const safeCurrency = currency || "CZK"
   try {
-    return new Intl.NumberFormat("ru-RU", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: safeCurrency,
       maximumFractionDigits: 0,
@@ -58,12 +59,12 @@ const formatMoney = (valueCents: number, currency: string | null | undefined) =>
   }
 }
 
-const formatWorkedTime = (minutes: number) => {
+const formatWorkedTime = (minutes: number, labels: { hours: string; minutes: string }) => {
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
-  if (hours === 0) return `${rest} мин`
-  if (rest === 0) return `${hours} ч`
-  return `${hours} ч ${rest} мин`
+  if (hours === 0) return `${rest} ${labels.minutes}`
+  if (rest === 0) return `${hours} ${labels.hours}`
+  return `${hours} ${labels.hours} ${rest} ${labels.minutes}`
 }
 
 const formatPercent = (rateBp: number) => {
@@ -71,21 +72,21 @@ const formatPercent = (rateBp: number) => {
   return Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")
 }
 
-const formatPayValue = (component: PayComponent, currency: string) => {
+const formatPayValue = (component: PayComponent, currency: string, locale: string, t: ReturnType<typeof useTranslation>["t"]) => {
   if (component.componentType === "percent_revenue" && component.rateBp != null) {
-    return `${formatPercent(component.rateBp)}% от выручки`
+    return `${formatPercent(component.rateBp)}${t("rate_from_revenue")}`
   }
 
   if (component.amountCents == null) {
-    return "Не задано"
+    return t("not_set")
   }
 
-  const roundedValue = Math.round(component.amountCents / 100)
+  const roundedValue = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.round(component.amountCents / 100))
   if (component.componentType === "hourly") {
-    return `${roundedValue} ${currency}/ч`
+    return t("currency_per_hour", { value: roundedValue, currency })
   }
   if (component.componentType === "fixed_shift") {
-    return `${roundedValue} ${currency} за смену`
+    return t("currency_per_shift", { value: roundedValue, currency })
   }
   return `${roundedValue} ${currency}`
 }
@@ -96,8 +97,11 @@ export default function WorkerProfile({
   hideHeader = false,
   variant = "page",
 }: WorkerProfileProps) {
+  const { t, language } = useTranslation()
   const updateUser = useAuthStore((state) => state.updateUser)
   const organization = useAuthStore((state) => state.organization)
+  const locale = language === "en" ? "en-US" : "ru-RU"
+  const durationLabels = { hours: t("hours_short"), minutes: t("minutes_suffix") }
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -135,8 +139,13 @@ export default function WorkerProfile({
   const salaryCaption = compensationError
     ? compensationError
     : compensationSummary.shiftsCount > 0
-      ? "Актуально за текущий месяц"
-      : "Смен в этом месяце пока не было"
+      ? t("profile_current_month")
+      : t("profile_no_shifts_month")
+  const payComponentLabels: Record<PayComponent["componentType"], string> = {
+    hourly: t("profile_pay_hourly"),
+    fixed_shift: t("profile_pay_fixed_shift"),
+    percent_revenue: t("profile_pay_percent_revenue"),
+  }
 
   const loadProfile = useCallback(async () => {
     const requestId = profileRequestIdRef.current + 1
@@ -205,7 +214,7 @@ export default function WorkerProfile({
         })
 
         if (!res.ok) {
-          throw new Error("Не удалось загрузить зарплату")
+          throw new Error(t("profile_load_salary_error"))
         }
 
         const json = await res.json().catch(() => null)
@@ -228,13 +237,13 @@ export default function WorkerProfile({
           ...EMPTY_COMPENSATION_SUMMARY,
           currency: prev.currency ?? organization?.currency ?? EMPTY_COMPENSATION_SUMMARY.currency,
         }))
-        setCompensationError("Не удалось загрузить актуальную зарплату")
+        setCompensationError(t("profile_load_salary_error"))
       } finally {
         if (compensationRequestIdRef.current !== requestId || silent) return
         setIsCompensationLoading(false)
       }
     },
-    [organization?.currency],
+    [organization?.currency, t],
   )
 
   useEffect(() => {
@@ -331,7 +340,7 @@ export default function WorkerProfile({
       resetValidationState()
       setIsEditing(false)
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Не удалось сохранить профиль")
+      setSaveError(error instanceof Error ? error.message : t("profile_save_error"))
     } finally {
       setIsSaving(false)
     }
@@ -357,13 +366,13 @@ export default function WorkerProfile({
       )}
     >
       {!hideHeader && (
-        <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="sticky top-0 z-10 bg-background border-b border-border">
           <div className="p-3">
             <div className="flex items-center justify-between">
               <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full h-9 w-9">
                 <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
               </Button>
-              <h1 className="text-lg font-semibold">Профиль</h1>
+              <h1 className="text-lg font-semibold">{t("profile_title")}</h1>
               <Button
                 variant="ghost"
                 size="icon"
@@ -386,7 +395,7 @@ export default function WorkerProfile({
               onClick={handleEditToggle}
             >
               <Edit2 className="h-4 w-4 mr-1.5" strokeWidth={1.5} />
-              {isEditing ? "Готово" : "Редактировать"}
+              {isEditing ? t("profile_done") : t("profile_edit")}
             </Button>
           </div>
         )}
@@ -402,7 +411,7 @@ export default function WorkerProfile({
               />
             ) : (
               <div className="h-20 w-20 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-2xl font-semibold">
-                {getInitials(profileData.name || "Без имени")}
+                {getInitials(profileData.name || t("profile_no_name"))}
               </div>
             )}
             {isEditing && (
@@ -412,7 +421,7 @@ export default function WorkerProfile({
             )}
           </div>
           <div className="text-center space-y-2">
-            <h2 className="text-lg font-semibold">{profileData.name || "Без имени"}</h2>
+            <h2 className="text-lg font-semibold">{profileData.name || t("profile_no_name")}</h2>
             <div className="flex flex-wrap gap-1.5 justify-center">
               {profileData.positions.map((position) => (
                 <Badge key={position} variant="secondary" className="text-xs">
@@ -430,10 +439,10 @@ export default function WorkerProfile({
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-background/80 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-primary/80">
                   <Sparkles className="h-3.5 w-3.5" strokeWidth={1.7} />
-                  Зарплата
+                  {t("profile_salary")}
                 </div>
                 <p className="mt-3 text-3xl font-semibold tracking-tight">
-                  {isCompensationLoading ? "—" : formatMoney(compensationSummary.totalSalaryCents, payCurrency)}
+                  {isCompensationLoading ? "—" : formatMoney(compensationSummary.totalSalaryCents, payCurrency, locale)}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">{salaryCaption}</p>
               </div>
@@ -446,25 +455,25 @@ export default function WorkerProfile({
               <div className="rounded-2xl border border-border/70 bg-background/80 p-3 shadow-sm">
                 <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <TrendingUp className="h-3.5 w-3.5" strokeWidth={1.6} />
-                  Смены
+                  {t("profile_shifts")}
                 </div>
                 <p className="mt-2 text-lg font-semibold">{compensationSummary.shiftsCount}</p>
               </div>
               <div className="rounded-2xl border border-border/70 bg-background/80 p-3 shadow-sm">
                 <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <Clock3 className="h-3.5 w-3.5" strokeWidth={1.6} />
-                  Отработано
+                  {t("profile_hours")}
                 </div>
-                <p className="mt-2 text-lg font-semibold">{formatWorkedTime(compensationSummary.totalMinutesWorked)}</p>
+                <p className="mt-2 text-lg font-semibold">{formatWorkedTime(compensationSummary.totalMinutesWorked, durationLabels)}</p>
               </div>
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Условия оплаты
+                  {t("profile_pay_conditions")}
                 </p>
-                <span className="text-[11px] text-muted-foreground">Обновляется автоматически</span>
+                <span className="text-[11px] text-muted-foreground">{t("profile_pay_auto_update")}</span>
               </div>
 
               {activePayComponents.length > 0 ? (
@@ -480,15 +489,15 @@ export default function WorkerProfile({
                       )}
                     >
                       <span className="text-[11px] uppercase tracking-wide opacity-70">
-                        {PAY_COMPONENT_LABELS[component.componentType]}
+                        {payComponentLabels[component.componentType]}
                       </span>
-                      <span>{formatPayValue(component, payCurrency)}</span>
+                      <span>{formatPayValue(component, payCurrency, locale, t)}</span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-border/70 bg-background/60 px-3 py-2 text-sm text-muted-foreground">
-                  Условия оплаты пока не настроены
+                  {t("profile_pay_not_set")}
                 </div>
               )}
             </div>
@@ -496,7 +505,7 @@ export default function WorkerProfile({
         </Card>
 
         <Card className="p-3 space-y-3 overflow-hidden">
-          <h3 className="text-sm font-semibold text-muted-foreground">Контактная информация</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground">{t("profile_contact_info")}</h3>
 
           <div className="space-y-2">
             <Label htmlFor="email" className={`text-xs ${showEmailError ? "text-destructive" : "text-muted-foreground"}`}>
@@ -512,7 +521,7 @@ export default function WorkerProfile({
                   onBlur={() => setEmailTouched(true)}
                   autoComplete="email"
                   placeholder="name@example.com"
-                  title="Введите email латиницей в формате name@example.com"
+                  title={t("profile_email_hint")}
                   aria-invalid={showEmailError || undefined}
                   aria-describedby={showEmailError ? "worker-email-error" : undefined}
                   className="h-9"
@@ -526,14 +535,14 @@ export default function WorkerProfile({
             ) : (
               <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
                 <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                <span className="text-sm truncate">{profileData.email || "Не указан"}</span>
+                <span className="text-sm truncate">{profileData.email || t("profile_email_empty")}</span>
               </div>
             )}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="phone" className={`text-xs ${showPhoneError ? "text-destructive" : "text-muted-foreground"}`}>
-              Телефон
+              {t("profile_phone")}
             </Label>
             {isEditing ? (
               <div className="space-y-1.5">
@@ -554,7 +563,7 @@ export default function WorkerProfile({
             ) : (
               <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
                 <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                <span className="text-sm truncate">{formatPhoneForDisplay(profileData.phone) || "Не указан"}</span>
+                <span className="text-sm truncate">{formatPhoneForDisplay(profileData.phone) || t("profile_phone_empty")}</span>
               </div>
             )}
           </div>
@@ -564,14 +573,14 @@ export default function WorkerProfile({
           <div className="space-y-2">
             {saveError && <p className="text-xs text-destructive">{saveError}</p>}
             <Button className="w-full h-10" onClick={finishEditing} disabled={Boolean(emailError || phoneError) || isSaving}>
-              {isSaving ? "Сохраняем..." : "Сохранить изменения"}
+              {isSaving ? t("profile_saving") : t("profile_save")}
             </Button>
           </div>
         )}
 
         <Button variant="destructive" className="w-full h-10 mt-2" onClick={onLogout}>
           <LogOut className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          Выйти
+          {t("profile_logout")}
         </Button>
       </div>
     </div>

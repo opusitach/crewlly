@@ -375,6 +375,15 @@
    Utilities — HIG materials, typography, taps
    ============================================================ */
 @layer utilities {
+  /* Hide scrollbar but keep scrolling */
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Glass / iOS Materials */
   .glass-card {
     background: var(--glass-bg);

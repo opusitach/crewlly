@@ -1,8 +1,10 @@
 import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { getSessionUser, getSessionUserWithOrg } from "@/lib/auth"
+import { getSessionUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { resolveOrganizationAccess } from "@/lib/organization-access"
+import { getActiveInternalSession } from "@/lib/internal-access/session"
 import { DEFAULT_EMAIL_REGEX } from "@/lib/validation/email"
 import { DEFAULT_PHONE_ERROR_MESSAGE, getPhoneValidationError, normalizePhone } from "@/lib/validation/phone"
 
@@ -60,47 +62,79 @@ function toUserResponse(user: {
 
 export async function GET() {
   try {
-    const session = await getSessionUserWithOrg()
-    if (!session) {
+    const user = await getSessionUser()
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { user, organization, accessRole, membership } = session
-
-    // Get default location for the organization
+    let organization = null
+    let accessRole = null
+    let legacyRole: string | null = null
     let defaultLocation = null
-    if (organization) {
-      const { prisma } = await import("@/lib/prisma")
-      defaultLocation = await prisma.location.findFirst({
-        where: { organizationId: organization.id, isActive: true },
-        orderBy: { createdAt: "asc" },
+
+    // Internal-only fields: never populated for regular users.
+    let activeInternalSession: {
+      id: string
+      organizationId: string
+      accessLevel: string
+      startedAt: string
+    } | null = null
+
+    if (user.isInternal) {
+      const session = await getActiveInternalSession(user.id)
+      if (session) {
+        activeInternalSession = {
+          id: session.id,
+          organizationId: session.organizationId,
+          accessLevel: session.accessLevel,
+          startedAt: session.startedAt.toISOString(),
+        }
+      }
+    }
+
+    if (user.activeOrganizationId) {
+      // Internal users with an active session: bind the resolution to that session's level.
+      const access = await resolveOrganizationAccess(user.id, user.activeOrganizationId, {
+        useActiveInternalSession: user.isInternal,
       })
+      if (access) {
+        organization = {
+          id: access.organization.id,
+          name: access.organization.name,
+          timezone: access.organization.timezone,
+          currency: access.organization.currency,
+        }
+        accessRole = access.membership?.accessRole
+          ? {
+              id: access.membership.accessRole.id,
+              key: access.membership.accessRole.key,
+              name: access.membership.accessRole.name,
+            }
+          : null
+        // For internal access, membership is null — fall back to effectiveRoleKey
+        legacyRole = access.membership?.legacyRole ?? access.effectiveRoleKey
+        defaultLocation = await prisma.location.findFirst({
+          where: { organizationId: access.organizationId, isActive: true },
+          orderBy: { createdAt: "asc" },
+        })
+      }
     }
 
     return NextResponse.json({
       user: toUserResponse(user),
-      organization: organization
-        ? {
-            id: organization.id,
-            name: organization.name,
-            timezone: organization.timezone,
-            currency: organization.currency,
-          }
-        : null,
-      accessRole: accessRole
-        ? {
-            id: accessRole.id,
-            key: accessRole.key,
-            name: accessRole.name,
-          }
-        : null,
-      legacyRole: membership?.legacyRole ?? null,
+      organization,
+      accessRole,
+      legacyRole,
       defaultLocation: defaultLocation
-        ? {
-            id: defaultLocation.id,
-            name: defaultLocation.name,
-          }
+        ? { id: defaultLocation.id, name: defaultLocation.name }
         : null,
+      // Internal-only fields. For non-internal users these are intentionally absent.
+      ...(user.isInternal
+        ? {
+            isInternal: true,
+            activeInternalSession,
+          }
+        : {}),
     })
   } catch (error: unknown) {
     console.error("[auth/me] error", error)

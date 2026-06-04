@@ -62,9 +62,13 @@ const resolveActualRangeFromPayload = (
 export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params
   const authorization = await getAuthorizedInterval(id)
-  const session = authorization.session
-  const actor = auditActorFromSession(session)
-  const organizationTimeZone = session?.organization?.timezone ?? null
+  const access = authorization.access
+  const actor = auditActorFromSession(access ? {
+    user: { id: access.user.id, primaryMode: access.user.primaryMode },
+    organization: { id: access.organizationId },
+    accessRole: { key: access.effectiveRoleKey },
+  } : null)
+  const organizationTimeZone = access?.organization?.timezone ?? null
 
   if (authorization.error || !authorization.interval) {
     logAuditEvent(request, {
@@ -76,7 +80,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       target: {
         type: "interval",
         id,
-        organization_id: session?.organization?.id ?? null,
+        organization_id: access?.organizationId ?? null,
       },
       reason: authorization.error ?? "authorization_failed",
     })
@@ -179,11 +183,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     authorization.interval.workday.workDate.toISOString().slice(0, 10)
   const employeeNotification =
     authorization.interval.employeeId &&
-    session?.organization?.id &&
-    session?.user?.id &&
+    access?.organizationId &&
+    access?.user?.id &&
     notificationWorkDate
       ? {
-          organizationId: session.organization.id,
+          organizationId: access!.organizationId,
           userId: "",
           title: "Изменены фактические часы смены",
           message: "",
@@ -204,7 +208,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       })
 
       const nextNotification =
-        employeeNotification && employee?.userId && employee.userId !== session?.user?.id
+        employeeNotification && employee?.userId && employee.userId !== access?.user?.id
           ? {
               ...employeeNotification,
               userId: employee.userId,
@@ -214,7 +218,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
       return applyOwnerEditedWorkIntervalTime(tx, {
         intervalId: authorization.interval.id,
-        ownerUserId: session?.user?.id ?? "",
+        ownerUserId: access?.user?.id ?? "",
         openedAt: actualRange.openedAt,
         closedAt: actualRange.closedAt,
         reason: parsed.data.reason,

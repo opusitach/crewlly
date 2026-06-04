@@ -91,7 +91,7 @@ export default function ShiftCloseScreen({ onBack, onSubmit, shiftData, endPhoto
 
   return (
     <div className="min-h-screen bg-background pb-24 max-w-md mx-auto">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
         <div className="p-4">
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">

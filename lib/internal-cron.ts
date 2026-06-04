@@ -5,7 +5,9 @@ export function isAuthorizedInternalCronRequest(request: Request, secretEnvKey: 
     .filter((secret): secret is string => Boolean(secret))
 
   if (secrets.length === 0) {
-    return process.env.NODE_ENV !== "production"
+    if (process.env.NODE_ENV === "production") return false
+    console.warn("[internal-cron] No secret configured — unauthenticated requests allowed in development. Set INTERNAL_CRON_SECRET to require auth.")
+    return true
   }
 
   const cronHeader = request.headers.get("x-cron-secret")

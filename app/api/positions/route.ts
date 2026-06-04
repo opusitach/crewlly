@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
+import { getSessionUser } from "@/lib/auth"
+import { resolveOrganizationAccess, isOwnerOrManagerEffectiveRole } from "@/lib/organization-access"
 import { getDefaultRuleSetupByPosition, isDefaultRulesetConfigured } from "@/lib/procedures/config"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 const positionCreateSchema = z.object({
   organizationId: z.string().uuid().optional(),
@@ -12,22 +14,22 @@ const positionCreateSchema = z.object({
 })
 
 export async function GET(request: Request) {
-  const session = await getSessionUserWithOrg()
-  if (!session) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const url = new URL(request.url)
-  const organizationId = url.searchParams.get("organizationId") || session.organization?.id
+  const organizationId = url.searchParams.get("organizationId") ?? user.activeOrganizationId
   const locationId = url.searchParams.get("locationId")
 
   if (!organizationId) {
     return NextResponse.json({ error: "organizationId is required" }, { status: 400 })
   }
 
-  // Verify access
-  if (session.organization?.id !== organizationId) {
-    return NextResponse.json({ error: "Access denied" }, { status: 403 })
+  const access = await resolveOrganizationAccess(user.id, organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const whereClause: { organizationId: string; isActive: boolean; locationId?: string | null } = {
@@ -64,12 +66,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await getSessionUserWithOrg()
-  if (!session) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  if (!isOwnerOrManagerRole(session.membership)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const json = await request.json().catch(() => null)
@@ -78,16 +77,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const organizationId = parsed.data.organizationId ?? session.organization?.id
+  const organizationId = parsed.data.organizationId ?? user.activeOrganizationId
   const { locationId, name, sortOrder } = parsed.data
 
   if (!organizationId) {
     return NextResponse.json({ error: "organizationId is required" }, { status: 400 })
   }
 
-  // Verify access
-  if (session.organization?.id !== organizationId) {
-    return NextResponse.json({ error: "Access denied" }, { status: 403 })
+  const access = await resolveOrganizationAccess(user.id, organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   // Check for duplicate name (case-insensitive to avoid near-duplicate roles)
@@ -125,6 +128,14 @@ export async function POST(request: Request) {
         isActive: true,
       },
     })
+
+    void logInternalAction(access, {
+      action: INTERNAL_ACTIONS.POSITION_CREATE,
+      entityType: "position",
+      entityId: reactivated.id,
+      metadata: { name, reactivated: true },
+    })
+
     return NextResponse.json({ data: reactivated, meta: { reactivated: true } })
   }
 
@@ -135,6 +146,13 @@ export async function POST(request: Request) {
       name,
       sortOrder: resolvedSortOrder,
     },
+  })
+
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.POSITION_CREATE,
+    entityType: "position",
+    entityId: position.id,
+    metadata: { name, reactivated: false },
   })
 
   return NextResponse.json({ data: position }, { status: 201 })

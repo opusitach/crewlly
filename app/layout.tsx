@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Analytics } from "@vercel/analytics/next"
 import FigmaCaptureBootstrap from "@/components/figma/figma-capture-bootstrap"
 import { Toaster } from "@/components/ui/toaster"
+import { LanguageProviderWrapper } from "@/components/providers/language-provider-wrapper"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -17,11 +18,10 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/icon-light-32x32.png", media: "(prefers-color-scheme: light)" },
-      { url: "/icon-dark-32x32.png",  media: "(prefers-color-scheme: dark)" },
-      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico" },
     ],
-    apple: "/apple-icon.png",
+    apple: "/apple-touch-icon.png",
   },
 }
 
@@ -44,9 +44,11 @@ export default function RootLayout({
     <html lang="ru">
       <body className="font-sans antialiased">
         <FigmaCaptureBootstrap />
-        {children}
-        <Toaster />
-        <Analytics />
+        <LanguageProviderWrapper>
+          {children}
+          <Toaster />
+          <Analytics />
+        </LanguageProviderWrapper>
       </body>
     </html>
   )

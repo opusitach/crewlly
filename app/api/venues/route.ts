@@ -29,11 +29,6 @@ export async function GET() {
     where: {
       userId: user.id,
       isActive: true,
-      ...(user.primaryMode === "owner"
-        ? {
-            OR: [{ accessRole: { key: "owner" } }, { legacyRole: "owner" }],
-          }
-        : {}),
       organization: { status: "active" },
     },
     include: {
@@ -44,6 +39,9 @@ export async function GET() {
             orderBy: { createdAt: "asc" },
           },
         },
+      },
+      accessRole: {
+        select: { id: true, key: true, name: true },
       },
     },
     orderBy: { joinedAt: "asc" },
@@ -67,6 +65,7 @@ export async function GET() {
         name: loc.name,
         addressText: loc.addressText,
       })),
+      role: membership.accessRole?.key ?? membership.legacyRole ?? null,
     }
   })
 

@@ -50,3 +50,14 @@
   import protected_basic_auth
   reverse_proxy minio:9001
 }
+
+# admin.crewlly.com — internal admin app. Public hostname, but the app itself
+# enforces strict server-side gating (isInternal + enabled InternalGlobalAccess).
+# An additional Basic Auth layer is applied at the proxy as defense-in-depth.
+{$CADDY_ADMIN_DOMAIN} {
+  route {
+    import protected_basic_auth
+    encode gzip zstd
+    reverse_proxy internal_admin:3002
+  }
+}

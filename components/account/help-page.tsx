@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { useMemo, type ReactNode } from "react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,7 @@ import {
   Wallet,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { useTranslation } from "@/lib/i18n/context"
 
 interface HelpPageProps {
   onBack: () => void
@@ -40,56 +41,47 @@ type FaqItem = {
   content: ReactNode
 }
 
-const OWNER_FAQ_ITEMS: FaqItem[] = [
+type Translate = ReturnType<typeof useTranslation>["t"]
+
+const buildOwnerFaqItems = (t: Translate): FaqItem[] => [
   {
     id: "roles",
-    title: "Где настраиваются роли и права?",
-    subtitle: "Как ограничить доступ к кассе, отчетам и команде.",
+    title: t("help_owner_roles_title"),
+    subtitle: t("help_owner_roles_subtitle"),
     icon: ShieldCheck,
     iconClassName: "bg-primary/10 text-primary",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
         <p className="text-sm text-muted-foreground">
-          Откройте <span className="font-medium text-foreground">Настройки</span> и перейдите в раздел{" "}
-          <span className="font-medium text-foreground">Роли</span>. Там вы задаете, что сотрудник может видеть и
-          делать в приложении.
+          {t("help_owner_roles_p1_before")} <span className="font-medium text-foreground">{t("hub_settings")}</span>{" "}
+          {t("help_owner_roles_p1_middle")}{" "}
+          <span className="font-medium text-foreground">{t("position_rules_title")}</span>. {t("help_owner_roles_p1_after")}
         </p>
-        <div className="flex flex-wrap gap-1.5">
-          <Badge variant="secondary">Смены</Badge>
-          <Badge variant="secondary">Касса</Badge>
-          <Badge variant="secondary">Отчеты</Badge>
-          <Badge variant="secondary">Команда</Badge>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Практика: выдавайте минимально необходимые права. Это снижает ошибки и упрощает контроль.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("help_owner_roles_p2")}</p>
       </div>
     ),
   },
   {
     id: "team-setup",
-    title: "Что нужно настроить перед созданием смен?",
-    subtitle: "Команда, позиции и базовые настройки для планирования.",
+    title: t("help_owner_setup_title"),
+    subtitle: t("help_owner_setup_subtitle"),
     icon: Users,
     iconClassName: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
-        <p className="text-sm text-muted-foreground">
-          Перед созданием смен убедитесь, что сотрудники добавлены в заведение, им назначены позиции, а роли/права
-          позволяют выполнять нужные действия.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("help_owner_setup_p1")}</p>
         <div className="space-y-2">
           <div className="rounded-lg border border-border/70 bg-background/80 p-2">
-            <p className="text-xs font-medium">1. Добавьте команду</p>
-            <p className="mt-1 text-xs text-muted-foreground">Сотрудники должны быть привязаны к заведению</p>
+            <p className="text-xs font-medium">{t("help_owner_setup_step1")}</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background/80 p-2">
-            <p className="text-xs font-medium">2. Назначьте позиции</p>
-            <p className="mt-1 text-xs text-muted-foreground">Позиции используются в планировании и расчётах</p>
+            <p className="text-xs font-medium">{t("help_owner_setup_step2")}</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background/80 p-2">
-            <p className="text-xs font-medium">3. Проверьте права</p>
-            <p className="mt-1 text-xs text-muted-foreground">Кто создает/редактирует смены, кто проверяет кассу</p>
+            <p className="text-xs font-medium">{t("help_owner_setup_step3")}</p>
+          </div>
+          <div className="rounded-lg border border-border/70 bg-background/80 p-2">
+            <p className="text-xs font-medium">{t("help_owner_setup_step4")}</p>
           </div>
         </div>
       </div>
@@ -97,43 +89,37 @@ const OWNER_FAQ_ITEMS: FaqItem[] = [
   },
   {
     id: "create-shift",
-    title: "Как создать смену?",
-    subtitle: "Пошагово: дата, время, сотрудник и проверка пересечений.",
+    title: t("help_owner_create_shift_title"),
+    subtitle: t("help_owner_create_shift_subtitle"),
     icon: Calendar,
     iconClassName: "bg-primary/10 text-primary",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
         <p className="text-sm text-muted-foreground">
-          Перейдите в <span className="font-medium text-foreground">Смены</span>, начните создание смены, выберите
-          дату и время, назначьте сотрудника (или позицию) и проверьте, что расписание не конфликтует с другими сменами.
+          {t("help_owner_create_shift_p1_before")} <span className="font-medium text-foreground">{t("owner_tab_shifts")}</span>,{" "}
+          {t("help_owner_create_shift_p1_after")}
         </p>
-        <p className="text-xs text-muted-foreground">
-          Если нужный сотрудник не отображается, обычно причина в том, что он не добавлен в текущее заведение или ему
-          не назначена подходящая позиция.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("help_owner_create_shift_p2")}</p>
       </div>
     ),
   },
   {
     id: "cash",
-    title: "Зачем нужен раздел «Касса»?",
-    subtitle: "Фактические данные смены, контроль и основа для отчетов.",
+    title: t("help_owner_cash_title"),
+    subtitle: t("help_owner_cash_subtitle"),
     icon: DollarSign,
     iconClassName: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
-        <p className="text-sm text-muted-foreground">
-          В «Кассе» фиксируются значения по смене: выручка, наличные, безнал, возвраты, чаевые и другие поля, которые
-          вы настроили. Эти данные используются для проверки и аналитики.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("help_owner_cash_p1")}</p>
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg border border-border/70 bg-background/80 p-2">
-            <p className="text-xs font-medium">Где настроить</p>
-            <p className="mt-1 text-xs text-muted-foreground">Настройки → Касса</p>
+            <p className="text-xs font-medium">{t("help_owner_cash_where_title")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("help_owner_cash_where_desc")}</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background/80 p-2">
-            <p className="text-xs font-medium">Зачем</p>
-            <p className="mt-1 text-xs text-muted-foreground">Проверка смен и отчеты по периоду</p>
+            <p className="text-xs font-medium">{t("help_owner_cash_why_title")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("help_owner_cash_why_desc")}</p>
           </div>
         </div>
       </div>
@@ -141,66 +127,59 @@ const OWNER_FAQ_ITEMS: FaqItem[] = [
   },
   {
     id: "formulas",
-    title: "Как работают расчёты и формулы?",
-    subtitle: "Как из кассовых полей получаются итоговые показатели.",
+    title: t("help_owner_formulas_title"),
+    subtitle: t("help_owner_formulas_subtitle"),
     icon: Calculator,
     iconClassName: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
-        <p className="text-sm text-muted-foreground">
-          Формулы считают итоговые значения на основе кассовых полей: например, базу для процента, контрольные суммы
-          или служебные метрики. Сначала вводятся исходные данные, затем формулы пересчитывают результат.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("help_owner_formulas_p1")}</p>
         <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] p-3">
-          <p className="text-xs font-medium text-sky-800 dark:text-sky-200">Рекомендация</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Сначала настройте поля кассы, затем формулы. После настройки проверьте результат на одной смене.
-          </p>
+          <p className="text-xs font-medium text-sky-800 dark:text-sky-200">{t("help_recommendation")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("help_owner_formulas_tip")}</p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Если итог не совпадает с ожиданием, проверьте исходные поля и какие из них участвуют в базе/выручке.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("help_owner_formulas_p2")}</p>
       </div>
     ),
   },
   {
     id: "reports-and-review",
-    title: "Как пользоваться отчетами и проверкой кассы?",
-    subtitle: "Периодовые итоги и workflow проверки смен владельцем/менеджером.",
+    title: t("help_owner_reports_title"),
+    subtitle: t("help_owner_reports_subtitle"),
     icon: BarChart3,
     iconClassName: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
     content: (
       <div className="space-y-3">
         <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.05] p-3">
-          <p className="text-sm font-semibold">Отчеты</p>
+          <p className="text-sm font-semibold">{t("help_owner_reports_section_title")}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            В разделе <span className="font-medium text-foreground">Отчеты</span> выбирайте период и смотрите сводку
-            по кассовым полям и расчетным формулам за выбранные даты.
+            {t("help_owner_reports_p1_before")} <span className="font-medium text-foreground">{t("reports_title")}</span>{" "}
+            {t("help_owner_reports_p1_after")}
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge variant="outline">Сегодня</Badge>
-            <Badge variant="outline">Период дат</Badge>
-            <Badge variant="outline">Текущий месяц</Badge>
+            <Badge variant="outline">{t("help_period_today")}</Badge>
+            <Badge variant="outline">{t("help_period_date_range")}</Badge>
+            <Badge variant="outline">{t("help_period_current_month")}</Badge>
           </div>
         </div>
 
         <Card className="border-border/70 p-3">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-600" strokeWidth={1.7} />
-            <p className="text-sm font-semibold">Проверка кассы (рекомендуемый порядок)</p>
+            <p className="text-sm font-semibold">{t("help_owner_review_section_title")}</p>
           </div>
           <div className="mt-2 space-y-2">
             <div className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" strokeWidth={1.8} />
-              <p className="text-xs text-muted-foreground">Откройте кассу и очередь проверок / смену на проверке</p>
+              <p className="text-xs text-muted-foreground">{t("help_owner_review_step1")}</p>
             </div>
             <div className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" strokeWidth={1.8} />
-              <p className="text-xs text-muted-foreground">Сверьте поля кассы, формулы и расхождения</p>
+              <p className="text-xs text-muted-foreground">{t("help_owner_review_step2")}</p>
             </div>
             <div className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" strokeWidth={1.8} />
-              <p className="text-xs text-muted-foreground">Подтвердите данные или верните на уточнение</p>
+              <p className="text-xs text-muted-foreground">{t("help_owner_review_step3")}</p>
             </div>
           </div>
         </Card>
@@ -209,106 +188,89 @@ const OWNER_FAQ_ITEMS: FaqItem[] = [
   },
 ]
 
-const WORKER_FAQ_ITEMS: FaqItem[] = [
+const buildWorkerFaqItems = (t: Translate): FaqItem[] => [
   {
     id: "my-shift",
-    title: "Где смотреть ближайшую смену и расписание?",
-    subtitle: "Главный экран и вкладка с планированием смен.",
+    title: t("help_worker_shift_title"),
+    subtitle: t("help_worker_shift_subtitle"),
     icon: Calendar,
     iconClassName: "bg-primary/10 text-primary",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
         <p className="text-sm text-muted-foreground">
-          На экране <span className="font-medium text-foreground">Моя смена</span> показывается ближайшая смена. Во
-          вкладке <span className="font-medium text-foreground">Смены</span> (планировщик) удобно смотреть список смен.
+          {t("help_worker_shift_p1_before")} <span className="font-medium text-foreground">{t("dash_next_shift")}</span>{" "}
+          {t("help_worker_shift_p1_middle")} <span className="font-medium text-foreground">{t("owner_tab_shifts")}</span>{" "}
+          {t("help_worker_shift_p1_after")}
         </p>
-        <p className="text-xs text-muted-foreground">
-          Если смена не отображается, сначала проверьте выбранное заведение в шапке приложения.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("help_worker_shift_p2")}</p>
       </div>
     ),
   },
   {
     id: "start-close",
-    title: "Как начать и завершить смену?",
-    subtitle: "Что делать, если кнопки недоступны или шаги не открываются.",
+    title: t("help_worker_start_title"),
+    subtitle: t("help_worker_start_subtitle"),
     icon: CheckCircle2,
     iconClassName: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
-        <p className="text-sm text-muted-foreground">
-          Откройте свою смену и выполняйте шаги на экране: старт смены, работа по смене и завершение. Если в смене
-          настроены обязательные поля/процедуры, их нужно заполнить перед закрытием.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("help_worker_start_p1")}</p>
         <div className="rounded-lg border border-border/70 bg-background/80 p-2">
-          <p className="text-xs font-medium">Почему кнопка недоступна</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Обычно причина в времени смены, выбранном заведении или ограничениях доступа по вашей роли.
-          </p>
+          <p className="text-xs font-medium">{t("help_worker_start_unavailable_title")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("help_worker_start_unavailable_desc")}</p>
         </div>
       </div>
     ),
   },
   {
     id: "money",
-    title: "Где смотреть зарплату, начисления и чаевые?",
-    subtitle: "Вкладка «Деньги» и когда данные могут появляться с задержкой.",
+    title: t("help_worker_money_title"),
+    subtitle: t("help_worker_money_subtitle"),
     icon: Wallet,
     iconClassName: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
         <p className="text-sm text-muted-foreground">
-          Перейдите во вкладку <span className="font-medium text-foreground">Деньги</span>. Там отображается сводка по
-          заработку и начислениям за период, включая чаевые (если они рассчитаны и доступны).
+          {t("help_worker_money_p1_before")} <span className="font-medium text-foreground">{t("tab_money")}</span>.{" "}
+          {t("help_worker_money_p1_after")}
         </p>
-        <p className="text-xs text-muted-foreground">
-          Если суммы не появились сразу, это может зависеть от завершения смены и обработки/подтверждения данных.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("help_worker_money_p2")}</p>
       </div>
     ),
   },
   {
     id: "venue",
-    title: "Почему я не вижу нужное заведение или смены?",
-    subtitle: "Проверьте выбранное заведение и доступ по приглашению.",
+    title: t("help_worker_venue_title"),
+    subtitle: t("help_worker_venue_subtitle"),
     icon: Building2,
     iconClassName: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
-        <p className="text-sm text-muted-foreground">
-          В приложении можно переключать заведения. Если выбрано другое заведение, вы увидите другой список смен или
-          пустой экран.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("help_worker_venue_p1")}</p>
         <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] p-3">
-          <p className="text-xs font-medium text-sky-800 dark:text-sky-200">Подключение по коду</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Если вас еще не добавили, используйте код приглашения в окне выбора заведения (если его выдал менеджер).
-          </p>
+          <p className="text-xs font-medium text-sky-800 dark:text-sky-200">{t("help_worker_venue_code_title")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("help_worker_venue_code_desc")}</p>
         </div>
       </div>
     ),
   },
   {
     id: "notifications",
-    title: "Как работают уведомления?",
-    subtitle: "Где смотреть непрочитанные события по сменам и системе.",
+    title: t("help_worker_notifications_title"),
+    subtitle: t("help_worker_notifications_subtitle"),
     icon: Bell,
     iconClassName: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
     content: (
       <div className="space-y-3 rounded-xl bg-muted/30 p-3">
-        <p className="text-sm text-muted-foreground">
-          Нажмите на иконку уведомлений в шапке. Можно переключать фильтр между непрочитанными и всеми уведомлениями.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Там появляются события по сменам и системные сообщения. Уведомления можно отмечать прочитанными.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("help_worker_notifications_p1")}</p>
+        <p className="text-xs text-muted-foreground">{t("help_worker_notifications_p2")}</p>
       </div>
     ),
   },
   {
     id: "profile-settings",
-    title: "Что я могу менять сам в профиле и настройках?",
-    subtitle: "Что доступно сотруднику, а что настраивает владелец/менеджер.",
+    title: t("help_worker_profile_title"),
+    subtitle: t("help_worker_profile_subtitle"),
     icon: User,
     iconClassName: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
     content: (
@@ -316,66 +278,62 @@ const WORKER_FAQ_ITEMS: FaqItem[] = [
         <Card className="border-border/70 p-3">
           <div className="flex items-center gap-2">
             <Settings className="h-4 w-4 text-primary" strokeWidth={1.7} />
-            <p className="text-sm font-semibold">Обычно доступно сотруднику</p>
+            <p className="text-sm font-semibold">{t("help_worker_profile_available_title")}</p>
           </div>
           <div className="mt-2 space-y-2">
-            <div className="rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">Профиль и личные данные</div>
-            <div className="rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">Язык и раздел помощи</div>
-            <div className="rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">
-              Настройки уведомлений (если доступны в вашем режиме)
-            </div>
+            <div className="rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">{t("help_worker_profile_item1")}</div>
+            <div className="rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">{t("help_worker_profile_item2")}</div>
+            <div className="rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">{t("help_worker_profile_item3")}</div>
           </div>
         </Card>
         <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.05] p-3">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-rose-700 dark:text-rose-300" strokeWidth={1.7} />
-            <p className="text-xs font-semibold">Важно</p>
+            <p className="text-xs font-semibold">{t("help_important")}</p>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Роли, права, касса, формулы и отчеты обычно настраиваются владельцем или менеджером с нужным доступом.
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("help_worker_profile_important")}</p>
         </div>
       </div>
     ),
   },
 ]
 
-const ROLE_META = {
+const buildRoleMeta = (t: Translate) => ({
   owner: {
-    badge: "FAQ владельца",
-    subtitle: "Команда, смены, касса, формулы, отчеты и проверка данных.",
+    badge: t("help_role_owner_badge"),
+    subtitle: t("help_role_owner_subtitle"),
   },
   manager: {
-    badge: "FAQ менеджера",
-    subtitle: "Команда, смены, касса, формулы, отчеты и проверка данных.",
+    badge: t("help_role_manager_badge"),
+    subtitle: t("help_role_manager_subtitle"),
   },
   worker: {
-    badge: "FAQ сотрудника",
-    subtitle: "Смены, деньги, уведомления и действия в личном кабинете.",
+    badge: t("help_role_worker_badge"),
+    subtitle: t("help_role_worker_subtitle"),
   },
-} as const
+}) as const
 
 export default function HelpPage({ onBack, userRole, hideHeader = false }: HelpPageProps) {
-  const faqItems = userRole === "worker" ? WORKER_FAQ_ITEMS : OWNER_FAQ_ITEMS
-  const roleMeta = ROLE_META[userRole]
+  const { t } = useTranslation()
+  const faqItems = useMemo(() => (userRole === "worker" ? buildWorkerFaqItems(t) : buildOwnerFaqItems(t)), [t, userRole])
+  const roleMeta = useMemo(() => buildRoleMeta(t)[userRole], [t, userRole])
 
   return (
     <div className="min-h-screen bg-background max-w-md mx-auto pb-6">
       {!hideHeader && (
-        <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
-          <div className="p-3">
-            <div className="flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-background">
+          <div className="p-4">
+            <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full h-9 w-9">
                 <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
               </Button>
-              <h1 className="text-lg font-semibold">Помощь</h1>
-              <div className="w-9" />
+              <h1 className="text-xl font-semibold">{t("help_title")}</h1>
             </div>
           </div>
         </div>
       )}
 
-      <div className="p-3 space-y-3">
+      <div className="px-4 pb-4 space-y-3">
         <Card className="relative overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-primary/5 p-4 shadow-sm">
           <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary/90 via-primary/70 to-transparent" />
           <div className="absolute -right-8 -top-8 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
@@ -385,7 +343,7 @@ export default function HelpPage({ onBack, userRole, hideHeader = false }: HelpP
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-semibold">Центр помощи</h2>
+                <h2 className="text-base font-semibold">{t("help_center_title")}</h2>
                 <Badge variant="outline" className="text-[10px]">
                   {roleMeta.badge}
                 </Badge>
@@ -401,7 +359,7 @@ export default function HelpPage({ onBack, userRole, hideHeader = false }: HelpP
               FAQ
             </TabsTrigger>
             <TabsTrigger value="help" className="rounded-lg">
-              Помощь
+              {t("help_tab_help")}
             </TabsTrigger>
           </TabsList>
 
@@ -446,7 +404,7 @@ export default function HelpPage({ onBack, userRole, hideHeader = false }: HelpP
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
                   <HelpCircle className="h-5 w-5" strokeWidth={1.7} />
                 </div>
-                <p className="text-base font-semibold">Тебе никто не поможет</p>
+                <p className="text-base font-semibold">{t("help_contact_unavailable")}</p>
               </div>
             </Card>
           </TabsContent>

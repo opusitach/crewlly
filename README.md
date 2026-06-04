@@ -61,7 +61,9 @@ pnpm install
 
 # Создать .env файл
 cp .env.example .env
-# Отредактировать DATABASE_URL в .env
+# Для полного списка env и источников значений см. docs/environment.md
+# Минимум для локального запуска: поправить DATABASE_URL, NEXT_PUBLIC_APP_URL,
+# COOKIE_SECURE и EMAIL_PROVIDER
 ```
 
 ### Настройка базы данных
@@ -293,6 +295,7 @@ cp .env.example .env.production
 
 Примечание:
 - `.env.production` не коммитится (игнорируется git)
+- полный каталог env и точные источники значений: [docs/environment.md](docs/environment.md)
 - для Caddy хеши паролей генерируются локально/на сервере и вставляются в `.env.production`
 - значения `BASIC_AUTH_USER*_HASH` содержат символы `$`, поэтому в `.env.production`
   оборачивайте их в одинарные кавычки (или экранируйте `$` как `$$`), иначе `docker compose`

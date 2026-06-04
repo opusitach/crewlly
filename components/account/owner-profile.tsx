@@ -10,6 +10,7 @@ import { PhoneInput } from "@/components/ui/phone-input"
 import { ChevronLeft, Mail, Phone, Building2, Edit2, Camera, ChevronRight, LogOut } from "lucide-react"
 import { ImagePreview } from "@/components/ui/image-preview"
 import { useAuthStore } from "@/lib/store/auth-store"
+import { useTranslation } from "@/lib/i18n/context"
 import { getEmailValidationError } from "@/lib/validation/email"
 import { formatPhoneForDisplay, getPhoneValidationError } from "@/lib/validation/phone"
 
@@ -28,6 +29,7 @@ export default function OwnerProfile({
   userRole = "owner",
   canCreateVenue = true,
 }: OwnerProfileProps) {
+  const { t } = useTranslation()
   const router = useRouter()
   const { user, venues, selectedVenueId, selectVenue, updateUser, updateVenue, isHydrated, hydrate } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
@@ -51,7 +53,7 @@ export default function OwnerProfile({
   )
   const [venueName, setVenueName] = useState(currentVenue?.name ?? "")
   const currentVenueId = currentVenue?.id ?? null
-  const roleLabel = userRole === "manager" ? "Менеджер" : "Владелец"
+  const roleLabel = userRole === "manager" ? t("profile_manager_role") : t("profile_owner_role")
   const emailError = getEmailValidationError(profileData.email)
   const phoneError = getPhoneValidationError(profileData.phone)
   const showEmailError = isEditing && Boolean(emailError) && (emailTouched || emailValidationRequested)
@@ -156,7 +158,7 @@ export default function OwnerProfile({
       resetValidationState()
       setIsEditing(false)
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Не удалось сохранить профиль")
+      setSaveError(error instanceof Error ? error.message : t("profile_save_error"))
     } finally {
       setIsSaving(false)
     }
@@ -185,7 +187,7 @@ export default function OwnerProfile({
         await selectVenue(venueId)
         const nextSelectedVenueId = useAuthStore.getState().selectedVenueId
         if (nextSelectedVenueId !== venueId) {
-          setVenueSelectError("Не удалось переключить заведение. Попробуйте еще раз.")
+          setVenueSelectError(t("profile_venue_switch_error"))
           return
         }
       }
@@ -198,13 +200,13 @@ export default function OwnerProfile({
 
   return (
     <div className="min-h-screen bg-background max-w-md mx-auto pb-6">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
         <div className="p-3">
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full h-9 w-9">
               <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
             </Button>
-            <h1 className="text-lg font-semibold">Профиль</h1>
+            <h1 className="text-lg font-semibold">{t("profile_title")}</h1>
             <Button
               variant="ghost"
               size="icon"
@@ -245,7 +247,7 @@ export default function OwnerProfile({
         </Card>
 
         <Card className="p-3 space-y-3 overflow-hidden">
-          <h3 className="text-sm font-semibold text-muted-foreground">Контактная информация</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground">{t("profile_contact_info")}</h3>
 
           <div className="space-y-2">
             <Label htmlFor="email" className={`text-xs ${showEmailError ? "text-destructive" : "text-muted-foreground"}`}>
@@ -261,7 +263,7 @@ export default function OwnerProfile({
                   onBlur={() => setEmailTouched(true)}
                   autoComplete="email"
                   placeholder="name@example.com"
-                  title="Введите email латиницей в формате name@example.com"
+                  title={t("profile_email_hint")}
                   aria-invalid={showEmailError || undefined}
                   aria-describedby={showEmailError ? "owner-email-error" : undefined}
                   className="h-9"
@@ -275,14 +277,14 @@ export default function OwnerProfile({
             ) : (
               <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
                 <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                <span className="text-sm truncate">{profileData.email || "Не указан"}</span>
+                <span className="text-sm truncate">{profileData.email || t("profile_email_empty")}</span>
               </div>
             )}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="phone" className={`text-xs ${showPhoneError ? "text-destructive" : "text-muted-foreground"}`}>
-              Телефон
+              {t("profile_phone")}
             </Label>
             {isEditing ? (
               <div className="space-y-1.5">
@@ -303,7 +305,7 @@ export default function OwnerProfile({
             ) : (
               <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
                 <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-                <span className="text-sm truncate">{formatPhoneForDisplay(profileData.phone) || "Не указан"}</span>
+                <span className="text-sm truncate">{formatPhoneForDisplay(profileData.phone) || t("profile_phone_empty")}</span>
               </div>
             )}
           </div>
@@ -311,7 +313,7 @@ export default function OwnerProfile({
 
         <Card className="p-3 space-y-3 overflow-hidden">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-muted-foreground">Заведения</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground">{t("profile_venues")}</h3>
             {canCreateVenue && (
               <Button
                 variant="link"
@@ -319,13 +321,13 @@ export default function OwnerProfile({
                 className="h-auto p-0 text-xs"
                 onClick={() => router.push("/app/venues/new")}
               >
-                Добавить заведение
+                {t("profile_add_venue")}
               </Button>
             )}
           </div>
 
           <div className="space-y-2">
-            {venues.length === 0 && <p className="text-sm text-muted-foreground">Заведений нет</p>}
+            {venues.length === 0 && <p className="text-sm text-muted-foreground">{t("profile_no_venues")}</p>}
             {venues.map((venue) => (
               <button
                 key={venue.id}
@@ -348,14 +350,14 @@ export default function OwnerProfile({
           <div className="space-y-2">
             {saveError && <p className="text-xs text-destructive">{saveError}</p>}
             <Button className="w-full h-10" onClick={handleSave} disabled={Boolean(emailError || phoneError) || isSaving}>
-              {isSaving ? "Сохраняем..." : "Сохранить изменения"}
+              {isSaving ? t("profile_saving") : t("profile_save")}
             </Button>
           </div>
         )}
 
         <Button variant="destructive" className="w-full h-10 mt-2" onClick={onLogout}>
           <LogOut className="h-4 w-4 mr-2" strokeWidth={1.5} />
-          Выйти
+          {t("profile_logout")}
         </Button>
       </div>
     </div>

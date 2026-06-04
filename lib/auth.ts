@@ -1,12 +1,13 @@
 import { cookies } from "next/headers"
 import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/prisma"
-import { resolveSessionCookieSecure } from "@/lib/session-cookie"
+import { resolveSessionCookieDomain, resolveSessionCookieSecure } from "@/lib/session-cookie"
 
 export const SESSION_COOKIE = "session_token"
 const SESSION_TTL_DAYS = 30
 
 const isSecureCookie = resolveSessionCookieSecure()
+const sessionCookieDomain = resolveSessionCookieDomain()
 
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10)
@@ -40,6 +41,10 @@ export async function createSession(userId: string) {
         secure: isSecureCookie,
         path: "/",
         expires,
+        // When SESSION_COOKIE_DOMAIN is set (e.g. ".crewlly.com"), the cookie is
+        // shared across subdomains — required for admin.crewlly.com to see sessions
+        // issued by crewlly.com. Omitted by default for host-only scope.
+        ...(sessionCookieDomain ? { domain: sessionCookieDomain } : {}),
       },
     },
   }

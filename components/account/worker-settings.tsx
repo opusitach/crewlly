@@ -6,13 +6,16 @@ import { Card } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { ChevronLeft, ChevronRight, Globe, HelpCircle, Shield, Key } from "lucide-react"
+import { useTranslation } from "@/lib/i18n/context"
 
 interface WorkerSettingsProps {
   onBack: () => void
   hideHeader?: boolean
+  onNavigateLanguage?: () => void
 }
 
-export default function WorkerSettings({ onBack, hideHeader = false }: WorkerSettingsProps) {
+export default function WorkerSettings({ onBack, hideHeader = false, onNavigateLanguage }: WorkerSettingsProps) {
+  const { t } = useTranslation()
   const [settings, setSettings] = useState({
     shiftReminders: true,
     tipsNotifications: true,
@@ -22,13 +25,13 @@ export default function WorkerSettings({ onBack, hideHeader = false }: WorkerSet
   return (
     <div className="min-h-screen bg-background max-w-md mx-auto pb-6">
       {!hideHeader && (
-        <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="sticky top-0 z-10 bg-background border-b border-border">
           <div className="p-3">
             <div className="flex items-center justify-between">
               <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full h-9 w-9">
                 <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
               </Button>
-              <h1 className="text-lg font-semibold">Настройки</h1>
+              <h1 className="text-lg font-semibold">{t("settings_title")}</h1>
               <div className="w-9" />
             </div>
           </div>
@@ -37,14 +40,14 @@ export default function WorkerSettings({ onBack, hideHeader = false }: WorkerSet
 
       <div className="p-3 space-y-3">
         <Card className="p-3 space-y-3 overflow-hidden">
-          <h3 className="text-sm font-semibold text-muted-foreground">Уведомления</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground">{t("settings_notifications")}</h3>
 
           <div className="flex items-center justify-between gap-3 p-2">
             <div className="flex-1 min-w-0">
               <Label htmlFor="shiftReminders" className="text-sm font-medium cursor-pointer">
-                Напоминания о сменах
+                {t("settings_shift_reminders")}
               </Label>
-              <p className="text-xs text-muted-foreground mt-0.5">За час до начала смены</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("settings_shift_reminders_desc")}</p>
             </div>
             <Switch
               id="shiftReminders"
@@ -56,9 +59,9 @@ export default function WorkerSettings({ onBack, hideHeader = false }: WorkerSet
           <div className="flex items-center justify-between gap-3 p-2">
             <div className="flex-1 min-w-0">
               <Label htmlFor="tipsNotifications" className="text-sm font-medium cursor-pointer">
-                Начисление чаевых
+                {t("settings_tips_notifications")}
               </Label>
-              <p className="text-xs text-muted-foreground mt-0.5">Когда чаевые добавлены</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("settings_tips_notifications_desc")}</p>
             </div>
             <Switch
               id="tipsNotifications"
@@ -70,9 +73,9 @@ export default function WorkerSettings({ onBack, hideHeader = false }: WorkerSet
           <div className="flex items-center justify-between gap-3 p-2">
             <div className="flex-1 min-w-0">
               <Label htmlFor="scheduleChanges" className="text-sm font-medium cursor-pointer">
-                Изменения графика
+                {t("settings_schedule_changes")}
               </Label>
-              <p className="text-xs text-muted-foreground mt-0.5">При изменении расписания</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("settings_schedule_changes_desc")}</p>
             </div>
             <Switch
               id="scheduleChanges"
@@ -83,33 +86,36 @@ export default function WorkerSettings({ onBack, hideHeader = false }: WorkerSet
         </Card>
 
         <Card className="p-3 space-y-2 overflow-hidden">
-          <h3 className="text-sm font-semibold text-muted-foreground">Язык</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground">{t("settings_language")}</h3>
 
-          <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors text-left">
+          <button
+            onClick={onNavigateLanguage}
+            className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors text-left"
+          >
             <Globe className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-            <span className="flex-1 text-sm font-medium truncate">Русский</span>
+            <span className="flex-1 text-sm font-medium truncate">{t("hub_language_desc")}</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
           </button>
         </Card>
 
         <Card className="p-3 space-y-2 overflow-hidden">
-          <h3 className="text-sm font-semibold text-muted-foreground">Помощь и приватность</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground">{t("settings_help_privacy")}</h3>
 
           <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors text-left">
             <HelpCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-            <span className="flex-1 text-sm font-medium truncate">Справка и FAQ</span>
+            <span className="flex-1 text-sm font-medium truncate">{t("settings_faq")}</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
           </button>
 
           <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors text-left">
             <Shield className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-            <span className="flex-1 text-sm font-medium truncate">Политика приватности</span>
+            <span className="flex-1 text-sm font-medium truncate">{t("settings_privacy")}</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
           </button>
 
           <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors text-left">
             <Key className="h-5 w-5 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
-            <span className="flex-1 text-sm font-medium truncate">Сменить пароль</span>
+            <span className="flex-1 text-sm font-medium truncate">{t("settings_change_password")}</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.5} />
           </button>
         </Card>

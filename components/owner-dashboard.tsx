@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { ShiftsPageSkeleton } from "@/components/ui/page-skeletons"
 import {
   Plus,
   Clock,
@@ -28,14 +29,21 @@ import AccountHub from "@/components/account/account-hub"
 import OwnerProfile from "@/components/account/owner-profile"
 import NotificationsPage from "@/components/account/notifications-page"
 import HelpPage from "@/components/account/help-page"
+import LanguagePage from "@/components/account/language-page"
+import { useTranslation } from "@/lib/i18n/context"
+import type { TranslationKey } from "@/lib/i18n/translations"
 import TeamMovedHint from "@/components/notifications/team-moved-hint"
 import ManagerNextShiftCard from "@/components/manager-next-shift-card"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
 import type { NotificationNavigationTarget } from "@/lib/notifications/navigation"
+import { translateNotificationMessage, translateNotificationText } from "@/lib/notifications/display"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { useShiftStore } from "@/lib/store/shift-store"
 
-const ShiftsView = dynamic(() => import("@/components/shifts-view"), { ssr: false })
+const ShiftsView = dynamic(() => import("@/components/shifts-view"), {
+  ssr: false,
+  loading: () => <ShiftsPageSkeleton />,
+})
 
 const OWNER_TABS: OwnerTab[] = ["dashboard", "shifts", "cash", "reports", "settings"]
 const dateInputPattern = /^\d{4}-\d{2}-\d{2}$/
@@ -63,9 +71,8 @@ type AttentionItemKey = "cash" | "employees" | "roles" | "tips"
 
 type AttentionItem = {
   key: AttentionItemKey
-  title: string
-  description: string
-  hint: string
+  descriptionKey: TranslationKey
+  count?: number
   status: "ok" | "warning"
 }
 
@@ -131,7 +138,7 @@ const toDateInputValue = (date: Date) => {
 
 const capitalize = (value: string) => (value.length > 0 ? value.charAt(0).toUpperCase() + value.slice(1) : value)
 
-const getCurrentMonthLabel = () => capitalize(new Date().toLocaleDateString("ru-RU", { month: "long" }))
+const getCurrentMonthLabel = (locale: string) => capitalize(new Date().toLocaleDateString(locale, { month: "long" }))
 
 // HIG title-2: 22pt, semibold, tight tracking — readable at any viewport width
 const DASHBOARD_KPI_VALUE_CLASS =
@@ -140,10 +147,10 @@ const DASHBOARD_KPI_VALUE_CLASS =
 const isDateInputValue = (value: string | null | undefined): value is string =>
   typeof value === "string" && dateInputPattern.test(value)
 
-const formatRevenueAmount = (value: number | null, currency: string) => {
+const formatRevenueAmount = (value: number | null, currency: string, locale: string) => {
   if (value == null) return "—"
   try {
-    return new Intl.NumberFormat("ru-RU", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
       maximumFractionDigits: 0,
@@ -211,7 +218,10 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const initialReportsToDate = isDateInputValue(reportsToParam) ? reportsToParam : undefined
   const initialShiftsDate = isDateInputValue(shiftsDateParam) ? shiftsDateParam : undefined
   const [activeTab, setActiveTab] = useState<OwnerTab>(() => resolvedTab)
-  const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "notifications" | "help">("none")
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const { t, language } = useTranslation()
+  const locale = language === "en" ? "en-US" : "ru-RU"
+  const [accountView, setAccountView] = useState<"none" | "hub" | "profile" | "notifications" | "help" | "language">("none")
   const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false)
   const [showTeamHint, setShowTeamHint] = useState(true)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
@@ -228,36 +238,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const [monthRevenueAmount, setMonthRevenueAmount] = useState<number | null>(null)
   const [revenueCurrency, setRevenueCurrency] = useState<string>("CZK")
   const [isAttentionLoading, setIsAttentionLoading] = useState(false)
-  const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([
-    {
-      key: "cash",
-      title: "Касса",
-      description: "Проверяем настройки кассы...",
-      hint: "Настройки -> Касса",
-      status: "warning",
-    },
-    {
-      key: "employees",
-      title: "Сотрудники",
-      description: "Проверяем сотрудников...",
-      hint: "Настройки -> Команда",
-      status: "warning",
-    },
-    {
-      key: "roles",
-      title: "Роли и правила",
-      description: "Проверяем роли и правила...",
-      hint: "Настройки -> Роли и правила",
-      status: "warning",
-    },
-    {
-      key: "tips",
-      title: "Чаевые",
-      description: "Проверяем формулу чаевых...",
-      hint: "Настройки -> Касса -> Формулы",
-      status: "warning",
-    },
-  ])
+  const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([])
   const {
     user,
     organization,
@@ -283,7 +264,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     () => venues.find((venue) => venue.id === selectedVenueId) ?? null,
     [venues, selectedVenueId],
   )
-  const selectedVenueName = selectedVenue?.name ?? "Заведение"
+  const selectedVenueName = selectedVenue?.name ?? t("owner_venue_label")
   const attentionLocationId = useMemo(() => {
     if (selectedVenue?.locations && selectedVenue.locations.length > 0) {
       const selectedLocation = selectedVenue.locations.find((location) => location.id === defaultLocationId)
@@ -301,6 +282,15 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   useEffect(() => {
     setActiveTab(resolvedTab)
   }, [resolvedTab])
+
+  useEffect(() => {
+    if (activeTab !== "shifts") return
+    const el = scrollContainerRef.current
+    if (!el) return
+    const id = setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }), 80)
+    return () => clearTimeout(id)
+  }, [activeTab])
+
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
       router.replace("/login")
@@ -586,14 +576,6 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       return false
     }
 
-    const formatEmployeesLabel = (count: number) => {
-      const mod10 = count % 10
-      const mod100 = count % 100
-      if (mod10 === 1 && mod100 !== 11) return "сотрудник"
-      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "сотрудника"
-      return "сотрудников"
-    }
-
     const loadAttention = async () => {
       try {
         const cashSettingsUrl = attentionLocationId
@@ -642,45 +624,35 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         const nextAttentionItems: AttentionItem[] = [
           {
             key: "cash",
-            title: "Касса",
             status: cashConfigured ? "ok" : "warning",
-            description: cashConfigured
-              ? "Поля открытия и закрытия настроены."
-              : "Добавьте хотя бы одно активное поле для открытия и закрытия смены.",
-            hint: "Настройки -> Касса",
+            descriptionKey: cashConfigured ? "owner_cash_ok" : "owner_cash_empty",
           },
           {
             key: "employees",
-            title: "Сотрудники",
             status: employeesWithoutSalary.length > 0 ? "warning" : "ok",
-            description:
+            descriptionKey:
               employeesWithoutSalary.length > 0
-                ? `${employeesWithoutSalary.length} ${formatEmployeesLabel(employeesWithoutSalary.length)} без зарплаты.`
+                ? "owner_employees_without_salary"
                 : employees.length > 0
-                  ? "У всех сотрудников заполнена зарплата."
-                  : "Сотрудников пока нет.",
-            hint: "Настройки -> Команда",
+                  ? "owner_all_employees_salary"
+                  : "owner_no_employees",
+            count: employeesWithoutSalary.length,
           },
           {
             key: "roles",
-            title: "Роли и правила",
             status: positions.length === 0 || positionsWithoutRules.length > 0 ? "warning" : "ok",
-            description:
+            descriptionKey:
               positions.length === 0
-                ? "Нет активных ролей. Добавьте роль и настройте правила."
+                ? "owner_no_roles"
                 : positionsWithoutRules.length > 0
-                  ? `Для ${positionsWithoutRules.length} ролей не хватает правил открытия или закрытия.`
-                  : "Роли и правила настроены.",
-            hint: "Настройки -> Роли и правила",
+                  ? "owner_roles_missing"
+                  : "owner_roles_ok",
+            count: positionsWithoutRules.length,
           },
           {
             key: "tips",
-            title: "Чаевые",
             status: tipsFormulaConfigured ? "ok" : "warning",
-            description: tipsFormulaConfigured
-              ? "Формула чаевых настроена."
-              : "Добавьте формулу чаевых во вкладке «Формулы» в настройках кассы.",
-            hint: "Настройки -> Касса -> Формулы",
+            descriptionKey: tipsFormulaConfigured ? "owner_tips_ok" : "owner_tips_empty",
           },
         ]
 
@@ -691,30 +663,22 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         setAttentionItems([
           {
             key: "cash",
-            title: "Касса",
-            description: "Не удалось проверить настройки. Откройте раздел и проверьте вручную.",
-            hint: "Настройки -> Касса",
+            descriptionKey: "owner_checklist_error_cash",
             status: "warning",
           },
           {
             key: "employees",
-            title: "Сотрудники",
-            description: "Не удалось проверить зарплаты сотрудников. Откройте раздел и проверьте вручную.",
-            hint: "Настройки -> Команда",
+            descriptionKey: "owner_checklist_error_employees",
             status: "warning",
           },
           {
             key: "roles",
-            title: "Роли и правила",
-            description: "Не удалось проверить роли и правила. Откройте раздел и проверьте вручную.",
-            hint: "Настройки -> Роли и правила",
+            descriptionKey: "owner_checklist_error_cash",
             status: "warning",
           },
           {
             key: "tips",
-            title: "Чаевые",
-            description: "Не удалось проверить формулу чаевых. Откройте раздел и проверьте вручную.",
-            hint: "Настройки -> Касса -> Формулы",
+            descriptionKey: "owner_checklist_error_cash",
             status: "warning",
           },
         ])
@@ -771,7 +735,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const formatEventTimestamp = (value: string) => {
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    return date.toLocaleString("ru-RU", {
+    return date.toLocaleString(locale, {
       day: "2-digit",
       month: "2-digit",
       hour: "2-digit",
@@ -782,8 +746,9 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   const visibleDashboardEvents = dashboardEvents.slice(0, 3)
   const hasMoreDashboardEvents = dashboardEvents.length > 3
   const warningsCount = attentionItems.filter((item) => item.status === "warning").length
-  const warningsLabel = warningsCount === 1 ? "1 требует внимания" : `${warningsCount} требуют внимания`
-  const currentMonthLabel = getCurrentMonthLabel()
+  const warningsLabel =
+    warningsCount === 1 ? t("owner_attention_warning_one") : t("owner_attention_warning_many", { count: warningsCount })
+  const currentMonthLabel = getCurrentMonthLabel(locale)
 
   const openReviewQueue = () => {
     updateRouteForTab("cash", { cashTab: "review_queue" })
@@ -806,6 +771,39 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     updateRouteForTab("shifts", { shiftsDate: targetDate })
   }
 
+  const formatEmployeesLabel = (count: number) => {
+    const mod10 = count % 10
+    const mod100 = count % 100
+    if (mod10 === 1 && mod100 !== 11) return t("owner_employees_label_one")
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return t("owner_employees_label_few")
+    return t("owner_employees_label_many")
+  }
+
+  const getAttentionTitle = (key: AttentionItemKey) => {
+    if (key === "cash") return t("owner_checklist_cash_title")
+    if (key === "employees") return t("owner_checklist_employees_title")
+    if (key === "roles") return t("owner_checklist_roles_title")
+    return t("owner_checklist_tips_title")
+  }
+
+  const getAttentionHint = (key: AttentionItemKey) => {
+    if (key === "cash") return t("owner_checklist_cash_hint")
+    if (key === "employees") return t("owner_checklist_employees_hint")
+    if (key === "roles") return t("owner_checklist_roles_hint")
+    return t("owner_checklist_tips_hint")
+  }
+
+  const getAttentionDescription = (item: AttentionItem) => {
+    if (item.descriptionKey === "owner_employees_without_salary") {
+      const count = item.count ?? 0
+      return t(item.descriptionKey, { count, label: formatEmployeesLabel(count) })
+    }
+    if (item.descriptionKey === "owner_roles_missing") {
+      return t(item.descriptionKey, { count: item.count ?? 0 })
+    }
+    return t(item.descriptionKey)
+  }
+
   const handleAccountNavigation = (screen: "profile" | "settings" | "language" | "help" | "team") => {
     setIsVenueSelectorOpen(false)
     setAccountView("none")
@@ -817,6 +815,8 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
       setTab("settings")
     } else if (screen === "help") {
       setTimeout(() => setAccountView("help"), 100)
+    } else if (screen === "language") {
+      setTimeout(() => setAccountView("language"), 100)
     } else if (screen === "team") {
       setShowTeamHint(false)
       router.push("/app/team")
@@ -975,6 +975,9 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     if (accountView === "help") {
       return <HelpPage onBack={() => setAccountView("none")} userRole={dashboardUserRole} />
     }
+    if (accountView === "language") {
+      return <LanguagePage onBack={() => setAccountView("none")} />
+    }
     if (accountView === "notifications") {
       return (
         <NotificationsPage
@@ -1000,6 +1003,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
           initialPreferCanceledInterval={pendingShiftsNavigation?.preferCanceledInterval ?? false}
           initialCancelReason={pendingShiftsNavigation?.cancelReason}
           onInitialNavigationHandled={() => setPendingShiftsNavigation(null)}
+          externalHeader
         />
       )
     if (activeTab === "cash")
@@ -1063,11 +1067,13 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-warning-bg text-warning-text">
                 <Clock className="h-4.5 w-4.5" strokeWidth={2} />
               </div>
-              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">На проверке</span>
+              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("owner_kpi_pending_review")}
+              </span>
             </div>
             <div className="space-y-0.5">
               <p className={DASHBOARD_KPI_VALUE_CLASS}>{verificationQueueCount}</p>
-              <p className="text-footnote text-warning-text font-medium">Требуют внимания</p>
+              <p className="text-footnote text-warning-text font-medium">{t("owner_kpi_needs_attention")}</p>
             </div>
           </button>
 
@@ -1081,13 +1087,15 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-success-bg text-success-text">
                 <TrendingUp className="h-4.5 w-4.5" strokeWidth={2} />
               </div>
-              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">Сегодня</span>
+              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("owner_kpi_today")}
+              </span>
             </div>
             <div className="space-y-0.5">
               <p className={DASHBOARD_KPI_VALUE_CLASS}>
-                {formatRevenueAmount(todayRevenueAmount, revenueCurrency)}
+                {formatRevenueAmount(todayRevenueAmount, revenueCurrency, locale)}
               </p>
-              <p className="text-footnote text-muted-foreground font-medium">Выручка</p>
+              <p className="text-footnote text-muted-foreground font-medium">{t("owner_kpi_revenue")}</p>
             </div>
           </button>
 
@@ -1105,9 +1113,9 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
             </div>
             <div className="space-y-0.5">
               <p className={DASHBOARD_KPI_VALUE_CLASS}>
-                {formatRevenueAmount(monthRevenueAmount, revenueCurrency)}
+                {formatRevenueAmount(monthRevenueAmount, revenueCurrency, locale)}
               </p>
-              <p className="text-footnote text-muted-foreground font-medium">Выручка за месяц</p>
+              <p className="text-footnote text-muted-foreground font-medium">{t("owner_kpi_month_revenue")}</p>
             </div>
           </button>
 
@@ -1121,11 +1129,13 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary-text">
                 <Users className="h-4.5 w-4.5" strokeWidth={2} />
               </div>
-              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">Активно</span>
+              <span className="text-caption-2 font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("owner_kpi_active")}
+              </span>
             </div>
             <div className="space-y-0.5">
               <p className={DASHBOARD_KPI_VALUE_CLASS}>{activeIntervalsCount}</p>
-              <p className="text-footnote text-primary-text font-medium">На сменах</p>
+              <p className="text-footnote text-primary-text font-medium">{t("owner_kpi_on_shifts")}</p>
             </div>
           </button>
         </div>
@@ -1134,16 +1144,15 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         <div className="flex gap-2.5">
           <Button className="flex-1" onClick={() => setTab("shifts")}>
             <Plus className="h-4 w-4" strokeWidth={2} />
-            <span className="truncate">Создать смену</span>
+            <span className="truncate">{t("owner_action_create_shift")}</span>
           </Button>
           <Button variant="tinted" className="flex-1" onClick={() => setTab("cash")}>
-            <span className="truncate">Проверить</span>
+            <span className="truncate">{t("owner_action_review")}</span>
           </Button>
         </div>
-
         {/* Activity Feed */}
         <div className="space-y-3 pt-1">
-          <h2 className="text-headline">События</h2>
+          <h2 className="text-headline">{t("owner_events_title")}</h2>
           {isEventsLoading ? (
             <div className="rounded-xl bg-card border border-border divide-y divide-separator overflow-hidden">
               {[1, 2, 3].map((i) => (
@@ -1162,8 +1171,8 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
                 <Sparkles className="h-6 w-6" strokeWidth={1.5} />
               </div>
               <div className="space-y-1">
-                <p className="text-subheadline font-semibold">Всё спокойно</p>
-                <p className="text-footnote text-muted-foreground">Тут появятся события смен и кассы</p>
+                <p className="text-subheadline font-semibold">{t("owner_events_empty_title")}</p>
+                <p className="text-footnote text-muted-foreground">{t("owner_events_empty_desc")}</p>
               </div>
             </div>
           ) : (
@@ -1187,12 +1196,16 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-callout font-semibold truncate">{event.title}</p>
+                        <p className="text-callout font-semibold truncate">
+                          {translateNotificationText(event.title, language)}
+                        </p>
                         {event.status === "unread" && (
-                          <span className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1.5" aria-label="Непрочитано" />
+                          <span className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1.5" aria-label={t("notification_unread")} />
                         )}
                       </div>
-                      <p className="text-footnote text-muted-foreground line-clamp-2 mt-0.5">{event.message}</p>
+                      <p className="text-footnote text-muted-foreground line-clamp-2 mt-0.5">
+                        {translateNotificationMessage(event.message, event.title, language)}
+                      </p>
                       <p className="text-caption-1 text-text-tertiary mt-1.5">{formatEventTimestamp(event.createdAt)}</p>
                     </div>
                   </button>
@@ -1205,7 +1218,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
                   className="w-full flex items-center justify-center gap-1 p-4 text-callout font-medium text-primary-text transition-colors hover:bg-fill-4 active:bg-fill-3"
                   onClick={() => setAccountView("notifications")}
                 >
-                  Показать все
+                  {t("owner_events_show_all")}
                   <ChevronRight className="h-4 w-4" strokeWidth={2} />
                 </button>
               )}
@@ -1216,13 +1229,13 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         {/* Attention — HIG Inset Grouped List */}
         <div className="space-y-3 pt-1">
           <div className="flex items-center justify-between">
-            <h2 className="text-headline">На что обратить внимание</h2>
+            <h2 className="text-headline">{t("owner_attention_title")}</h2>
             <span
               className={`text-footnote font-semibold ${
                 warningsCount > 0 ? "text-destructive-text" : "text-success-text"
               }`}
             >
-              {warningsCount > 0 ? warningsLabel : "Всё настроено"}
+              {warningsCount > 0 ? warningsLabel : t("owner_attention_all_set")}
             </span>
           </div>
 
@@ -1269,10 +1282,12 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
                       <Icon className="h-4.5 w-4.5" strokeWidth={2} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-callout font-semibold">{item.title}</p>
-                      <p className="text-footnote text-muted-foreground line-clamp-1 mt-0.5">{item.description}</p>
+                      <p className="text-callout font-semibold">{getAttentionTitle(item.key)}</p>
+                      <p className="text-footnote text-muted-foreground line-clamp-1 mt-0.5">
+                        {getAttentionDescription(item)}
+                      </p>
                       <p className={`text-caption-1 font-medium mt-0.5 ${isWarning ? "text-destructive-text" : "text-success-text"}`}>
-                        {item.hint}
+                        {getAttentionHint(item.key)}
                       </p>
                     </div>
                     <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={2} />
@@ -1287,10 +1302,10 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-background max-w-md mx-auto pb-24">
-      {/* Header */}
+    <div className="h-[100dvh] flex flex-col bg-background max-w-md mx-auto">
       <AppHeader
         title="Crewlly"
+        showLogo
         titleHref="/"
         titleAlign="left"
         onBack={onBack}
@@ -1307,20 +1322,20 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
         isOpen={accountView === "hub"}
         onClose={() => setAccountView("none")}
         userRole={dashboardUserRole}
-        userName={user?.name ?? "Аккаунт"}
+        userName={user?.name ?? t("hub_profile")}
         onNavigate={handleAccountNavigation}
       />
 
       <BottomSheet isOpen={isVenueSelectorOpen} onClose={() => setIsVenueSelectorOpen(false)} showCloseButton>
         <div className="space-y-3">
           <div>
-            <h3 className="text-base font-semibold">Выберите заведение</h3>
-            <p className="text-xs text-muted-foreground">Переключайтесь между заведениями в один тап</p>
+            <h3 className="text-base font-semibold">{t("owner_select_venue_title")}</h3>
+            <p className="text-xs text-muted-foreground">{t("owner_select_venue_desc")}</p>
           </div>
 
           {venues.length === 0 ? (
             <Card className="p-3">
-              <p className="text-sm text-muted-foreground">У вас пока нет заведений</p>
+              <p className="text-sm text-muted-foreground">{t("owner_no_venues")}</p>
             </Card>
           ) : (
             <div className="space-y-2">
@@ -1344,7 +1359,7 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{venue.name}</p>
                         <p className="truncate text-[11px] text-muted-foreground">
-                          {venue.locations?.[0]?.name ?? "Без локации"}
+                          {venue.locations?.[0]?.name ?? t("dash_no_location")}
                         </p>
                       </div>
                       {isSelected && <Check className="h-4 w-4 text-primary flex-shrink-0" strokeWidth={1.8} />}
@@ -1358,16 +1373,24 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
           {canCreateVenue && (
             <Button className="w-full h-10" onClick={handleAddVenue}>
               <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-              Добавить заведение
+              {t("owner_add_venue")}
             </Button>
           )}
         </div>
       </BottomSheet>
 
-      {/* Content */}
-      <div className="min-h-[70vh]">{renderAccountOverlay() || renderContent()}</div>
+      {/* Scrollable content — inner sticky headers stick within this container */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto scrollbar-hidden"
+        style={{
+          paddingBottom: activeTab === "shifts" ? "0" : "96px",
+        }}
+      >
+        {renderAccountOverlay() || renderContent()}
+      </div>
 
-      {accountView !== "hub" && !isVenueSelectorOpen && (
+      {accountView !== "hub" && accountView !== "language" && !isVenueSelectorOpen && (
         <OwnerBottomNav activeTab={activeTab} onTabChange={handleBottomTabChange} />
       )}
     </div>

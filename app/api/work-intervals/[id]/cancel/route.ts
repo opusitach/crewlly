@@ -22,13 +22,13 @@ const buildCancelErrorResponse = (error: unknown) => {
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params
-  const { session, interval, effectiveStatus, effectiveClosedAt, error, status } = await getAuthorizedInterval(id)
-  if (error || !interval || !session?.organization) {
+  const { access, interval, effectiveStatus, effectiveClosedAt, error, status } = await getAuthorizedInterval(id)
+  if (error || !interval || !access) {
     return NextResponse.json({ error }, { status })
   }
   const resolvedStatus = effectiveStatus ?? interval.status
   const resolvedClosedAt = effectiveClosedAt ?? interval.closedAt ?? interval.timeEntry?.clockOutAt ?? null
-  const organizationId = session.organization.id
+  const organizationId = access.organizationId
 
   const json = await request.json().catch(() => null)
   const parsed = cancelSchema.safeParse(json)
@@ -58,7 +58,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const actorName = toEventActorName(
-    { fullName: session.user.fullName, email: session.user.email },
+    { fullName: access.user.fullName, email: access.user.email },
     "Сотрудник",
   )
   const workDateLabel = toEventDateLabel(interval.workday.workDate)

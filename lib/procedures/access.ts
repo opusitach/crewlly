@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, getUserEmployee, isOwnerOrManagerRole, isOwnerRole } from "@/lib/auth"
+import { getSessionUser, getUserEmployee } from "@/lib/auth"
+import {
+  resolveOrganizationAccess,
+  isOwnerEffectiveRole,
+  isOwnerOrManagerEffectiveRole,
+} from "@/lib/organization-access"
 import {
   resolveEffectiveWorkIntervalClosedAt,
   resolveEffectiveWorkIntervalOpenedAt,
@@ -11,7 +16,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 export async function getAuthorizedInterval(intervalId: string) {
   if (!intervalId || typeof intervalId !== "string") {
     return {
-      session: null,
+      access: null,
       interval: null,
       employee: null,
       isOwner: false,
@@ -22,7 +27,7 @@ export async function getAuthorizedInterval(intervalId: string) {
   }
   if (!UUID_REGEX.test(intervalId)) {
     return {
-      session: null,
+      access: null,
       interval: null,
       employee: null,
       isOwner: false,
@@ -32,10 +37,10 @@ export async function getAuthorizedInterval(intervalId: string) {
     }
   }
 
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return {
-      session: null,
+      access: null,
       interval: null,
       employee: null,
       isOwner: false,
@@ -59,9 +64,9 @@ export async function getAuthorizedInterval(intervalId: string) {
     },
   })
 
-  if (!interval || interval.workday.organizationId !== session.organization.id) {
+  if (!interval) {
     return {
-      session,
+      access: null,
       interval: null,
       employee: null,
       isOwner: false,
@@ -71,13 +76,26 @@ export async function getAuthorizedInterval(intervalId: string) {
     }
   }
 
-  const isOwner = isOwnerRole(session.membership)
-  const hasManagementAccess = isOwnerOrManagerRole(session.membership)
+  const access = await resolveOrganizationAccess(user.id, interval.workday.organizationId)
+  if (!access) {
+    return {
+      access: null,
+      interval: null,
+      employee: null,
+      isOwner: false,
+      hasManagementAccess: false,
+      error: "Forbidden",
+      status: 403,
+    }
+  }
+
+  const isOwner = isOwnerEffectiveRole(access)
+  const hasManagementAccess = isOwnerOrManagerEffectiveRole(access)
   let employee = null
   if (!hasManagementAccess) {
-    employee = await getUserEmployee(session.user.id, session.organization.id)
+    employee = await getUserEmployee(user.id, access.organizationId)
     if (!employee || employee.id !== interval.employeeId) {
-      return { session, interval, employee: null, isOwner, hasManagementAccess, error: "Forbidden", status: 403 }
+      return { access, interval, employee: null, isOwner, hasManagementAccess, error: "Forbidden", status: 403 }
     }
   }
 
@@ -86,7 +104,7 @@ export async function getAuthorizedInterval(intervalId: string) {
   const effectiveClosedAt = resolveEffectiveWorkIntervalClosedAt(interval)
 
   return {
-    session,
+    access,
     interval,
     employee,
     isOwner,

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { getSessionUserWithOrg, isOwnerOrManagerRole } from "@/lib/auth"
+import { getSessionUser } from "@/lib/auth"
+import { resolveOrganizationAccess, isOwnerOrManagerEffectiveRole } from "@/lib/organization-access"
+import { logInternalAction, INTERNAL_ACTIONS } from "@/lib/observability/internal-audit"
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -13,14 +15,19 @@ const updateSchema = z.object({
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(_request: Request, context: RouteContext) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const { id } = await context.params
 
   const position = await prisma.position.findUnique({ where: { id } })
-  if (!position || position.organizationId !== session.organization.id) {
+  if (!position) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, position.organizationId)
+  if (!access) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
@@ -28,12 +35,9 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  if (!isOwnerOrManagerRole(session.membership)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { id } = await context.params
 
@@ -44,8 +48,17 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const position = await prisma.position.findUnique({ where: { id } })
-  if (!position || position.organizationId !== session.organization.id) {
+  if (!position) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, position.organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const updated = await prisma.position.update({
@@ -58,27 +71,47 @@ export async function PATCH(request: Request, context: RouteContext) {
     },
   })
 
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.POSITION_UPDATE,
+    entityType: "position",
+    entityId: id,
+    metadata: { changedFields: Object.keys(parsed.data) },
+  })
+
   return NextResponse.json({ data: updated })
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
-  const session = await getSessionUserWithOrg()
-  if (!session || !session.organization) {
+  const user = await getSessionUser()
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  if (!isOwnerOrManagerRole(session.membership)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { id } = await context.params
 
   const position = await prisma.position.findUnique({ where: { id } })
-  if (!position || position.organizationId !== session.organization.id) {
+  if (!position) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const access = await resolveOrganizationAccess(user.id, position.organizationId)
+  if (!access) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  if (!isOwnerOrManagerEffectiveRole(access)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const updated = await prisma.position.update({
     where: { id },
     data: { isActive: false },
+  })
+
+  void logInternalAction(access, {
+    action: INTERNAL_ACTIONS.POSITION_DELETE,
+    entityType: "position",
+    entityId: id,
+    metadata: { name: position.name },
   })
 
   return NextResponse.json({ data: updated })

@@ -8,6 +8,7 @@ import { TrendingUp, Users, DollarSign, Calendar, Calculator, Loader2, ChevronRi
 import EmployeeMoneyView from "@/components/employee-money-view"
 import ReportCashFieldView from "@/components/report-cash-field-view"
 import ReportCashFormulaView from "@/components/report-cash-formula-view"
+import { useTranslation } from "@/lib/i18n/context"
 
 const dateInputPattern = /^\d{4}-\d{2}-\d{2}$/
 
@@ -21,10 +22,10 @@ const toDateInputValue = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-const formatMoney = (valueCents: number, currency: string | null | undefined) => {
+const formatMoney = (valueCents: number, currency: string | null | undefined, locale: string) => {
   const safeCurrency = currency || "CZK"
   try {
-    return new Intl.NumberFormat("ru-RU", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: safeCurrency,
       maximumFractionDigits: 0,
@@ -34,9 +35,9 @@ const formatMoney = (valueCents: number, currency: string | null | undefined) =>
   }
 }
 
-const formatCashValue = (value: number | null | undefined) => {
+const formatCashValue = (value: number | null | undefined, locale: string) => {
   if (value == null || !Number.isFinite(value)) return "-"
-  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value)
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value)
 }
 
 type ReportEmployee = {
@@ -192,6 +193,8 @@ export default function ReportsView({
   onInitialEmployeeNavigationHandled,
   onEmployeeEarningSelect,
 }: ReportsViewProps = {}) {
+  const { t, language } = useTranslation()
+  const locale = language === "en" ? "en-US" : "ru-RU"
   const today = useMemo(() => new Date(), [])
   const defaultFrom = useMemo(() => toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), [today])
   const defaultTo = useMemo(() => toDateInputValue(today), [today])
@@ -269,7 +272,7 @@ export default function ReportsView({
           | null
 
         if (!response.ok) {
-          throw new Error(json?.error || "Не удалось загрузить кассовые данные")
+          throw new Error(json?.error || t("reports_load_cash_error"))
         }
 
         const rawSummary = (json?.data?.summary ?? {}) as Record<string, unknown>
@@ -292,7 +295,7 @@ export default function ReportsView({
       } catch (error) {
         if (!active) return
         setCashSummary(EMPTY_CASH_SUMMARY)
-        setCashSummaryError(error instanceof Error ? error.message : "Не удалось загрузить кассовые данные")
+        setCashSummaryError(error instanceof Error ? error.message : t("reports_load_cash_error"))
       } finally {
         if (active) setIsCashSummaryLoading(false)
       }
@@ -302,7 +305,7 @@ export default function ReportsView({
     return () => {
       active = false
     }
-  }, [appliedRange.fromDate, appliedRange.toDate])
+  }, [appliedRange.fromDate, appliedRange.toDate, t])
 
   useEffect(() => {
     let active = true
@@ -320,7 +323,7 @@ export default function ReportsView({
           | null
 
         if (!response.ok) {
-          throw new Error(json?.error || "Не удалось загрузить сотрудников")
+          throw new Error(json?.error || t("reports_load_employees_error"))
         }
 
         const rawEmployees = Array.isArray(json?.data) ? json.data : []
@@ -328,7 +331,7 @@ export default function ReportsView({
           .filter((employee) => employee.employmentStatus === "active")
           .map((employee) => ({
             id: employee.id ?? "",
-            fullName: employee.fullName?.trim() || employee.name?.trim() || "Сотрудник",
+            fullName: employee.fullName?.trim() || employee.name?.trim() || t("common_employee_fallback"),
           }))
           .filter((employee) => employee.id)
           .sort((a, b) => a.fullName.localeCompare(b.fullName))
@@ -338,7 +341,7 @@ export default function ReportsView({
       } catch (error) {
         if (!active) return
         setEmployees([])
-        setEmployeeLoadError(error instanceof Error ? error.message : "Не удалось загрузить сотрудников")
+        setEmployeeLoadError(error instanceof Error ? error.message : t("reports_load_employees_error"))
       } finally {
         if (active) setIsEmployeesLoading(false)
       }
@@ -348,7 +351,7 @@ export default function ReportsView({
     return () => {
       active = false
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (employees.length === 0) {
@@ -465,21 +468,19 @@ export default function ReportsView({
 
   return (
     <div className="min-h-screen bg-background pb-24 max-w-md mx-auto">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-0 z-10 bg-background">
         <div className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="w-10" />
-            <h1 className="text-xl font-semibold">Отчёты</h1>
-            <div className="w-10" />
+          <div className="flex items-center">
+            <h1 className="text-xl font-semibold">{t("reports_title")}</h1>
           </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="px-4 pb-4 space-y-4">
         <Card className="p-4 space-y-3">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Calendar className="h-4 w-4" strokeWidth={1.5} />
-            Период
+            {t("reports_period")}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
@@ -490,10 +491,10 @@ export default function ReportsView({
             onClick={() => setAppliedRange({ fromDate, toDate })}
             disabled={Boolean(fromDate && toDate && toDate < fromDate)}
           >
-            Применить период
+            {t("reports_apply_period")}
           </Button>
           {fromDate && toDate && toDate < fromDate && (
-            <p className="text-xs text-destructive">Конечная дата должна быть не раньше начальной</p>
+            <p className="text-xs text-destructive">{t("reports_invalid_period")}</p>
           )}
         </Card>
 
@@ -502,20 +503,20 @@ export default function ReportsView({
             <div className="h-16 w-16 rounded-full bg-muted mx-auto flex items-center justify-center mb-3">
               <TrendingUp className="h-8 w-8 text-muted-foreground" strokeWidth={1.5} />
             </div>
-            <h3 className="font-semibold text-base mb-1">Нет данных за период</h3>
-            <p className="text-sm text-muted-foreground">Попробуйте выбрать другой период или проверьте смены</p>
+            <h3 className="font-semibold text-base mb-1">{t("reports_empty_title")}</h3>
+            <p className="text-sm text-muted-foreground">{t("reports_empty_desc")}</p>
             <Button
               variant="outline"
               onClick={() => setAppliedRange({ fromDate: defaultFrom, toDate: defaultTo })}
               className="mt-4"
             >
-              Изменить период
+              {t("reports_change_period")}
             </Button>
           </Card>
         ) : (
           <>
             <div className="space-y-2.5">
-              <h2 className="text-base font-semibold">Заведение</h2>
+              <h2 className="text-base font-semibold">{t("reports_venue")}</h2>
               <div className="grid gap-2.5">
                 <Card className="p-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
@@ -524,11 +525,11 @@ export default function ReportsView({
                       <DollarSign className="h-5 w-5 text-primary" strokeWidth={1.5} />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold">Кассовые данные</p>
+                      <p className="text-sm font-semibold">{t("reports_cash_data")}</p>
                       <p className="text-xs text-muted-foreground">
                         {cashSummary.sessionsCount > 0
-                          ? `${cashSummary.sessionsCount} кассовых смен за период`
-                          : "Кассовые смены за период не найдены"}
+                          ? t("reports_cash_sessions_count", { count: cashSummary.sessionsCount })
+                          : t("reports_cash_sessions_empty")}
                       </p>
                     </div>
                   </div>
@@ -538,7 +539,7 @@ export default function ReportsView({
                   <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} />
-                      Загружаем кассовые данные...
+                      {t("reports_loading_cash_data")}
                     </div>
                   </div>
                 ) : cashSummaryError ? (
@@ -546,7 +547,7 @@ export default function ReportsView({
                     {cashSummaryError}
                   </div>
                 ) : cashSummary.cashFields.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">За выбранный период нет заполненных полей кассы.</p>
+                  <p className="text-sm text-muted-foreground">{t("reports_cash_fields_empty")}</p>
                 ) : (
                   <div className="space-y-2">
                     {cashSummary.cashFields.map((item) => (
@@ -568,17 +569,17 @@ export default function ReportsView({
                               {item.fieldLabel}
                               {item.isRevenueBasis && (
                                 <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700">
-                                  Выручка
+                                  {t("reports_revenue")}
                                 </span>
                               )}
                             </p>
                             <p className="text-[11px] text-muted-foreground">
-                              {item.inputStage === "open" ? "Открытие" : "Закрытие"} • {item.entriesCount} значений
+                              {item.inputStage === "open" ? t("reports_stage_open") : t("reports_stage_close")} • {t("reports_values_count", { count: item.entriesCount })}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
                             <p className="font-semibold text-sm whitespace-nowrap">
-                              {formatCashValue(item.totalValueCents)}
+                              {formatCashValue(item.totalValueCents, locale)}
                             </p>
                             <ChevronRight className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
                           </div>
@@ -596,11 +597,11 @@ export default function ReportsView({
                       <Calculator className="h-5 w-5 text-primary" strokeWidth={1.5} />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold">Расчет формул</p>
+                      <p className="text-sm font-semibold">{t("reports_formula_calculation")}</p>
                       <p className="text-xs text-muted-foreground">
                         {cashSummary.evaluatedFormulaSessions > 0
-                          ? `${cashSummary.evaluatedFormulaSessions} смен рассчитано`
-                          : "Нет данных для расчета формул"}
+                          ? t("reports_formula_sessions_count", { count: cashSummary.evaluatedFormulaSessions })
+                          : t("reports_formula_sessions_empty")}
                       </p>
                     </div>
                   </div>
@@ -610,7 +611,7 @@ export default function ReportsView({
                   <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} />
-                      Выполняем расчет формул...
+                      {t("reports_calculating_formulas")}
                     </div>
                   </div>
                 ) : cashSummaryError ? (
@@ -626,11 +627,11 @@ export default function ReportsView({
                     )}
                     {cashSummary.formulaErrors > 0 && (
                       <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                        Ошибок расчета формул: {cashSummary.formulaErrors}
+                        {t("reports_formula_errors_count", { count: cashSummary.formulaErrors })}
                       </div>
                     )}
                     {cashSummary.formulas.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Формулы кассы не настроены или не рассчитаны.</p>
+                      <p className="text-sm text-muted-foreground">{t("reports_cash_formulas_empty")}</p>
                     ) : (
                       <div className="space-y-2">
                         {cashSummary.formulas.map((item) => (
@@ -651,15 +652,15 @@ export default function ReportsView({
                                   {item.resultLabel}
                                   {item.isTipsSource && (
                                     <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
-                                      Чаевые
+                                      {t("reports_tips")}
                                     </span>
                                   )}
                                 </p>
-                                <p className="text-[11px] text-muted-foreground">{item.entriesCount} значений</p>
+                                <p className="text-[11px] text-muted-foreground">{t("reports_values_count", { count: item.entriesCount })}</p>
                               </div>
                               <div className="flex items-center gap-2">
                                 <p className="font-semibold text-sm whitespace-nowrap">
-                                  {formatCashValue(item.totalValueCents)}
+                                  {formatCashValue(item.totalValueCents, locale)}
                                 </p>
                                 <ChevronRight className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
                               </div>
@@ -675,15 +676,15 @@ export default function ReportsView({
             </div>
 
             <div className="space-y-2.5">
-              <h2 className="text-base font-semibold">Сотрудники</h2>
+              <h2 className="text-base font-semibold">{t("reports_employees")}</h2>
               {isEmployeesLoading ? (
-                <Card className="p-4 text-sm text-muted-foreground">Загрузка сотрудников...</Card>
+                <Card className="p-4 text-sm text-muted-foreground">{t("reports_loading_employees")}</Card>
               ) : employeeLoadError ? (
                 <Card className="p-4 border-destructive/30 bg-destructive/5 text-sm text-destructive">
                   {employeeLoadError}
                 </Card>
               ) : employees.length === 0 ? (
-                <Card className="p-4 text-sm text-muted-foreground">Нет активных сотрудников</Card>
+                <Card className="p-4 text-sm text-muted-foreground">{t("reports_no_active_employees")}</Card>
               ) : (
                 <Card className="divide-y divide-border">
                   {employees.map((employee) => {
@@ -708,19 +709,19 @@ export default function ReportsView({
                             <p className="font-semibold text-sm">{employee.fullName}</p>
                             <p className="text-xs text-muted-foreground">
                               {isEmployeeSummariesLoading
-                                ? "Загрузка данных..."
-                                : `${roundedHours} часов • ${summary.shiftsCount} смен`}
+                                ? t("reports_loading_data")
+                                : t("reports_hours_shifts_summary", { hours: roundedHours, shifts: summary.shiftsCount })}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold text-sm">{formatMoney(summary.totalAccruedCents, summary.currency)}</p>
+                          <p className="font-semibold text-sm">{formatMoney(summary.totalAccruedCents, summary.currency, locale)}</p>
                           <p className="text-[10px] text-muted-foreground">
                             {hasAdjustments
-                              ? `${formatMoney(summary.totalSalaryCents, summary.currency)} + ${formatMoney(summary.totalTipsCents, summary.currency)} ${
+                              ? `${formatMoney(summary.totalSalaryCents, summary.currency, locale)} + ${formatMoney(summary.totalTipsCents, summary.currency, locale)} ${
                                   summary.totalAdjustmentsCents >= 0 ? "+" : ""
-                                } ${formatMoney(summary.totalAdjustmentsCents, summary.currency)}`
-                              : `${formatMoney(summary.totalSalaryCents, summary.currency)} + ${formatMoney(summary.totalTipsCents, summary.currency)}`}
+                                } ${formatMoney(summary.totalAdjustmentsCents, summary.currency, locale)}`
+                              : `${formatMoney(summary.totalSalaryCents, summary.currency, locale)} + ${formatMoney(summary.totalTipsCents, summary.currency, locale)}`}
                           </p>
                         </div>
                       </button>
