@@ -6,10 +6,8 @@
   }
 }
 
-# Frontend protected by HTTP Basic Auth.
 {$CADDY_APP_DOMAIN} {
   route {
-    import protected_basic_auth
     encode gzip zstd
     reverse_proxy front:3000
   }
@@ -19,18 +17,7 @@
 {$CADDY_API_DOMAIN} {
   route {
     encode gzip zstd
-
-    @api path /api/*
-    handle @api {
-      reverse_proxy back:3001
-    }
-
-    # back is the same Next.js app and can render UI pages too.
-    # Protect non-API routes so the app cannot be accessed via API domain without Basic Auth.
-    handle {
-      import protected_basic_auth
-      reverse_proxy back:3001
-    }
+    reverse_proxy back:3001
   }
 }
 
