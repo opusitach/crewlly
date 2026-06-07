@@ -283,13 +283,17 @@ export default function OwnerDashboard({ onBack }: { onBack?: () => void }) {
     setActiveTab(resolvedTab)
   }, [resolvedTab])
 
+  // Reset the shared scroll container to the top whenever the rendered content
+  // changes (tab switch or account overlay). The container persists across tabs,
+  // so without this the scroll position carries over — e.g. tapping a "Needs
+  // attention" item while scrolled down would open the target screen scrolled
+  // past its header.
   useEffect(() => {
-    if (activeTab !== "shifts") return
     const el = scrollContainerRef.current
     if (!el) return
-    const id = setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }), 80)
+    const id = setTimeout(() => el.scrollTo({ top: 0, behavior: "auto" }), 0)
     return () => clearTimeout(id)
-  }, [activeTab])
+  }, [activeTab, accountView])
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {

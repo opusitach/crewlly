@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Users, CheckCircle2, ChevronLeft, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslation } from "@/lib/i18n/context"
 
 type WorkerStep = 1 | 2 | 3
 type InvitationOrganization = { id: string; name: string }
@@ -24,6 +25,7 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
   const [isInviteLoading, setIsInviteLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const { toast } = useToast()
+  const { t } = useTranslation()
 
   const totalSteps = 3
   const selectedPositionNames = availablePositions
@@ -90,7 +92,7 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
     try {
       setIsSaving(true)
       const payload = {
-        fullName: name || "Без имени",
+        fullName: name || t("onboarding_worker_no_name"),
         invitationCode: inviteCode || undefined,
         positionIds: selectedPositionIds.length > 0 ? selectedPositionIds : undefined,
         data: {},
@@ -102,12 +104,16 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
       })
       if (!res.ok) {
         const msg = await res.json().catch(() => ({}))
-        throw new Error(msg?.error || "Не удалось сохранить онбординг")
+        throw new Error(msg?.error || t("onboarding_worker_complete_failed"))
       }
-      toast({ title: "Онбординг завершён" })
+      toast({ title: t("onboarding_worker_complete_success") })
       onComplete()
     } catch (error: any) {
-      toast({ title: "Ошибка", description: error.message ?? "Не удалось сохранить", variant: "destructive" })
+      toast({
+        title: t("common_error"),
+        description: error.message ?? t("onboarding_worker_save_failed"),
+        variant: "destructive",
+      })
     } finally {
       setIsSaving(false)
     }
@@ -131,19 +137,17 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-md space-y-8">
-          {/* Header */}
           <div className="text-center space-y-3">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-br from-primary to-orange-600 shadow-lg">
               <Users className="h-8 w-8 text-white" strokeWidth={1.5} />
             </div>
-            <h1 className="text-3xl font-bold">Присоединиться к заведению</h1>
-            <p className="text-muted-foreground text-lg leading-relaxed">Введите код приглашения от вашего менеджера</p>
+            <h1 className="text-3xl font-bold">{t("onboarding_worker_join_title")}</h1>
+            <p className="text-muted-foreground text-lg leading-relaxed">{t("onboarding_worker_join_subtitle")}</p>
           </div>
 
-          {/* Form */}
           <Card className="p-6 space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="invite-code">Код приглашения</Label>
+              <Label htmlFor="invite-code">{t("onboarding_worker_invite_code_label")}</Label>
               <Input
                 id="invite-code"
                 placeholder="ABC-123"
@@ -161,7 +165,7 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
               {hasError && (
                 <div className="flex items-center gap-2 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4" strokeWidth={1.5} />
-                  <p>Неверный код приглашения</p>
+                  <p>{t("onboarding_worker_invalid_code")}</p>
                 </div>
               )}
             </div>
@@ -171,27 +175,26 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
                 <div className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">или</span>
+                <span className="bg-card px-2 text-muted-foreground">{t("onboarding_worker_or")}</span>
               </div>
             </div>
 
             <Button variant="outline" className="w-full h-12 bg-transparent">
-              Открыть ссылку приглашения
+              {t("onboarding_worker_open_invite_link")}
             </Button>
           </Card>
 
-          {/* Action */}
           <Button
             className="w-full h-14 text-lg"
             size="lg"
             onClick={validateCode}
             disabled={inviteCode.length < 8 || isInviteLoading}
           >
-            {isInviteLoading ? "Проверка..." : "Продолжить"}
+            {isInviteLoading ? t("onboarding_worker_checking") : t("onboarding_worker_continue")}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground">
-            Код можно получить у администратора вашего заведения
+            {t("onboarding_worker_code_hint")}
           </p>
         </div>
       </div>
@@ -204,7 +207,6 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
       <div className="min-h-screen bg-background flex flex-col">
         <div className="flex-1 overflow-auto pb-32">
           <div className="max-w-md mx-auto p-6 space-y-6">
-            {/* Header */}
             <div className="space-y-2">
               <Button variant="ghost" size="icon" onClick={prevStep} className="rounded-full -ml-2">
                 <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
@@ -215,48 +217,45 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    Шаг {step} из {totalSteps}
+                    {t("onboarding_worker_step", { step: String(step), total: String(totalSteps) })}
                   </p>
-                  <h1 className="text-2xl font-bold">Ваш профиль</h1>
+                  <h1 className="text-2xl font-bold">{t("onboarding_worker_profile_title")}</h1>
                 </div>
               </div>
             </div>
 
-            {/* Progress */}
             <div className="space-y-2">
               <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div className="h-full bg-primary transition-all" style={{ width: `${(step / totalSteps) * 100}%` }} />
               </div>
             </div>
 
-            {/* Venue Info */}
             <Card className="p-4 bg-primary/5 border-primary/20">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
                   <CheckCircle2 className="h-5 w-5 text-primary" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <p className="font-semibold">{inviteOrganization?.name ?? "Заведение"}</p>
-                  <p className="text-sm text-muted-foreground">Вы присоединились к заведению</p>
+                  <p className="font-semibold">{inviteOrganization?.name ?? t("onboarding_worker_your_venue")}</p>
+                  <p className="text-sm text-muted-foreground">{t("onboarding_worker_joined_venue")}</p>
                 </div>
               </div>
             </Card>
 
-            {/* Form */}
             <Card className="p-5 space-y-4">
               <div className="space-y-2">
-                <Label>Имя и фамилия</Label>
+                <Label>{t("onboarding_worker_name_label")}</Label>
                 <div className="h-12 rounded-lg border border-border bg-background px-3 flex items-center text-sm font-medium">
-                  {name || "Без имени"}
+                  {name || t("onboarding_worker_no_name")}
                 </div>
-                <p className="text-xs text-muted-foreground">Это имя будет видно вашему менеджеру</p>
+                <p className="text-xs text-muted-foreground">{t("onboarding_worker_name_hint")}</p>
               </div>
 
               <div className="space-y-2">
-                <Label>Должности</Label>
+                <Label>{t("onboarding_worker_positions_label")}</Label>
                 <div className="rounded-lg border border-border bg-background p-3 space-y-3">
                   {availablePositions.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Должности пока не настроены</p>
+                    <p className="text-xs text-muted-foreground">{t("onboarding_worker_no_positions")}</p>
                   ) : (
                     availablePositions.map((position) => (
                       <div key={position.id} className="flex items-start gap-3">
@@ -278,28 +277,15 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
                     ))
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">Можно выбрать несколько</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="language">Язык интерфейса (опционально)</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="default" className="h-11">
-                    Русский
-                  </Button>
-                  <Button variant="outline" className="h-11 bg-transparent">
-                    English
-                  </Button>
-                </div>
+                <p className="text-xs text-muted-foreground">{t("onboarding_worker_positions_hint")}</p>
               </div>
             </Card>
           </div>
         </div>
 
-        {/* Bottom Action */}
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border max-w-md mx-auto p-4">
           <Button className="w-full h-12 text-base" size="lg" onClick={nextStep} disabled={!name.trim()}>
-            Далее
+            {t("onboarding_worker_next")}
           </Button>
         </div>
       </div>
@@ -311,47 +297,45 @@ export default function WorkerOnboarding({ onComplete }: { onComplete: () => voi
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/10 via-orange-50 to-background flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-md space-y-8 text-center">
-          {/* Success Icon */}
           <div className="flex justify-center">
             <div className="h-24 w-24 rounded-full bg-gradient-to-br from-primary to-orange-600 flex items-center justify-center shadow-lg">
               <CheckCircle2 className="h-12 w-12 text-white" strokeWidth={1.5} />
             </div>
           </div>
 
-          {/* Message */}
           <div className="space-y-3">
-            <h1 className="text-3xl font-bold">Вы готовы к работе!</h1>
+            <h1 className="text-3xl font-bold">{t("onboarding_worker_ready_title")}</h1>
             <p className="text-lg text-muted-foreground text-balance leading-relaxed">
-              Теперь вы можете открывать смены и отслеживать свои доходы
+              {t("onboarding_worker_ready_subtitle")}
             </p>
           </div>
 
-          {/* Info Card */}
           <Card className="p-5 space-y-3 text-left">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
                 <CheckCircle2 className="h-5 w-5 text-primary" strokeWidth={1.5} />
               </div>
               <div>
-                <p className="font-semibold">{inviteOrganization?.name ?? "Ваше заведение"}</p>
-                <p className="text-sm text-muted-foreground">Ваше заведение</p>
+                <p className="font-semibold">{inviteOrganization?.name ?? t("onboarding_worker_your_venue")}</p>
+                <p className="text-sm text-muted-foreground">{t("onboarding_worker_your_venue")}</p>
               </div>
             </div>
 
             <div className="pt-3 border-t border-border space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Должности</span>
-                <span className="font-medium text-right">{selectedPositionNames.join(", ") || "Не выбраны"}</span>
+                <span className="text-muted-foreground">{t("onboarding_worker_positions_summary")}</span>
+                <span className="font-medium text-right">
+                  {selectedPositionNames.join(", ") || t("onboarding_worker_positions_none")}
+                </span>
               </div>
             </div>
           </Card>
 
-          {/* Action */}
           <Button className="w-full h-14 text-lg" size="lg" onClick={handleComplete} disabled={isSaving}>
-            Перейти к моим сменам
+            {t("onboarding_worker_go_to_shifts")}
           </Button>
 
-          <p className="text-sm text-muted-foreground">Ваша первая смена появится, когда менеджер создаст расписание</p>
+          <p className="text-sm text-muted-foreground">{t("onboarding_worker_shifts_hint")}</p>
         </div>
       </div>
     )

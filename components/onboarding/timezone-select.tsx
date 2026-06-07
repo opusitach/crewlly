@@ -12,6 +12,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useTranslation } from "@/lib/i18n/context"
 import { cn } from "@/lib/utils"
 
 type TimezoneSelectProps = {
@@ -23,6 +24,7 @@ type TimezoneSelectProps = {
 
 export function TimezoneSelect({ value, onChange, options, placeholder }: TimezoneSelectProps) {
   const [open, setOpen] = useState(false)
+  const { t } = useTranslation()
   const items = useMemo(() => options, [options])
 
   return (
@@ -34,14 +36,14 @@ export function TimezoneSelect({ value, onChange, options, placeholder }: Timezo
           aria-expanded={open}
           className="h-12 w-full justify-between"
         >
-          <span className="truncate">{value || placeholder || "Выберите часовой пояс"}</span>
+          <span className="truncate">{value || placeholder || t("onboarding_owner_timezone_select")}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
         <Command>
-          <CommandInput placeholder="Поиск таймзоны..." />
-          <CommandEmpty>Ничего не найдено</CommandEmpty>
+          <CommandInput placeholder={t("onboarding_owner_timezone_search")} />
+          <CommandEmpty>{t("onboarding_owner_timezone_empty")}</CommandEmpty>
           <CommandList>
             <CommandGroup>
               {items.map((timezone) => (

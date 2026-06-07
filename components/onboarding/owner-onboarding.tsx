@@ -22,6 +22,7 @@ import { TimezoneSelect } from "./timezone-select"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthStore } from "@/lib/store/auth-store"
 import { copyToClipboard } from "@/lib/utils/copy-to-clipboard"
+import { useTranslation } from "@/lib/i18n/context"
 
 type OnboardingStep = 1 | 2 | 5
 type OwnerOnboardingMode = "initial" | "new-venue"
@@ -42,6 +43,7 @@ export default function OwnerOnboarding({
 }) {
   const isNewVenueMode = mode === "new-venue"
   const { toast } = useToast()
+  const { t } = useTranslation()
   const { hydrate: hydrateAuth } = useAuthStore()
   const [isSaving, setIsSaving] = useState(false)
   const [organizationId, setOrganizationId] = useState<string | null>(null)
@@ -133,7 +135,7 @@ export default function OwnerOnboarding({
     })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
-      const message = typeof json?.error === "string" ? json.error : "Не удалось создать организацию"
+      const message = typeof json?.error === "string" ? json.error : t("onboarding_owner_create_org_failed")
       throw new Error(message)
     }
     setOrganizationId(json.organization_id)
@@ -179,7 +181,7 @@ export default function OwnerOnboarding({
     })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
-      const message = typeof json?.error === "string" ? json.error : "Не удалось сохранить шаг"
+      const message = typeof json?.error === "string" ? json.error : t("onboarding_owner_save_step_failed")
       throw new Error(message)
     }
     return orgId
@@ -192,20 +194,20 @@ export default function OwnerOnboarding({
       const res = await fetch("/api/invite-codes", { cache: "no-store", credentials: "include" })
       const json = (await res.json().catch(() => null)) as InviteCodeResponse | null
       if (!res.ok) {
-        throw new Error(typeof json?.error === "string" ? json.error : "Не удалось получить код")
+        throw new Error(typeof json?.error === "string" ? json.error : t("onboarding_owner_get_code_failed"))
       }
       const code = json?.data?.code ?? null
       if (!code) {
-        throw new Error("Код приглашения не найден")
+        throw new Error(t("onboarding_owner_code_not_found"))
       }
       setInviteCode(code)
     } catch (error: any) {
-      setInviteCodeError(error?.message ?? "Не удалось получить код")
+      setInviteCodeError(error?.message ?? t("onboarding_owner_get_code_failed"))
       setInviteCode(null)
     } finally {
       setInviteCodeLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (step !== 5 || inviteCode) return
@@ -217,9 +219,9 @@ export default function OwnerOnboarding({
     if (!codeToCopy) return
     const copied = await copyToClipboard(codeToCopy)
     if (copied) {
-      toast({ title: "Код скопирован" })
+      toast({ title: t("onboarding_owner_code_copied") })
     } else {
-      toast({ title: "Не удалось скопировать", variant: "destructive" })
+      toast({ title: t("onboarding_owner_copy_failed"), variant: "destructive" })
     }
   }
 
@@ -235,19 +237,17 @@ export default function OwnerOnboarding({
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        const message = typeof json?.error === "string" ? json.error : "Не удалось завершить онбординг"
+        const message = typeof json?.error === "string" ? json.error : t("onboarding_owner_complete_failed")
         throw new Error(message)
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось завершить онбординг"
-      toast({ title: "Ошибка", description: message, variant: "destructive" })
+      const message = error instanceof Error ? error.message : t("onboarding_owner_complete_failed")
+      toast({ title: t("common_error"), description: message, variant: "destructive" })
       return
     } finally {
       setIsSaving(false)
     }
 
-    // Ensure auth-store sees the updated onboarding data (role/status/venueName),
-    // but never block the redirect if hydration fails.
     try {
       await hydrateAuth()
     } catch (e) {
@@ -282,8 +282,8 @@ export default function OwnerOnboarding({
       await saveStep(step)
       setStep(onboardingSteps[stepIndex + 1])
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось сохранить шаг"
-      toast({ title: "Ошибка", description: message, variant: "destructive" })
+      const message = error instanceof Error ? error.message : t("onboarding_owner_save_step_failed")
+      toast({ title: t("common_error"), description: message, variant: "destructive" })
     } finally {
       setIsSaving(false)
     }
@@ -295,14 +295,12 @@ export default function OwnerOnboarding({
     setStep(onboardingSteps[stepIndex - 1])
   }
 
-
   // Step 1: Venue Data
   if (step === 1) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <div className="flex-1 overflow-auto pb-32">
           <div className="max-w-md mx-auto p-6 space-y-6">
-            {/* Header */}
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -310,27 +308,25 @@ export default function OwnerOnboarding({
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    Шаг {currentStepNumber} из {totalSteps}
+                    {t("onboarding_owner_step", { step: String(currentStepNumber), total: String(totalSteps) })}
                   </p>
-                  <h1 className="text-2xl font-bold">Данные заведения</h1>
+                  <h1 className="text-2xl font-bold">{t("onboarding_owner_venue_title")}</h1>
                 </div>
               </div>
             </div>
 
-            {/* Progress */}
             <div className="space-y-2">
               <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div className="h-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
               </div>
             </div>
 
-            {/* Venue Info */}
             <Card className="p-5 space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="venue-name">Название заведения*</Label>
+                <Label htmlFor="venue-name">{t("onboarding_owner_venue_name_label")}</Label>
                 <Input
                   id="venue-name"
-                  placeholder="Например: Café Central"
+                  placeholder={t("onboarding_owner_venue_name_placeholder")}
                   value={venueName}
                   onChange={(e) => setVenueName(e.target.value)}
                   className="h-12"
@@ -338,18 +334,18 @@ export default function OwnerOnboarding({
               </div>
 
               <div className="space-y-2">
-                <Label>Часовой пояс*</Label>
+                <Label>{t("onboarding_owner_timezone_label")}</Label>
                 <TimezoneSelect
                   value={timezone}
                   onChange={setTimezone}
                   options={timezoneOptions}
-                  placeholder="Например: Europe/Prague"
+                  placeholder={t("onboarding_owner_timezone_placeholder")}
                 />
-                <p className="text-xs text-muted-foreground">Определено автоматически, можно изменить</p>
+                <p className="text-xs text-muted-foreground">{t("onboarding_owner_timezone_hint")}</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="currency">Валюта*</Label>
+                <Label htmlFor="currency">{t("onboarding_owner_currency_label")}</Label>
                 <div className="grid grid-cols-3 gap-2">
                   {["CZK", "EUR", "USD"].map((curr) => (
                     <Button
@@ -367,12 +363,11 @@ export default function OwnerOnboarding({
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <AlertCircle className="h-4 w-4" strokeWidth={1.5} />
-              <p>Эти настройки можно изменить позже в разделе "Настройки"</p>
+              <p>{t("onboarding_owner_settings_hint")}</p>
             </div>
           </div>
         </div>
 
-        {/* Bottom Actions */}
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border max-w-md mx-auto p-4 space-y-3">
           <Button
             className="w-full h-12 text-base"
@@ -380,14 +375,14 @@ export default function OwnerOnboarding({
             onClick={nextStep}
             disabled={isSaving || !venueName.trim()}
           >
-            Далее
+            {t("onboarding_owner_next")}
           </Button>
         </div>
       </div>
     )
   }
 
-  // Step 2: Positions (unchanged)
+  // Step 2: Positions
   if (step === 2) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -403,9 +398,9 @@ export default function OwnerOnboarding({
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    Шаг {currentStepNumber} из {totalSteps}
+                    {t("onboarding_owner_step", { step: String(currentStepNumber), total: String(totalSteps) })}
                   </p>
-                  <h1 className="text-2xl font-bold">Должности</h1>
+                  <h1 className="text-2xl font-bold">{t("onboarding_owner_positions_title")}</h1>
                 </div>
               </div>
             </div>
@@ -417,7 +412,7 @@ export default function OwnerOnboarding({
             </div>
 
             <Card className="p-5 space-y-4">
-              <p className="text-sm text-muted-foreground">Добавьте должности в вашем заведении</p>
+              <p className="text-sm text-muted-foreground">{t("onboarding_owner_positions_desc")}</p>
 
               <div className="flex flex-wrap gap-2">
                 {positions.map((pos, index) => (
@@ -428,7 +423,7 @@ export default function OwnerOnboarding({
                   >
                     {pos}
                     <button
-                      onClick={() => setPositions(positions.filter((_, i) => i !== index))}
+                      onClick={() => removePosition(index)}
                       className="hover:text-destructive"
                     >
                       <X className="h-3 w-3" strokeWidth={2} />
@@ -439,7 +434,7 @@ export default function OwnerOnboarding({
 
               <div className="flex gap-2">
                 <Input
-                  placeholder="Новая должность"
+                  placeholder={t("onboarding_owner_new_position_placeholder")}
                   value={newPosition}
                   onChange={(e) => setNewPosition(e.target.value)}
                   onKeyDown={(e) =>
@@ -450,12 +445,7 @@ export default function OwnerOnboarding({
                   className="h-11"
                 />
                 <Button
-                  onClick={() => {
-                    if (newPosition.trim()) {
-                      setPositions([...positions, newPosition.trim()])
-                      setNewPosition("")
-                    }
-                  }}
+                  onClick={addPosition}
                   size="icon"
                   className="h-11 w-11 flex-shrink-0"
                 >
@@ -466,17 +456,17 @@ export default function OwnerOnboarding({
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <AlertCircle className="h-4 w-4" strokeWidth={1.5} />
-              <p>Должности можно добавить или изменить позже</p>
+              <p>{t("onboarding_owner_positions_hint")}</p>
             </div>
           </div>
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border max-w-md mx-auto p-4 space-y-3">
           <Button className="w-full h-12 text-base" size="lg" onClick={nextStep} disabled={isSaving}>
-            Далее
+            {t("onboarding_owner_next")}
           </Button>
           <Button variant="ghost" className="w-full" onClick={nextStep} disabled={isSaving}>
-            Пропустить
+            {t("onboarding_owner_skip")}
           </Button>
         </div>
       </div>
@@ -489,7 +479,6 @@ export default function OwnerOnboarding({
       <div className="min-h-screen bg-background flex flex-col">
         <div className="flex-1 overflow-auto pb-32">
           <div className="max-w-md mx-auto p-6 space-y-6">
-            {/* Header */}
             <div className="space-y-2">
               <Button variant="ghost" size="icon" onClick={prevStep} className="rounded-full -ml-2">
                 <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
@@ -500,14 +489,13 @@ export default function OwnerOnboarding({
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    Шаг {currentStepNumber} из {totalSteps}
+                    {t("onboarding_owner_step", { step: String(currentStepNumber), total: String(totalSteps) })}
                   </p>
-                  <h1 className="text-2xl font-bold">Пригласить сотрудников</h1>
+                  <h1 className="text-2xl font-bold">{t("onboarding_owner_invite_title")}</h1>
                 </div>
               </div>
             </div>
 
-            {/* Progress */}
             <div className="space-y-2">
               <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div className="h-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
@@ -521,13 +509,13 @@ export default function OwnerOnboarding({
                     <Users className="h-5 w-5 text-primary" strokeWidth={1.5} />
                   </div>
                   <div>
-                    <h3 className="font-semibold">Ваш код для приглашения сотрудников</h3>
-                    <p className="text-sm text-muted-foreground">Отправьте его сотруднику, чтобы он присоединился к заведению</p>
+                    <h3 className="font-semibold">{t("onboarding_owner_invite_code_title")}</h3>
+                    <p className="text-sm text-muted-foreground">{t("onboarding_owner_invite_code_desc")}</p>
                   </div>
                 </div>
 
                 <div className="bg-secondary/50 rounded-lg p-4 text-center space-y-2">
-                  {inviteCodeLoading && <p className="text-sm text-muted-foreground">Загрузка кода...</p>}
+                  {inviteCodeLoading && <p className="text-sm text-muted-foreground">{t("onboarding_owner_code_loading")}</p>}
                   {!inviteCodeLoading && inviteCodeError && <p className="text-sm text-destructive">{inviteCodeError}</p>}
                   {!inviteCodeLoading && !inviteCodeError && inviteCode && (
                     <p className="text-2xl font-bold tracking-wider">{inviteCode}</p>
@@ -541,7 +529,7 @@ export default function OwnerOnboarding({
                     disabled={!inviteCode || inviteCodeLoading}
                   >
                     <Copy className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                    Скопировать код
+                    {t("onboarding_owner_copy_code")}
                   </Button>
                   {inviteCodeError && (
                     <Button
@@ -550,7 +538,7 @@ export default function OwnerOnboarding({
                       onClick={() => void loadInviteCode()}
                       disabled={inviteCodeLoading}
                     >
-                      Повторить
+                      {t("onboarding_owner_retry")}
                     </Button>
                   )}
                 </div>
@@ -559,12 +547,11 @@ export default function OwnerOnboarding({
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <AlertCircle className="h-4 w-4" strokeWidth={1.5} />
-              <p>Пригласить сотрудников можно будет позже</p>
+              <p>{t("onboarding_owner_invite_hint")}</p>
             </div>
           </div>
         </div>
 
-        {/* Bottom Actions */}
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border max-w-md mx-auto p-4 space-y-3">
           <Button
             className="w-full h-12 text-base"
@@ -572,11 +559,11 @@ export default function OwnerOnboarding({
             onClick={isLastStep ? handleComplete : nextStep}
             disabled={isSaving}
           >
-            {isLastStep ? "Завершить настройку" : "Далее"}
+            {isLastStep ? t("onboarding_owner_finish") : t("onboarding_owner_next")}
           </Button>
           {!isLastStep && (
             <Button variant="ghost" className="w-full" onClick={nextStep} disabled={isSaving}>
-              Пропустить
+              {t("onboarding_owner_skip")}
             </Button>
           )}
         </div>
@@ -584,50 +571,44 @@ export default function OwnerOnboarding({
     )
   }
 
-  // Step 8: Complete (updated text)
+  // Complete screen
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/10 via-orange-50 to-background flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-md space-y-8 text-center">
-        {/* Success Icon */}
         <div className="flex justify-center">
           <div className="h-24 w-24 rounded-full bg-gradient-to-br from-primary to-orange-600 flex items-center justify-center shadow-lg">
             <CheckCircle2 className="h-12 w-12 text-white" strokeWidth={1.5} />
           </div>
         </div>
 
-        {/* Message */}
         <div className="space-y-3">
-          <h1 className="text-3xl font-bold">Всё готово!</h1>
+          <h1 className="text-3xl font-bold">{t("onboarding_owner_complete_title")}</h1>
           <p className="text-lg text-muted-foreground text-balance leading-relaxed">
-            {venueName || "Ваше заведение"} настроено и готово к работе
+            {t("onboarding_owner_complete_subtitle", { name: venueName || t("onboarding_owner_default_venue") })}
           </p>
         </div>
 
-        {/* Checklist */}
         <Card className="p-5 space-y-3 text-left">
-          <p className="font-semibold text-center">Что дальше?</p>
+          <p className="font-semibold text-center">{t("onboarding_owner_whats_next")}</p>
           <div className="space-y-2">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" strokeWidth={1.5} />
-              <p className="text-sm text-muted-foreground">Добавьте остальных сотрудников в разделе "Команда"</p>
+              <p className="text-sm text-muted-foreground">{t("onboarding_owner_next_step1")}</p>
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" strokeWidth={1.5} />
-              <p className="text-sm text-muted-foreground">Создайте расписание смен на неделю</p>
+              <p className="text-sm text-muted-foreground">{t("onboarding_owner_next_step2")}</p>
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" strokeWidth={1.5} />
-              <p className="text-sm text-muted-foreground">
-                Отправьте приглашения сотрудникам для установки приложения
-              </p>
+              <p className="text-sm text-muted-foreground">{t("onboarding_owner_next_step3")}</p>
             </div>
           </div>
         </Card>
 
-        {/* Actions */}
         <div className="space-y-3">
           <Button className="w-full h-14 text-lg" size="lg" onClick={handleComplete} disabled={isSaving}>
-            Перейти на главную
+            {t("onboarding_owner_go_home")}
           </Button>
         </div>
       </div>

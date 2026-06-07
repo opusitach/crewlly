@@ -215,13 +215,16 @@ export default function WorkerDashboard({ onBack }: { onBack?: () => void }) {
     }
   }, [legacyProfileTabRequested, resolvedTab])
 
+  // Reset the shared scroll container to the top whenever the rendered content
+  // changes (tab switch or account overlay). The container persists across tabs,
+  // so without this the scroll position carries over and a tab/overlay can open
+  // scrolled past its header.
   useEffect(() => {
-    if (activeTab !== "planner") return
     const el = scrollContainerRef.current
     if (!el) return
-    const id = setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }), 80)
+    const id = setTimeout(() => el.scrollTo({ top: 0, behavior: "auto" }), 0)
     return () => clearTimeout(id)
-  }, [activeTab])
+  }, [activeTab, accountView])
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {

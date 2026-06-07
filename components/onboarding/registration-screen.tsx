@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ArrowLeft, Check, Loader2, X } from "lucide-react"
+import { ArrowLeft, Check, Eye, EyeOff, Loader2, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -11,9 +11,10 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { Label } from "@/components/ui/label"
 import { PhoneInput } from "@/components/ui/phone-input"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslation } from "@/lib/i18n/context"
 import { cn } from "@/lib/utils"
 import { getPhoneValidationError } from "@/lib/validation/phone"
-import { getPasswordRequirementChecks, isStrongPassword } from "@/lib/validation/password"
+import { getPasswordRequirementChecks, isStrongPassword, sanitizeAuthInput, sanitizePasswordInput } from "@/lib/validation/password"
 
 type FlattenedValidationError = {
   fieldErrors?: Record<string, string[] | undefined>
@@ -46,12 +47,12 @@ function getFirstValidationError(error: FlattenedValidationError | string | null
   return formError ?? null
 }
 
-function formatCountdown(totalSeconds: number) {
+function formatCountdown(totalSeconds: number, secondsSuffix: string) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
 
   if (minutes <= 0) {
-    return `${seconds}с`
+    return `${seconds}${secondsSuffix}`
   }
 
   return `${minutes}:${String(seconds).padStart(2, "0")}`
@@ -66,6 +67,7 @@ export default function RegistrationScreen({
 }) {
   const { toast } = useToast()
   const router = useRouter()
+  const { t, language, setLanguage } = useTranslation()
   const [step, setStep] = useState<RegistrationStep>("details")
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -78,6 +80,7 @@ export default function RegistrationScreen({
   const [isResending, setIsResending] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [showPassword, setShowPassword] = useState(false)
 
   const phoneError = getPhoneValidationError(phone)
   const showPhoneError = Boolean(phoneError) && phoneTouched
@@ -100,6 +103,8 @@ export default function RegistrationScreen({
       window.clearInterval(timer)
     }
   }, [step])
+
+  const secondsSuffix = t("auth_seconds_short")
 
   const resendCountdown = pendingRegistration
     ? Math.max(0, Math.ceil((new Date(pendingRegistration.resendAvailableAt).getTime() - now) / 1000))
@@ -146,24 +151,24 @@ export default function RegistrationScreen({
 
       if (!res.ok) {
         if (res.status === 409) {
-          throw new Error("Email уже используется")
+          throw new Error(t("auth_email_in_use"))
         }
         if (res.status === 400) {
-          throw new Error(getFirstValidationError(msg?.error) || "Проверьте корректность данных")
+          throw new Error(getFirstValidationError(msg?.error) || t("auth_invalid_data"))
         }
-        throw new Error(msg?.error || "Не удалось отправить код подтверждения")
+        throw new Error(msg?.error || t("auth_send_code_failed"))
       }
 
       setPendingRegistration(msg.pendingRegistration)
       setVerificationCode("")
       setStep("verify")
       setNow(Date.now())
-      toast({ title: "Код отправлен", description: "Проверьте почту и введите код" })
+      toast({ title: t("auth_code_sent_toast"), description: t("auth_code_sent_toast_desc") })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось отправить код подтверждения"
+      const message = error instanceof Error ? error.message : t("auth_send_code_failed")
       setFormError(message)
       toast({
-        title: "Ошибка",
+        title: t("common_error"),
         description: message,
         variant: "destructive",
       })
@@ -191,21 +196,21 @@ export default function RegistrationScreen({
 
       if (!res.ok) {
         if (res.status === 400) {
-          throw new Error(getFirstValidationError(msg?.error) || msg?.error || "Неверный код")
+          throw new Error(getFirstValidationError(msg?.error) || msg?.error || t("auth_wrong_reset_code"))
         }
-        throw new Error(msg?.error || "Не удалось подтвердить email")
+        throw new Error(msg?.error || t("auth_verify_email_failed"))
       }
 
-      toast({ title: "Email подтвержден", description: "Теперь выберите роль" })
+      toast({ title: t("auth_email_verified"), description: t("auth_email_verified_desc") })
       onRegistered?.()
       await router.replace(redirectTo)
       router.refresh()
       if (redirectTo) window.location.href = redirectTo
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось подтвердить email"
+      const message = error instanceof Error ? error.message : t("auth_verify_email_failed")
       setFormError(message)
       toast({
-        title: "Ошибка",
+        title: t("common_error"),
         description: message,
         variant: "destructive",
       })
@@ -242,18 +247,18 @@ export default function RegistrationScreen({
       const msg = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        throw new Error(msg?.error || "Не удалось отправить код повторно")
+        throw new Error(msg?.error || t("auth_resend_code_failed"))
       }
 
       setPendingRegistration(msg.pendingRegistration)
       setVerificationCode("")
       setNow(Date.now())
-      toast({ title: "Код отправлен повторно" })
+      toast({ title: t("auth_code_resent") })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось отправить код повторно"
+      const message = error instanceof Error ? error.message : t("auth_resend_code_failed")
       setFormError(message)
       toast({
-        title: "Ошибка",
+        title: t("common_error"),
         description: message,
         variant: "destructive",
       })
@@ -273,22 +278,55 @@ export default function RegistrationScreen({
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">{step === "details" ? "Регистрация" : "Подтверждение email"}</h1>
-          <p className="text-sm text-muted-foreground">
-            {step === "details" ? "Создайте аккаунт по email" : "Введите 6-значный код из письма"}
-          </p>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold">
+                {step === "details" ? t("auth_register_title") : t("auth_verify_email_title")}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {step === "details" ? t("auth_register_subtitle") : t("auth_verify_email_subtitle")}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1 ml-4 mt-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setLanguage("ru")}
+                className={cn(
+                  "text-xs font-medium px-2 py-1 rounded transition-colors",
+                  language === "ru"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                RU
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage("en")}
+                className={cn(
+                  "text-xs font-medium px-2 py-1 rounded transition-colors",
+                  language === "en"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                EN
+              </button>
+            </div>
+          </div>
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           {step === "details" ? (
             <>
               <div className="space-y-2">
-                <Label htmlFor="name">Имя</Label>
+                <Label htmlFor="name">{t("auth_name_label")}</Label>
                 <Input
                   id="name"
                   value={name}
                   onChange={(e) => {
-                    setName(e.target.value)
+                    setName(sanitizeAuthInput(e.target.value))
                     setFormError(null)
                   }}
                   required
@@ -302,7 +340,7 @@ export default function RegistrationScreen({
                   type="email"
                   value={email}
                   onChange={(e) => {
-                    setEmail(e.target.value)
+                    setEmail(sanitizeAuthInput(e.target.value))
                     setFormError(null)
                   }}
                   required
@@ -310,7 +348,7 @@ export default function RegistrationScreen({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone">Номер телефона</Label>
+                <Label htmlFor="phone">{t("auth_phone_label")}</Label>
                 <div className="space-y-1.5">
                   <PhoneInput
                     id="phone"
@@ -328,36 +366,50 @@ export default function RegistrationScreen({
                       {phoneError}
                     </p>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Выберите код страны и введите номер без букв</p>
+                    <p className="text-xs text-muted-foreground">{t("auth_phone_hint")}</p>
                   )}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Пароль</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value)
-                    setFormError(null)
-                  }}
-                  minLength={8}
-                  maxLength={64}
-                  autoComplete="new-password"
-                  aria-invalid={hasStartedTypingPassword && !isPasswordValid}
-                  aria-describedby="registration-password-requirements"
-                  className={cn(
-                    hasStartedTypingPassword && isPasswordValid && [
-                      "border-emerald-300 bg-emerald-50/60",
-                      "focus-visible:border-emerald-400 focus-visible:ring-emerald-200/60",
-                    ],
-                  )}
-                  required
-                />
+                <Label htmlFor="password">{t("auth_password_label")}</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(sanitizePasswordInput(e.target.value))
+                      setFormError(null)
+                    }}
+                    minLength={8}
+                    maxLength={64}
+                    autoComplete="new-password"
+                    aria-invalid={hasStartedTypingPassword && !isPasswordValid}
+                    aria-describedby="registration-password-requirements"
+                    className={cn(
+                      "pr-10",
+                      hasStartedTypingPassword && isPasswordValid && [
+                        "border-emerald-300 bg-emerald-50/60",
+                        "focus-visible:border-emerald-400 focus-visible:ring-emerald-200/60",
+                      ],
+                    )}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                    aria-label={showPassword ? t("auth_hide_password") : t("auth_show_password")}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
                 <div id="registration-password-requirements" className="space-y-1.5">
-                  <p className="text-[11px] font-medium leading-4 text-muted-foreground">Пароль должен содержать:</p>
+                  <p className="text-[11px] font-medium leading-4 text-muted-foreground">
+                    {t("auth_password_requirements")}
+                  </p>
                   <ul className="space-y-1">
                     {passwordRequirements.map((requirement) => {
                       const isUnmet = hasStartedTypingPassword && !requirement.met
@@ -391,7 +443,7 @@ export default function RegistrationScreen({
                               <span className="h-1.5 w-1.5 rounded-full bg-current" />
                             )}
                           </span>
-                          <span>{requirement.label}</span>
+                          <span>{t(`password_req_${requirement.id}` as Parameters<typeof t>[0])}</span>
                         </li>
                       )
                     })}
@@ -403,17 +455,17 @@ export default function RegistrationScreen({
             <>
               <div className="space-y-2">
                 <p className="text-sm">
-                  Код отправлен на <span className="font-medium">{maskedEmail}</span>
+                  {t("auth_code_sent_to", { email: maskedEmail })}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {codeExpiryCountdown > 0
-                    ? `Код действует еще ${formatCountdown(codeExpiryCountdown)}`
-                    : "Код истек. Отправьте новый код."}
+                    ? t("auth_code_valid_for", { time: formatCountdown(codeExpiryCountdown, secondsSuffix) })
+                    : t("auth_code_expired")}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="verification-code">Код подтверждения</Label>
+                <Label htmlFor="verification-code">{t("auth_code_label")}</Label>
                 <div className="space-y-3">
                   <InputOTP
                     id="verification-code"
@@ -433,7 +485,7 @@ export default function RegistrationScreen({
                       ))}
                     </InputOTPGroup>
                   </InputOTP>
-                  <p className="text-xs text-center text-muted-foreground">Введите 6 цифр из письма</p>
+                  <p className="text-xs text-center text-muted-foreground">{t("auth_enter_digits")}</p>
                 </div>
               </div>
 
@@ -446,7 +498,7 @@ export default function RegistrationScreen({
                   disabled={isSubmitting || isResending}
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  Назад
+                  {t("common_back")}
                 </Button>
                 <Button
                   type="button"
@@ -458,12 +510,12 @@ export default function RegistrationScreen({
                   {isResending ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Отправка...
+                      {t("auth_sending")}
                     </>
                   ) : resendCountdown > 0 ? (
-                    `Отправить снова через ${formatCountdown(resendCountdown)}`
+                    t("auth_resend_in", { time: formatCountdown(resendCountdown, secondsSuffix) })
                   ) : (
-                    "Отправить код еще раз"
+                    t("auth_resend_code")
                   )}
                 </Button>
               </div>
@@ -481,12 +533,12 @@ export default function RegistrationScreen({
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {step === "details" ? "Отправка..." : "Проверка..."}
+                {step === "details" ? t("auth_sending") : t("auth_checking")}
               </>
             ) : step === "details" ? (
-              "Зарегистрироваться"
+              t("auth_register_button")
             ) : (
-              "Подтвердить код"
+              t("auth_verify_code_button")
             )}
           </Button>
 
@@ -494,9 +546,9 @@ export default function RegistrationScreen({
         </form>
 
         <div className="text-center text-sm">
-          <span className="text-muted-foreground">Уже есть аккаунт? </span>
+          <span className="text-muted-foreground">{t("auth_has_account")} </span>
           <Link href="/login" className="text-primary hover:underline">
-            Войти
+            {t("auth_sign_in_link")}
           </Link>
         </div>
       </Card>

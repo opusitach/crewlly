@@ -15,7 +15,7 @@ interface LanguageContextValue {
 const LanguageContext = createContext<LanguageContextValue | null>(null)
 
 function getInitialLanguage(): Language {
-  if (typeof window === "undefined") return "ru"
+  if (typeof window === "undefined") return "en"
   const queryLanguage = new URLSearchParams(window.location.search).get("lang")
   if (queryLanguage === "en" || queryLanguage === "ru") return queryLanguage
   const stored = window.localStorage?.getItem(STORAGE_KEY)
@@ -25,11 +25,11 @@ function getInitialLanguage(): Language {
     .find((item) => item.startsWith(`${STORAGE_KEY}=`))
     ?.split("=")[1]
   if (cookie === "en" || cookie === "ru") return cookie
-  return "ru"
+  return "en"
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>("ru")
+  const [language, setLanguageState] = useState<Language>("en")
 
   useEffect(() => {
     setLanguageState(getInitialLanguage())

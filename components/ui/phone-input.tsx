@@ -18,6 +18,7 @@ import {
   getPhoneCountryByIso,
 } from "@/lib/phone/country-codes"
 import { buildPhoneValue, splitPhoneNumber } from "@/lib/validation/phone"
+import { useTranslation } from "@/lib/i18n/context"
 import { cn } from "@/lib/utils"
 
 type PhoneInputProps = {
@@ -49,6 +50,7 @@ export function PhoneInput({
   ariaInvalid,
   ariaDescribedBy,
 }: PhoneInputProps) {
+  const { t, language } = useTranslation()
   const [open, setOpen] = useState(false)
   const [selectedCountryIso, setSelectedCountryIso] = useState(DEFAULT_PHONE_COUNTRY_ISO)
   const [nationalNumber, setNationalNumber] = useState("")
@@ -96,7 +98,7 @@ export function PhoneInput({
         <PopoverTrigger asChild>
           <button
             type="button"
-            aria-label="Код страны"
+            aria-label={t("phone_country_code_label")}
             disabled={disabled}
             className={cn(
               "border-input hover:bg-muted/50 flex h-full shrink-0 items-center gap-1.5 border-r px-3 text-sm transition-colors",
@@ -111,30 +113,33 @@ export function PhoneInput({
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
           <Command>
-            <CommandInput placeholder="Поиск страны или кода..." />
-            <CommandEmpty>Ничего не найдено</CommandEmpty>
+            <CommandInput placeholder={t("phone_search_placeholder")} />
+            <CommandEmpty>{t("phone_not_found")}</CommandEmpty>
             <CommandList>
               <CommandGroup>
-                {PHONE_COUNTRIES.map((country) => (
-                  <CommandItem
-                    key={country.iso2}
-                    value={`${country.iso2} ${country.name} ${country.dialCode}`}
-                    onSelect={() => handleCountrySelect(country.iso2)}
-                  >
-                    <Check
-                      className={cn(
-                        "h-4 w-4",
-                        selectedCountry.iso2 === country.iso2 ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                    <span className="flex flex-1 items-center justify-between gap-3">
-                      <span className="truncate">{country.name}</span>
-                      <span className="text-muted-foreground shrink-0 text-xs">
-                        {country.dialCode}
+                {PHONE_COUNTRIES.map((country) => {
+                  const displayName = language === "en" ? country.nameEn : country.name
+                  return (
+                    <CommandItem
+                      key={country.iso2}
+                      value={`${country.iso2} ${country.name} ${country.nameEn} ${country.dialCode}`}
+                      onSelect={() => handleCountrySelect(country.iso2)}
+                    >
+                      <Check
+                        className={cn(
+                          "h-4 w-4",
+                          selectedCountry.iso2 === country.iso2 ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <span className="flex flex-1 items-center justify-between gap-3">
+                        <span className="truncate">{displayName}</span>
+                        <span className="text-muted-foreground shrink-0 text-xs">
+                          {country.dialCode}
+                        </span>
                       </span>
-                    </span>
-                  </CommandItem>
-                ))}
+                    </CommandItem>
+                  )
+                })}
               </CommandGroup>
             </CommandList>
           </Command>

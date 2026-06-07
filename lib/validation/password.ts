@@ -50,6 +50,18 @@ export function getPasswordRequirementChecks(password: string) {
   }))
 }
 
+export function sanitizeAuthInput(value: string): string {
+  // NFD decomposes precomposed characters (é → e + combining acute), \p{M} strips all combining marks
+  return value.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s/g, "")
+}
+
+// Keeps only printable ASCII (0x21–0x7E) minus injection-risk chars: ' " ` < > ; \ &
+const DISALLOWED_PASSWORD_CHARS_RE = /[^!-~]|['"`<>;\\&]/g
+
+export function sanitizePasswordInput(value: string): string {
+  return value.replace(DISALLOWED_PASSWORD_CHARS_RE, "")
+}
+
 export function getPasswordValidationError(rawValue: string | null | undefined): string | null {
   const value = rawValue ?? ""
 

@@ -3,10 +3,12 @@
 import { useRouter } from "next/navigation"
 import RoleSelectionScreen from "@/components/onboarding/role-selection-screen"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslation } from "@/lib/i18n/context"
 
 export default function RoleSelectionWrapper() {
   const router = useRouter()
   const { toast } = useToast()
+  const { t } = useTranslation()
 
   const chooseRole = async (role: "owner" | "worker") => {
     try {
@@ -18,7 +20,7 @@ export default function RoleSelectionWrapper() {
       })
       if (!res.ok) {
         const msg = await res.json().catch(() => ({}))
-        throw new Error(msg?.error || "Не удалось сохранить роль")
+        throw new Error(msg?.error || t("onboarding_role_save_failed"))
       }
       if (role === "owner") {
         router.push("/onboarding/owner")
@@ -27,8 +29,8 @@ export default function RoleSelectionWrapper() {
       }
     } catch (error) {
       toast({
-        title: "Ошибка",
-        description: error instanceof Error ? error.message : "Не удалось сохранить роль",
+        title: t("common_error"),
+        description: error instanceof Error ? error.message : t("onboarding_role_save_failed"),
         variant: "destructive",
       })
     }
