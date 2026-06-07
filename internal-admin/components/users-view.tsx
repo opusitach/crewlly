@@ -72,6 +72,7 @@ export default function UsersView() {
           className="rounded border border-neutral-300 px-2 py-1 text-sm"
         >
           <option value="">Any level</option>
+          <option value="super_admin">super_admin</option>
           <option value="owner_view">owner_view</option>
           <option value="employee_view">employee_view</option>
         </select>

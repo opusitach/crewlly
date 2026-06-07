@@ -33,6 +33,12 @@ export interface AdminAccessContext {
     isInternal: true
   }
   enabledLevels: InternalAccessLevel[]
+  /**
+   * True iff the user has an enabled `super_admin` grant. Read-heavy admin access
+   * does NOT require this — only internal-access write actions do. Derived from
+   * `enabledLevels`, never from `isInternal` alone.
+   */
+  isSuperAdmin: boolean
 }
 
 export type AdminAccessResult =
@@ -70,6 +76,7 @@ export async function resolveAdminAccess(): Promise<AdminAccessResult> {
         isInternal: true,
       },
       enabledLevels,
+      isSuperAdmin: enabledLevels.includes("super_admin"),
     },
   }
 }

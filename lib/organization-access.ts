@@ -10,7 +10,8 @@
  */
 import { prisma } from "@/lib/prisma"
 import { SYSTEM_PERMISSIONS_BY_ROLE } from "@/lib/rbac/default-role-permissions"
-import type { InternalAccessLevel } from "@/lib/types/internal-access"
+import type { InternalAccessLevel, OrganizationInternalLevel } from "@/lib/types/internal-access"
+import { isOrganizationInternalLevel } from "@/lib/types/internal-access"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,8 +77,13 @@ export interface ResolveOrganizationAccessOptions {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-/** Map InternalAccessLevel to the matching system role key */
-function internalLevelToRoleKey(level: InternalAccessLevel): EffectiveRoleKey {
+/**
+ * Map an organization-capable InternalAccessLevel to the matching system role key.
+ * `super_admin` is intentionally NOT handled here — it is a platform-management
+ * level and never confers organization access (see Path B below, which only ever
+ * selects owner_view / employee_view grants).
+ */
+function internalLevelToRoleKey(level: OrganizationInternalLevel): EffectiveRoleKey {
   return level === "owner_view" ? "owner" : "worker"
 }
 
@@ -233,15 +239,23 @@ export async function resolveOrganizationAccess(
       }
     }
 
-    // Pick the requested level or default to highest available
-    const grant = requestedLevel
-      ? grants.find((g) => g.accessLevel === requestedLevel)
-      : (grants.find((g) => g.accessLevel === "owner_view") ??
-          grants.find((g) => g.accessLevel === "employee_view"))
+    // Pick the requested level or default to highest available.
+    // Only owner_view / employee_view confer organization access — super_admin is
+    // a platform-management level and is never resolvable to an org role, even if
+    // explicitly requested.
+    const grant =
+      requestedLevel && isOrganizationInternalLevel(requestedLevel)
+        ? grants.find((g) => g.accessLevel === requestedLevel)
+        : requestedLevel
+          ? undefined // requested super_admin (or other non-org level) → no org access
+          : (grants.find((g) => g.accessLevel === "owner_view") ??
+              grants.find((g) => g.accessLevel === "employee_view"))
 
-    if (!grant) return null // isInternal alone is not enough
+    if (!grant || !isOrganizationInternalLevel(grant.accessLevel as InternalAccessLevel)) {
+      return null // isInternal alone (or super_admin alone) is not enough
+    }
 
-    const level = grant.accessLevel as InternalAccessLevel
+    const level = grant.accessLevel as OrganizationInternalLevel
     const effectiveRoleKey = internalLevelToRoleKey(level)
     const permissions = [...SYSTEM_PERMISSIONS_BY_ROLE[effectiveRoleKey]]
 

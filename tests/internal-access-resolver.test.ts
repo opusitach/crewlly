@@ -122,6 +122,38 @@ describe("resolveOrganizationAccess + useActiveInternalSession", () => {
     )
   })
 
+  it("super_admin alone grants NO organization access (returns null)", async () => {
+    // The user is internal with an enabled super_admin grant, but no owner/employee grant.
+    mocked.prisma.internalGlobalAccess.findMany.mockResolvedValue([
+      { id: "g-sa", accessLevel: "super_admin", scope: "all_establishments" },
+    ])
+    mocked.prisma.internalAccessSession.findFirst.mockResolvedValue(null)
+
+    const ctx = await resolveOrganizationAccess(USER_ID, ORG_ID, { useActiveInternalSession: true })
+    expect(ctx).toBeNull()
+  })
+
+  it("super_admin requested level never resolves to an org role even with the grant", async () => {
+    mocked.prisma.internalGlobalAccess.findMany.mockResolvedValue([
+      { id: "g-sa", accessLevel: "super_admin", scope: "all_establishments" },
+    ])
+    const ctx = await resolveOrganizationAccess(USER_ID, ORG_ID, {
+      requestedInternalAccessLevel: "super_admin",
+    })
+    expect(ctx).toBeNull()
+  })
+
+  it("super_admin + owner_view: owner_view still resolves to owner access", async () => {
+    mocked.prisma.internalGlobalAccess.findMany.mockResolvedValue([
+      { id: "g-sa", accessLevel: "super_admin", scope: "all_establishments" },
+      { id: "g-ow", accessLevel: "owner_view", scope: "all_establishments" },
+    ])
+    const ctx = await resolveOrganizationAccess(USER_ID, ORG_ID)
+    expect(ctx?.isInternalAccess).toBe(true)
+    expect(ctx?.internalAccessLevel).toBe("owner_view")
+    expect(ctx?.effectiveRoleKey).toBe("owner")
+  })
+
   it("regular path: real OrganizationMember is unaffected by the session flag", async () => {
     mocked.prisma.organizationMember.findUnique.mockResolvedValue({
       id: "m1",

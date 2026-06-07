@@ -29,5 +29,6 @@ export async function GET() {
       isInternal: true,
     },
     enabledInternalLevels: result.access.enabledLevels,
+    isSuperAdmin: result.access.isSuperAdmin,
   })
 }

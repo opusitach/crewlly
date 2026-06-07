@@ -35,6 +35,30 @@ export async function requireAdminApi(): Promise<AdminApiGate> {
   return { ok: true, access: result.access }
 }
 
+/**
+ * Stricter gate for WRITE actions on internal access. Requires an enabled
+ * `super_admin` grant — read-heavy admin access (any enabled grant) is NOT
+ * enough. Anonymous → 401; everyone else who isn't a super_admin → 403 with the
+ * same uniform body, so a non-super-admin internal user can't distinguish their
+ * case from a regular user's.
+ */
+export async function requireSuperAdminApi(): Promise<AdminApiGate> {
+  const result = await resolveAdminAccess()
+  if (!result.ok) {
+    const status = result.reason === "unauthorized" ? 401 : 403
+    return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status }) }
+  }
+  if (!result.access.isSuperAdmin) {
+    return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+  }
+  return { ok: true, access: result.access }
+}
+
+/** Standard 409 for conflicting state (e.g. revoking the last super_admin). */
+export function conflict(message: string): NextResponse {
+  return NextResponse.json({ error: message }, { status: 409 })
+}
+
 export interface Pagination {
   page: number
   limit: number

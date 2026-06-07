@@ -13,11 +13,21 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import type { AdminAccessContext } from "../lib/admin-access"
 
-const NAV: Array<{ href: string; label: string }> = [
+interface NavItem {
+  href: string
+  label: string
+  // Only render this item when the user is a super_admin.
+  superAdminOnly?: boolean
+}
+
+const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/organizations", label: "Organizations" },
   { href: "/users", label: "Users" },
   { href: "/audit-logs", label: "Audit Logs" },
+  // Write feature — only surfaced to super_admins, so read-only admins never see
+  // a link they can't use.
+  { href: "/internal-access", label: "Internal Access", superAdminOnly: true },
 ]
 
 interface Props {
@@ -78,7 +88,7 @@ export default function AdminShell({ access, children }: Props) {
       <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6">
         <nav className="w-48 flex-shrink-0">
           <ul className="space-y-1 text-sm">
-            {NAV.map((item) => {
+            {NAV.filter((item) => !item.superAdminOnly || access.isSuperAdmin).map((item) => {
               const active = pathname === item.href || pathname?.startsWith(item.href + "/")
               return (
                 <li key={item.href}>

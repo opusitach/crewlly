@@ -1,19 +1,23 @@
 /**
- * GET /api/admin/users
+ * GET /api/admin/internal-access
  *
- * Paginated, searchable list of users. READ-ONLY — no user management here.
+ * Paginated, searchable list of INTERNAL users (isInternal = true) and their
+ * enabled internal access levels.
+ *
+ * Access: READ is allowed for any eligible admin (any enabled grant) — write
+ * actions live on separate routes and require super_admin. This mirrors the
+ * "read = any grant, write = super_admin" model.
  *
  * Query params:
- *   - search:      matches email OR full name (case-insensitive)
- *   - isInternal:  "true" | "false"            (omit for all)
- *   - level:       owner_view | employee_view  (filters to users with that
- *                  enabled InternalGlobalAccess grant)
- *   - sort:        createdAt | updatedAt | email   (default createdAt)
- *   - order:       asc | desc                       (default desc)
+ *   - search: matches email OR full name (case-insensitive)
+ *   - level:  owner_view | employee_view | super_admin (filter to users with that
+ *             enabled grant)
+ *   - sort:   createdAt | updatedAt | email   (default createdAt)
+ *   - order:  asc | desc                       (default desc)
  *   - page / limit
  *
- * SECURITY: the Prisma `select` is an allow-list. passwordHash, sessions and any
- * other secret-bearing relations are NEVER selected, so they cannot leak.
+ * SECURITY: the Prisma `select` is an allow-list. passwordHash, sessions, tokens
+ * and any other secret-bearing relations are NEVER selected.
  */
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
@@ -46,11 +50,6 @@ export async function GET(request: Request) {
   if (order === null) return badRequest("Invalid order")
 
   const search = strParam(searchParams, "search")
-  const isInternalRaw = searchParams.get("isInternal")?.trim()
-  let isInternal: boolean | undefined
-  if (isInternalRaw === "true") isInternal = true
-  else if (isInternalRaw === "false") isInternal = false
-  else if (isInternalRaw) return badRequest("Invalid isInternal (use true|false)")
 
   const levelRaw = searchParams.get("level")?.trim()
   if (levelRaw && !(LEVELS as readonly string[]).includes(levelRaw)) {
@@ -60,7 +59,8 @@ export async function GET(request: Request) {
 
   const where: Prisma.UserWhereInput = {
     AND: [
-      isInternal !== undefined ? { isInternal } : {},
+      // Only internal users are listed here.
+      { isInternal: true },
       search
         ? {
             OR: [
@@ -87,13 +87,11 @@ export async function GET(request: Request) {
         status: true,
         createdAt: true,
         updatedAt: true,
-        // Only enabled grants, only the level — no secrets here.
         internalAccess: {
           where: { enabled: true },
           select: { accessLevel: true },
         },
-        _count: { select: { organizationMembers: true } },
-        // NOTE: passwordHash, sessions, etc. intentionally NOT selected.
+        // NOTE: passwordHash, sessions, tokens etc. intentionally NOT selected.
       },
     }),
     prisma.user.count({ where }),
@@ -106,7 +104,6 @@ export async function GET(request: Request) {
     isInternal: u.isInternal,
     status: u.status,
     enabledInternalLevels: u.internalAccess.map((g) => g.accessLevel),
-    membershipsCount: u._count.organizationMembers,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
   }))

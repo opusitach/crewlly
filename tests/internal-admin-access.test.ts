@@ -131,6 +131,34 @@ describe("GET /api/admin/me", () => {
     expect(body.user.isInternal).toBe(true)
     expect(body.enabledInternalLevels).toEqual(["owner_view"])
   })
+
+  it("includes super_admin in levels and isSuperAdmin:true when granted", async () => {
+    mocked.getSessionUser.mockResolvedValue(INTERNAL_USER)
+    mocked.prisma.internalGlobalAccess.findFirst.mockResolvedValue({ id: "g1" })
+    mocked.prisma.internalGlobalAccess.findMany.mockResolvedValue([
+      { accessLevel: "super_admin" },
+      { accessLevel: "owner_view" },
+    ])
+
+    const res = await GET_ADMIN_ME()
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      enabledInternalLevels: string[]
+      isSuperAdmin: boolean
+    }
+    expect(body.enabledInternalLevels).toContain("super_admin")
+    expect(body.isSuperAdmin).toBe(true)
+  })
+
+  it("isSuperAdmin:false for an eligible admin without the super_admin grant", async () => {
+    mocked.getSessionUser.mockResolvedValue(INTERNAL_USER)
+    mocked.prisma.internalGlobalAccess.findFirst.mockResolvedValue({ id: "g1" })
+    mocked.prisma.internalGlobalAccess.findMany.mockResolvedValue([{ accessLevel: "owner_view" }])
+
+    const res = await GET_ADMIN_ME()
+    const body = (await res.json()) as { isSuperAdmin: boolean }
+    expect(body.isSuperAdmin).toBe(false)
+  })
 })
 
 describe("GET /api/health", () => {

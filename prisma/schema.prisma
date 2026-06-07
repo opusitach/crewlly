@@ -46,6 +46,7 @@ enum Weekday {
 enum InternalAccessLevel {
   owner_view
   employee_view
+  super_admin
 }
 
 enum InternalAccessScope {
@@ -162,6 +163,8 @@ model User {
   internalAccess          InternalGlobalAccess[]
   internalAuditLogs       InternalAuditLog[]         @relation("InternalAuditActor")
   internalAccessSessions  InternalAccessSession[]    @relation("InternalAccessSessionUser")
+  platformAuditLogsActed  PlatformAuditLog[]         @relation("PlatformAuditLogActor")
+  platformAuditLogsTarget PlatformAuditLog[]         @relation("PlatformAuditLogTarget")
 
   @@map("users")
 }
@@ -1145,6 +1148,34 @@ model InternalGlobalAccess {
   @@index([enabled])
   @@index([accessLevel])
   @@map("internal_global_access")
+}
+
+// Platform-level audit log. Unlike InternalAuditLog (scoped to an organization),
+// this records platform-wide administrative actions — e.g. granting/revoking
+// internal access from admin.crewlly.com — which have no organizationId.
+model PlatformAuditLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  actorUserId String @map("actor_user_id") @db.Uuid
+  actorUser   User   @relation("PlatformAuditLogActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  targetUserId String? @map("target_user_id") @db.Uuid
+  targetUser   User?   @relation("PlatformAuditLogTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  action String
+
+  entityType String? @map("entity_type")
+  entityId   String? @map("entity_id") @db.Uuid
+
+  metadata Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([actorUserId])
+  @@index([targetUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("platform_audit_logs")
 }
 
 

@@ -15,6 +15,7 @@ import {
   hasAnyEnabledInternalGrant,
 } from "@/lib/internal-access/session"
 import InternalSelectorClient from "@/components/internal/internal-selector-client"
+import { isOrganizationInternalLevel } from "@/lib/types/internal-access"
 
 type InternalAccessLevel = "owner_view" | "employee_view"
 
@@ -33,7 +34,12 @@ export default async function InternalSelectorPage({
   if (!user.isInternal) redirect("/app")
   if (!(await hasAnyEnabledInternalGrant(user.id))) redirect("/app")
 
-  const enabledLevels = await getEnabledInternalLevels(user.id)
+  // Only owner_view / employee_view drive the org selector. A super_admin grant
+  // does NOT, on its own, let the user open organizations — so a user with only
+  // super_admin sees no "Open as owner/employee" buttons.
+  const enabledLevels = (await getEnabledInternalLevels(user.id)).filter(
+    isOrganizationInternalLevel,
+  ) as InternalAccessLevel[]
 
   // Preselect is INTENT ONLY. The accessLevel is normalized to a known value or null;
   // the organizationId is passed through verbatim and re-validated by the preview +
