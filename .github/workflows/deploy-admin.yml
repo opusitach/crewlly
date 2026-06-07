@@ -1,41 +1,28 @@
-name: Deploy App
+name: Deploy Admin
 
 on:
   push:
     branches:
       - main
     paths:
-      # GitHub Actions matches paths literally. App runtime code is still shared in the
-      # repo root (/front and /back are placeholders for future split), so watch both sets.
-      - ".github/workflows/deploy-app.yml"
-      - "compose.app.yml"
-      - "Dockerfile"
-      - "front/**"
-      - "back/**"
-      - "app/**"
-      - "components/**"
-      - "hooks/**"
+      - ".github/workflows/deploy-admin.yml"
+      - "compose.admin.yml"
+      - "internal-admin/**"
+      # Shared code imported by the admin app at build time.
       - "lib/**"
       - "prisma/**"
-      - "public/**"
-      - "styles/**"
       - "package.json"
       - "package-lock.json"
-      - "pnpm-lock.yaml"
-      - "next.config.mjs"
-      - "postcss.config.mjs"
-      - "tsconfig.json"
-      - "components.json"
       - ".dockerignore"
 
 concurrency:
-  group: deploy-app
+  group: deploy-admin
   cancel-in-progress: true
 
 jobs:
-  # ── 1. Build the app Docker image and push to GHCR ────────────────────────
+  # ── 1. Build the admin Docker image and push to GHCR ──────────────────────
   build:
-    name: Build & push app image
+    name: Build & push admin image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,31 +42,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push app image
+      - name: Build and push admin image
         uses: docker/build-push-action@v5
         with:
+          # Build context is the REPO ROOT — internal-admin/Dockerfile requires
+          # access to shared /lib and /prisma directories (see Dockerfile note).
           context: .
-          dockerfile: Dockerfile
+          dockerfile: internal-admin/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/crewlly-app:latest
-            ghcr.io/${{ github.repository_owner }}/crewlly-app:sha-${{ github.sha }}
-          build-args: |
-            API_PROXY_TARGET=http://back:3001
-          # GHA layer cache: cold first build, fast incremental rebuilds after.
-          cache-from: type=gha,scope=app
-          cache-to: type=gha,mode=max,scope=app
+            ghcr.io/${{ github.repository_owner }}/crewlly-admin:latest
+            ghcr.io/${{ github.repository_owner }}/crewlly-admin:sha-${{ github.sha }}
+          # Use a separate GHA cache scope so it doesn't collide with crewlly-app cache.
+          cache-from: type=gha,scope=admin
+          cache-to: type=gha,mode=max,scope=admin
 
   # ── 2. Deploy the pre-built image to the VPS ──────────────────────────────
   deploy:
-    name: Deploy to VPS
+    name: Deploy admin to VPS
     needs: build
     runs-on: ubuntu-latest
     env:
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
 
     steps:
-      - name: Deploy app stack via SSH
+      - name: Deploy admin service via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
@@ -109,7 +96,6 @@ jobs:
               if git pull --ff-only origin main; then
                 return 0
               fi
-
               echo "git pull failed, pruning remote refs and retrying once..."
               git remote prune origin || true
               git fetch --prune origin
@@ -125,20 +111,19 @@ jobs:
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_OWNER" --password-stdin
 
             # Pin deploy to the exact commit SHA built above (not :latest).
-            export APP_IMAGE="ghcr.io/${GHCR_OWNER}/crewlly-app:sha-${COMMIT_SHA}"
+            export ADMIN_IMAGE="ghcr.io/${GHCR_OWNER}/crewlly-admin:sha-${COMMIT_SHA}"
             export COMPOSE_IGNORE_ORPHANS=1
 
-            # One-time migration cleanup: remove legacy app containers (frontend/backend)
-            # from old all-in-one compose stacks so only split stack (front/back) remains.
-            if [ -f docker-compose.yml ]; then
-              docker compose --env-file .env.production -f docker-compose.yml rm -sf frontend backend || true
-            fi
-            if [ -f docker-compose.prod.yml ]; then
-              docker compose --env-file .env.production -f docker-compose.prod.yml rm -sf frontend backend || true
-            fi
+            # We include compose.app.yml so Docker Compose sees the full service graph
+            # (migrate, back, etc.) and resolves the admin's depends_on correctly.
+            # --no-deps ensures only internal_admin is restarted — migrations are already
+            # applied by the app stack and the DB is shared.
+            docker compose --env-file .env.production \
+              -f compose.app.yml -f compose.admin.yml \
+              pull internal_admin
 
-            # Pull the pre-built image (no --build: image was already built in CI).
-            docker compose --env-file .env.production -f compose.app.yml pull
-            docker compose --env-file .env.production -f compose.app.yml up -d
+            docker compose --env-file .env.production \
+              -f compose.app.yml -f compose.admin.yml \
+              up -d --no-deps internal_admin
 
-            echo "App deploy complete: $APP_IMAGE"
+            echo "Admin deploy complete: $ADMIN_IMAGE"

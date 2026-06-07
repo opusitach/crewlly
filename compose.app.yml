@@ -5,6 +5,7 @@ services:
   # One-shot migration job kept in the app stack so schema changes can be applied
   # before back/front start. It retries to tolerate DB startup lag from compose.data.yml.
   migrate:
+    image: ${APP_IMAGE:-ghcr.io/chizhikov/crewlly-app:latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -33,6 +34,7 @@ services:
       - app_net
 
   back:
+    image: ${APP_IMAGE:-ghcr.io/chizhikov/crewlly-app:latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -86,6 +88,7 @@ services:
           - backend
 
   internal_scheduler:
+    image: ${APP_IMAGE:-ghcr.io/chizhikov/crewlly-app:latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -119,6 +122,7 @@ services:
       - app_net
 
   front:
+    image: ${APP_IMAGE:-ghcr.io/chizhikov/crewlly-app:latest}
     build:
       context: .
       dockerfile: Dockerfile

@@ -7,6 +7,7 @@ services:
   # This service is OPTIONAL — bring it up only with:
   #   docker compose -f compose.data.yml -f compose.app.yml -f compose.admin.yml up -d
   internal_admin:
+    image: ${ADMIN_IMAGE:-ghcr.io/chizhikov/crewlly-admin:latest}
     build:
       context: .
       dockerfile: internal-admin/Dockerfile
