@@ -46,6 +46,7 @@ export default function NotificationsPage({
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const loadNotifications = async () => {
@@ -129,14 +130,23 @@ export default function NotificationsPage({
   }
 
   const deleteNotification = async (id: string) => {
-    if (isUpdating) return
-    setIsUpdating(true)
+    if (deletingIds.has(id)) return
+    setDeletingIds((prev) => new Set(prev).add(id))
+    const previous = notifications
+    setNotifications((current) => current.filter((n) => n.id !== id))
     try {
       const res = await fetch(`/api/notifications/${id}`, { method: "DELETE", credentials: "include" })
-      if (!res.ok) return
-      setNotifications((current) => current.filter((n) => n.id !== id))
+      if (!res.ok) {
+        setNotifications(previous)
+      }
+    } catch {
+      setNotifications(previous)
     } finally {
-      setIsUpdating(false)
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }
 
@@ -299,6 +309,7 @@ export default function NotificationsPage({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 rounded-full bg-destructive/10 hover:bg-destructive/20"
+                      disabled={deletingIds.has(notification.id)}
                       onClick={(event) => {
                         event.stopPropagation()
                         void deleteNotification(notification.id)

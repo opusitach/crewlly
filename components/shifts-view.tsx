@@ -2046,14 +2046,15 @@ export default function ShiftsView({
             >
                 <div
                   className={cn(
-                    "rounded-t-3xl border border-orange-300/60 bg-[#E29049] will-change-[height,transform]",
+                    "border border-orange-300/60 bg-[#E29049] will-change-[height,transform]",
+                    panelView !== "form" && "rounded-t-3xl",
                     panelTransitionsEnabled
                       ? "transition-[height,transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
                       : "transition-none",
                     "overflow-hidden",
                     !panelExpanded && "cursor-pointer",
                   )}
-                style={{ height: panelExpanded ? expandedHeight : `${collapsedHeight}px` }}
+                style={{ height: panelExpanded ? (panelView === "form" ? "100dvh" : expandedHeight) : `${collapsedHeight}px` }}
                 onClick={handlePanelExpand}
               >
                 <button
