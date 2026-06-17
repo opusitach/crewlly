@@ -45,6 +45,7 @@ services:
     environment:
       APP_SERVICE_NAME: crewlly-back
       NODE_ENV: production
+      API_PROXY_TARGET: ""
       AUDIT_LOG_ENABLED: ${AUDIT_LOG_ENABLED:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       # Parent-domain session cookie so admin.crewlly.com shares the session.

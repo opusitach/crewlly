@@ -64,8 +64,6 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/crewlly-app:latest
             ghcr.io/${{ github.repository_owner }}/crewlly-app:sha-${{ github.sha }}
-          build-args: |
-            API_PROXY_TARGET=http://back:3001
           # GHA layer cache: cold first build, fast incremental rebuilds after.
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app
