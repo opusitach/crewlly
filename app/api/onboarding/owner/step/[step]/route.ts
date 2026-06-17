@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { getSessionUser } from "@/lib/auth"
 import { timezoneSchema } from "@/lib/validation/timezone"
@@ -43,6 +44,7 @@ export async function PATCH(
   request: Request,
   context: RouteContext,
 ) {
+  try {
   const user = await getSessionUser()
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -112,11 +114,10 @@ export async function PATCH(
         },
       })
 
-      await tx.cashRegister.create({
-        data: {
-          locationId: location.id,
-          name: "Main",
-        },
+      await tx.cashRegister.upsert({
+        where: { locationId_name: { locationId: location.id, name: "Main" } },
+        create: { locationId: location.id, name: "Main" },
+        update: {},
       })
     }
 
@@ -270,4 +271,10 @@ export async function PATCH(
   })
 
   return NextResponse.json({ ok: true, step })
+  } catch (error) {
+    const code =
+      error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined
+    console.error("[onboarding][owner][step] error", { code, error })
+    return NextResponse.json({ error: "Не удалось сохранить шаг онбординга" }, { status: 500 })
+  }
 }
